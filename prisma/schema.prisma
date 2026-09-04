@@ -151,12 +151,12 @@ model Seller {
   stripeAccountId     String?  @unique
 
   // STANDARD / FAST / TRUSTED
-  payoutTier             String   @default("STANDARD")
+  payoutTier                 String   @default("STANDARD")
 
   // Fast Payout qualification
-  successfulDeliveredOrders Int   @default(0)
-  fastPayoutEligibleAt       DateTime?
-  fastPayoutUnlockedAt       DateTime?
+  successfulDeliveredOrders Int      @default(0)
+  fastPayoutEligibleAt      DateTime?
+  fastPayoutUnlockedAt      DateTime?
 
   // If HairGrab needs to temporarily restrict fast payouts
   fastPayoutSuspendedAt      DateTime?
@@ -170,6 +170,7 @@ model Seller {
   products            SellerProduct[]
   ledgerEntries       SellerLedgerEntry[]
   payoutBatches       PayoutBatch[]
+  deliveredOrders     SellerDeliveredOrder[]
 
   approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
 
@@ -179,6 +180,7 @@ model Seller {
   @@index([status])
   @@index([email])
   @@index([businessName])
+  @@index([payoutTier])
 }
 
 
@@ -308,8 +310,15 @@ model SellerLedgerEntry {
   fundsStatus            String   @default("AWAITING_CLEARANCE")
 
   fundsClearedAt         DateTime?
+
+  // Delivery information used for payout timing
+  shopifyFulfillmentId   String?
+  deliveredAt            DateTime?
+
+  // When this SALE may become eligible for seller payout
   availableOn            DateTime?
   eligibilityCheckedAt   DateTime?
+
   paidAt                 DateTime?
   shopifyCreatedAt       DateTime?
 
@@ -324,6 +333,47 @@ model SellerLedgerEntry {
   @@index([entryType])
   @@index([fundsStatus])
   @@index([availableOn])
+  @@index([deliveredAt])
+  @@index([shopifyFulfillmentId])
+}
+
+
+// ==========================================================
+// SUCCESSFULLY DELIVERED SELLER ORDERS
+//
+// One record per SELLER + SHOPIFY ORDER.
+//
+// This prevents multiple line items or repeated Shopify
+// delivery events from inflating a seller's qualification
+// count toward Fast Payouts.
+// ==========================================================
+
+model SellerDeliveredOrder {
+  id                   String   @id @default(cuid())
+
+  sellerId             String
+  seller               Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  shopifyOrderId       String
+  shopifyOrderName     String?
+
+  shopifyFulfillmentId String?
+
+  deliveredAt          DateTime
+
+  // Set when this delivery has been counted toward
+  // successfulDeliveredOrders.
+  qualificationCountedAt DateTime?
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([sellerId, shopifyOrderId])
+
+  @@index([sellerId])
+  @@index([shopifyOrderId])
+  @@index([deliveredAt])
+  @@index([qualificationCountedAt])
 }
 
 
