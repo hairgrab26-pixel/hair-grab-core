@@ -1,3 +1,4 @@
+
 # Learn more about configuring your app at
 # https://shopify.dev/docs/apps/tools/cli/configuration
 
@@ -27,6 +28,10 @@ api_version = "2026-07"
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/orders-paid"
   topics = [ "orders/paid" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/fulfillment-event-create"
+  topics = [ "fulfillment_events/create" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/customers/data_request"
