@@ -407,28 +407,30 @@ export default function Index() {
             </div>
           </Link>
 
-          <div style={inactiveModuleStyle}>
-            <div
-              style={{
-                fontWeight: "700",
-                color: "#542378",
-                marginBottom: "5px",
-              }}
-            >
-              Orders
-            </div>
+          <Link
+  to="/app/orders"
+  style={clickableModuleStyle}
+>
+  <div
+    style={{
+      fontWeight: "700",
+      color: "#542378",
+      marginBottom: "5px",
+    }}
+  >
+    Orders
+  </div>
 
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#756b7b",
-                lineHeight: "1.4",
-              }}
-            >
-              Multi-seller order splitting
-            </div>
-          </div>
-
+  <div
+    style={{
+      fontSize: "12px",
+      color: "#756b7b",
+      lineHeight: "1.4",
+    }}
+  >
+    Multi-seller order splitting
+  </div>
+</Link>
           <Link
             to="/app/sellers"
             style={clickableModuleStyle}
