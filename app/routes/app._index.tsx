@@ -383,7 +383,7 @@ export default function Index() {
           }}
         >
           <Link
-           to="/app/ledger"
+           to="/app/sellers"
             style={clickableModuleStyle}
           >
             <div
@@ -432,7 +432,7 @@ export default function Index() {
   </div>
 </Link>
           <Link
-            to="/app/sellers"
+            to="/app/ledger"
             style={clickableModuleStyle}
           >
             <div
