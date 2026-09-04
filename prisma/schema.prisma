@@ -1,13 +1,21 @@
-// HairGrab Core Prisma schema
+// ==========================================================
+// HAIRGRAB CORE
+// HairGrab-owned marketplace operating system
+// ==========================================================
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
+
+
+// ==========================================================
+// SHOPIFY SESSION
+// ==========================================================
 
 model Session {
   id                  String    @id
@@ -29,25 +37,229 @@ model Session {
   refreshTokenExpires DateTime?
 }
 
+
+// ==========================================================
+// SELLER APPLICATION
+// ==========================================================
+
+model SellerApplication {
+  id                  String   @id @default(cuid())
+
+  // PENDING / APPROVED / DECLINED / WITHDRAWN
+  status              String   @default("PENDING")
+
+  businessName        String
+  contactFirstName    String
+  contactLastName     String
+  email               String
+  phone               String?
+
+  website             String?
+  instagram           String?
+  tiktok              String?
+
+  address1            String?
+  address2            String?
+  city                String?
+  state               String?
+  postalCode          String?
+  country             String   @default("US")
+
+  yearsInBusiness     String?
+  productCountRange   String?
+  canImportCsv        Boolean?
+
+  sellsNationwide     Boolean  @default(true)
+  offersLocalPickup   Boolean  @default(false)
+  offersLocalDelivery Boolean  @default(false)
+
+  notes               String?
+  adminReviewNotes    String?
+
+  submittedAt         DateTime @default(now())
+  reviewedAt          DateTime?
+  approvedAt          DateTime?
+  declinedAt          DateTime?
+
+  approvedSellerId    String?  @unique
+  approvedSeller      Seller?  @relation("ApprovedSellerApplication", fields: [approvedSellerId], references: [id])
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status])
+  @@index([email])
+  @@index([businessName])
+}
+
+
+// ==========================================================
+// SELLER
+// Permanent HairGrab marketplace identity.
+// HG-0001 stays HG-0001 even if the business name changes.
+// ==========================================================
+
 model Seller {
+  id                  String   @id @default(cuid())
+
+  sellerCode          String   @unique
+
+  businessName        String
+  legalBusinessName   String?
+
+  contactFirstName    String?
+  contactLastName     String?
+  email               String?
+  phone               String?
+
+  website             String?
+  instagram           String?
+  tiktok              String?
+
+  storeSlug           String?  @unique
+  storeDescription    String?
+  logoUrl             String?
+
+  address1            String?
+  address2            String?
+  city                String?
+  state               String?
+  postalCode          String?
+  country             String   @default("US")
+
+  sellsNationwide     Boolean  @default(true)
+  offersLocalPickup   Boolean  @default(false)
+  offersLocalDelivery Boolean  @default(false)
+
+  // Shopify mapping
+  shopifyVendor       String   @unique
+
+  // Temporary legacy reference while Nexus is removed
+  nexusSellerId       String?  @unique
+
+  // ACTIVE / SUSPENDED / INACTIVE / CLOSED
+  status              String   @default("ACTIVE")
+
+  // HairGrab Core is the financial authority
+  commissionRate      Float    @default(7)
+
+  activeProductLimit  Int      @default(50)
+
+  // NOT_CONNECTED / PENDING / CONNECTED / RESTRICTED
+  payoutStatus        String   @default("NOT_CONNECTED")
+
+  stripeAccountId     String?  @unique
+
+  approvedAt          DateTime?
+  suspendedAt         DateTime?
+  deactivatedAt       DateTime?
+
+  portalAccounts      SellerPortalAccount[]
+  products            SellerProduct[]
+  ledgerEntries       SellerLedgerEntry[]
+  payoutBatches       PayoutBatch[]
+
+  approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status])
+  @@index([email])
+  @@index([businessName])
+}
+
+
+// ==========================================================
+// SELLER PORTAL ACCOUNT
+// ==========================================================
+
+model SellerPortalAccount {
   id              String   @id @default(cuid())
-  sellerCode      String   @unique
-  businessName    String
-  shopifyVendor   String   @unique
-  nexusSellerId   String?  @unique
 
-  status          String   @default("ACTIVE")
-  commissionRate  Float    @default(10)
+  sellerId        String
+  seller          Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
-  stripeAccountId String?  @unique
-  payoutStatus    String   @default("NOT_CONNECTED")
+  email           String   @unique
+  firstName       String?
+  lastName        String?
 
-  ledgerEntries   SellerLedgerEntry[]
-  payoutBatches   PayoutBatch[]
+  // OWNER / ADMIN / STAFF
+  role            String   @default("OWNER")
+
+  // INVITED / ACTIVE / DISABLED
+  status          String   @default("INVITED")
+
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  invitedAt       DateTime @default(now())
+
+  loginTokens     SellerLoginToken[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([sellerId])
+  @@index([status])
 }
+
+
+// ==========================================================
+// PASSWORDLESS SELLER LOGIN
+// ==========================================================
+
+model SellerLoginToken {
+  id              String   @id @default(cuid())
+
+  portalAccountId String
+  portalAccount   SellerPortalAccount @relation(fields: [portalAccountId], references: [id], onDelete: Cascade)
+
+  tokenHash       String   @unique
+
+  expiresAt       DateTime
+  usedAt          DateTime?
+
+  createdAt       DateTime @default(now())
+
+  @@index([portalAccountId])
+  @@index([expiresAt])
+}
+
+
+// ==========================================================
+// SELLER PRODUCT OWNERSHIP
+// ==========================================================
+
+model SellerProduct {
+  id                 String   @id @default(cuid())
+
+  sellerId           String
+  seller             Seller   @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
+  shopifyProductId   String?  @unique
+  shopifyHandle      String?
+
+  title              String
+
+  // DRAFT / PENDING_APPROVAL / ACTIVE / ARCHIVED / REJECTED
+  status             String   @default("DRAFT")
+
+  sellerSku          String?
+
+  publishedToShopify Boolean  @default(false)
+  publishedAt        DateTime?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([sellerId])
+  @@index([status])
+}
+
+
+// ==========================================================
+// SELLER LEDGER
+// ==========================================================
 
 model SellerLedgerEntry {
   id                     String   @id @default(cuid())
@@ -55,52 +267,44 @@ model SellerLedgerEntry {
   sellerId               String
   seller                 Seller   @relation(fields: [sellerId], references: [id])
 
-  shopifyOrderId          String
-  shopifyOrderName        String?
-  shopifyLineItemId       String?
+  shopifyOrderId         String
+  shopifyOrderName       String?
+  shopifyLineItemId      String?
 
-  idempotencyKey          String   @unique
+  idempotencyKey         String   @unique
 
-  // SALE
-  // REFUND
-  // ADJUSTMENT
-  // PAYOUT
-  entryType               String   @default("SALE")
+  // SALE / REFUND / ADJUSTMENT / PAYOUT
+  entryType              String   @default("SALE")
 
-  // PENDING
-  // ELIGIBLE
-  // PAID
-  // REVERSED
-  status                  String   @default("PENDING")
+  // PENDING / ELIGIBLE / PAID / REVERSED
+  status                 String   @default("PENDING")
 
-  currency                String   @default("USD")
+  currency               String   @default("USD")
 
-  commissionRate          Float
+  // Snapshot of commission at transaction time
+  commissionRate         Float
 
-  grossAmountCents        Int      @default(0)
-  commissionAmountCents   Int      @default(0)
-  sellerEarningsCents     Int      @default(0)
-  refundAmountCents       Int      @default(0)
-  payoutAmountCents       Int      @default(0)
+  grossAmountCents       Int      @default(0)
+  commissionAmountCents  Int      @default(0)
+  sellerEarningsCents    Int      @default(0)
+  refundAmountCents      Int      @default(0)
+  payoutAmountCents      Int      @default(0)
 
-  description             String?
+  description            String?
 
-  // SHOPIFY FUNDS CLEARANCE
-  // AWAITING_CLEARANCE
-  // CLEARED
-  // FAILED
-  fundsStatus             String   @default("AWAITING_CLEARANCE")
+  // AWAITING_CLEARANCE / CLEARED / FAILED
+  fundsStatus            String   @default("AWAITING_CLEARANCE")
 
-  fundsClearedAt          DateTime?
-  availableOn             DateTime?
-  eligibilityCheckedAt    DateTime?
-  paidAt                  DateTime?
-  shopifyCreatedAt        DateTime?
+  fundsClearedAt         DateTime?
+  availableOn            DateTime?
+  eligibilityCheckedAt   DateTime?
+  paidAt                 DateTime?
+  shopifyCreatedAt       DateTime?
 
-  payoutBatchItem         PayoutBatchItem?
+  payoutBatchItem        PayoutBatchItem?
 
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([sellerId])
   @@index([shopifyOrderId])
@@ -110,28 +314,26 @@ model SellerLedgerEntry {
   @@index([availableOn])
 }
 
-model PayoutBatch {
-  id               String   @id @default(cuid())
 
-  // Human-readable HairGrab batch number
+// ==========================================================
+// PAYOUT BATCH
+// ==========================================================
+
+model PayoutBatch {
+  id                String   @id @default(cuid())
+
   batchCode         String   @unique
 
   sellerId          String
   seller            Seller   @relation(fields: [sellerId], references: [id])
 
-  // DRAFT
-  // READY
-  // PROCESSING
-  // PAID
-  // FAILED
-  // CANCELED
+  // DRAFT / READY / PROCESSING / PAID / FAILED / CANCELED
   status            String   @default("DRAFT")
 
   currency          String   @default("USD")
 
   totalAmountCents  Int      @default(0)
 
-  // Future Nexus / Stripe payout references
   externalPayoutId  String?
   failureReason     String?
 
@@ -148,19 +350,24 @@ model PayoutBatch {
   @@index([status])
 }
 
+
+// ==========================================================
+// PAYOUT BATCH ITEM
+// ==========================================================
+
 model PayoutBatchItem {
-  id                String   @id @default(cuid())
+  id            String   @id @default(cuid())
 
-  payoutBatchId     String
-  payoutBatch       PayoutBatch @relation(fields: [payoutBatchId], references: [id])
+  payoutBatchId String
+  payoutBatch   PayoutBatch @relation(fields: [payoutBatchId], references: [id])
 
-  ledgerEntryId     String   @unique
-  ledgerEntry       SellerLedgerEntry @relation(fields: [ledgerEntryId], references: [id])
+  ledgerEntryId String   @unique
+  ledgerEntry   SellerLedgerEntry @relation(fields: [ledgerEntryId], references: [id])
 
-  amountCents       Int
-  currency          String   @default("USD")
+  amountCents   Int
+  currency      String   @default("USD")
 
-  createdAt         DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@index([payoutBatchId])
 }
