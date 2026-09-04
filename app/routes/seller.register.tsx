@@ -344,8 +344,6 @@ export const action = async ({
     }
 
 
-    // Also prevent an existing permanent seller
-    // from applying again with the same email.
     const existingSeller =
       await db.seller.findFirst({
         where: {
@@ -570,6 +568,29 @@ export default function SellerRegistrationPage() {
 
             <div
               style={{
+                textAlign:
+                  "center",
+                marginBottom:
+                  "22px",
+              }}
+            >
+              <img
+                src="/hairgrab-logo.png"
+                alt="HairGrab"
+                style={{
+                  width:
+                    "260px",
+                  maxWidth:
+                    "82%",
+                  height:
+                    "auto",
+                }}
+              />
+            </div>
+
+
+            <div
+              style={{
                 width:
                   "54px",
                 height:
@@ -714,20 +735,21 @@ export default function SellerRegistrationPage() {
               "26px",
           }}
         >
-          <div
+
+          <img
+            src="/hairgrab-logo.png"
+            alt="HairGrab"
             style={{
-              color:
-                "#4B1678",
-              fontWeight:
-                "800",
-              fontSize:
-                "25px",
+              width:
+                "280px",
+              maxWidth:
+                "82%",
+              height:
+                "auto",
               marginBottom:
-                "8px",
+                "14px",
             }}
-          >
-            HairGrab
-          </div>
+          />
 
 
           <h1
@@ -766,8 +788,6 @@ export default function SellerRegistrationPage() {
 
         <div style={cardStyle}>
 
-          {/* ERROR */}
-
           {actionData?.success ===
             false &&
             actionData.message && (
@@ -801,8 +821,6 @@ export default function SellerRegistrationPage() {
           <Form
             method="post"
           >
-
-            {/* BUSINESS */}
 
             <div>
               <h2
@@ -934,8 +952,6 @@ export default function SellerRegistrationPage() {
             </div>
 
 
-            {/* CONTACT */}
-
             <div style={sectionStyle}>
               <h2
                 style={{
@@ -1064,8 +1080,6 @@ export default function SellerRegistrationPage() {
             </div>
 
 
-            {/* LOCATION */}
-
             <div style={sectionStyle}>
               <h2
                 style={{
@@ -1122,8 +1136,6 @@ export default function SellerRegistrationPage() {
               </div>
             </div>
 
-
-            {/* QUICK QUESTIONS */}
 
             <div style={sectionStyle}>
               <h2
@@ -1321,8 +1333,6 @@ export default function SellerRegistrationPage() {
             </div>
 
 
-            {/* FULFILLMENT */}
-
             <div style={sectionStyle}>
               <h2
                 style={{
@@ -1455,8 +1465,6 @@ export default function SellerRegistrationPage() {
               </div>
             </div>
 
-
-            {/* SUBMIT */}
 
             <div
               style={{
