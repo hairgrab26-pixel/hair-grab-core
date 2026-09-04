@@ -383,7 +383,7 @@ export default function Index() {
           }}
         >
           <Link
-            to="/app/sellers"
+           to="/app/ledger"
             style={clickableModuleStyle}
           >
             <div
