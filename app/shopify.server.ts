@@ -3,6 +3,7 @@ import "@shopify/shopify-app-react-router/adapters/node";
 import {
   ApiVersion,
   AppDistribution,
+  LogSeverity,
   shopifyApp,
 } from "@shopify/shopify-app-react-router/server";
 
@@ -27,9 +28,13 @@ const shopify = shopifyApp({
 
   sessionStorage: new PrismaSessionStorage(prisma),
 
-  // HairGrab Core is privately distributed to HairGrab,
-  // not published through the Shopify App Store.
   distribution: AppDistribution.SingleMerchant,
+
+  logger: {
+    level: LogSeverity.Debug,
+    httpRequests: true,
+    timestamps: true,
+  },
 
   future: {
     expiringOfflineAccessTokens: true,
