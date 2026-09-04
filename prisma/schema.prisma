@@ -172,6 +172,8 @@ model Seller {
   payoutBatches       PayoutBatch[]
   deliveredOrders     SellerDeliveredOrder[]
 
+  onboarding          SellerOnboarding?
+
   approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
 
   createdAt           DateTime @default(now())
@@ -181,6 +183,62 @@ model Seller {
   @@index([email])
   @@index([businessName])
   @@index([payoutTier])
+}
+
+
+// ==========================================================
+// SELLER ONBOARDING
+//
+// One record per approved seller.
+//
+// Registration/application information is NOT entered again.
+// The Seller record is prefilled from the approved application.
+// This model tracks setup progress, autosave state, and the
+// seller's place in the onboarding flow.
+// ==========================================================
+
+model SellerOnboarding {
+  id                  String   @id @default(cuid())
+
+  sellerId            String   @unique
+  seller              Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  // BUSINESS / STOREFRONT / FULFILLMENT / RETURNS /
+  // PAYOUTS / AGREEMENTS / PRODUCTS / COMPLETE
+  currentStep         String   @default("BUSINESS")
+
+  // Overall onboarding state:
+  // NOT_STARTED / IN_PROGRESS / COMPLETE
+  status              String   @default("NOT_STARTED")
+
+  // Individual step completion
+  businessComplete    Boolean  @default(false)
+  storefrontComplete  Boolean  @default(false)
+  fulfillmentComplete Boolean  @default(false)
+  returnsComplete     Boolean  @default(false)
+  payoutsComplete     Boolean  @default(false)
+  agreementsComplete  Boolean  @default(false)
+  productsComplete    Boolean  @default(false)
+
+  // Optional timestamps make the history auditable and let
+  // HairGrab show exactly when each section was completed.
+  businessCompletedAt    DateTime?
+  storefrontCompletedAt  DateTime?
+  fulfillmentCompletedAt DateTime?
+  returnsCompletedAt     DateTime?
+  payoutsCompletedAt     DateTime?
+  agreementsCompletedAt  DateTime?
+  productsCompletedAt    DateTime?
+
+  startedAt           DateTime?
+  lastSavedAt         DateTime?
+  completedAt         DateTime?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status])
+  @@index([currentStep])
 }
 
 
