@@ -4,6 +4,7 @@ import type {
 } from "react-router";
 
 import {
+  Link,
   useFetcher,
   useLoaderData,
 } from "react-router";
@@ -1239,6 +1240,27 @@ export default function SellerDetailPage() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* BACK NAVIGATION */}
+
+      <div
+        style={{
+          marginTop: "20px",
+          marginBottom: "20px",
+        }}
+      >
+        <Link
+          to="/app/sellers"
+          style={{
+            color: "#542378",
+            fontWeight: "700",
+            textDecoration: "none",
+            fontSize: "13px",
+          }}
+        >
+          ← Back to Sellers
+        </Link>
       </div>
     </div>
   );
