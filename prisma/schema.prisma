@@ -150,6 +150,18 @@ model Seller {
 
   stripeAccountId     String?  @unique
 
+  // STANDARD / FAST / TRUSTED
+  payoutTier             String   @default("STANDARD")
+
+  // Fast Payout qualification
+  successfulDeliveredOrders Int   @default(0)
+  fastPayoutEligibleAt       DateTime?
+  fastPayoutUnlockedAt       DateTime?
+
+  // If HairGrab needs to temporarily restrict fast payouts
+  fastPayoutSuspendedAt      DateTime?
+  fastPayoutSuspensionReason String?
+
   approvedAt          DateTime?
   suspendedAt         DateTime?
   deactivatedAt       DateTime?
