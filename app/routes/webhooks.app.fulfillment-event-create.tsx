@@ -24,26 +24,79 @@ type ShopifyFulfillmentEventPayload = {
 function legacyIdFromGid(value?: string | null) {
   if (!value) return null;
 
-  const parts = value.split("/");
-  return parts[parts.length - 1] || null;
+  const parts =
+    value.split("/");
+
+  return (
+    parts[parts.length - 1] ||
+    null
+  );
+}
+
+
+function addHours(
+  date: Date,
+  hours: number,
+) {
+  return new Date(
+    date.getTime() +
+      hours *
+        60 *
+        60 *
+        1000,
+  );
+}
+
+
+function addDays(
+  date: Date,
+  days: number,
+) {
+  return new Date(
+    date.getTime() +
+      days *
+        24 *
+        60 *
+        60 *
+        1000,
+  );
 }
 
 
 // ==========================================================
 // FULFILLMENT EVENTS / CREATE WEBHOOK
 //
-// Confirmed delivery does four things:
+// CONFIRMED DELIVERY FLOW
 //
-// 1. Finds the exact Shopify line items in this fulfillment.
-// 2. Marks the matching HairGrab SALE ledger entries delivered.
-// 3. Counts seller + Shopify order only ONCE toward qualification.
-// 4. Checks whether the seller has earned FAST payouts.
+// 1. Find exact Shopify line items in this fulfillment.
+// 2. Mark only matching HairGrab SALE rows delivered.
+// 3. Set payout availability:
+//      STANDARD = delivery + 14 days
+//      FAST     = delivery + 48 hours
+// 4. Check whether ALL of this seller's items on the
+//    Shopify order have now been delivered.
+// 5. Count seller + Shopify order only ONCE.
+// 6. Check whether seller has earned FAST payouts.
 //
-// FAST PAYOUT RULE:
-// - seller ACTIVE
-// - at least 30 days since approval
-// - at least 10 successfully delivered orders
-// - no active Fast Payout suspension
+// FAST PAYOUT QUALIFICATION
+//
+// - Seller ACTIVE
+// - At least 30 days since approval
+// - At least 10 successfully delivered orders
+// - No Fast Payout suspension
+// - Payout account is not RESTRICTED
+//
+// IMPORTANT:
+//
+// availableOn does NOT mean the seller has been paid.
+//
+// SALE remains PENDING until HairGrab's separate payout
+// eligibility process confirms:
+//
+// - availableOn has arrived
+// - customer funds are CLEARED
+// - seller remains in good standing
+// - no applicable refund / financial hold prevents payout
 // ==========================================================
 
 export const action = async ({
@@ -56,17 +109,30 @@ export const action = async ({
     payload,
     admin,
     session,
-  } = await authenticate.webhook(request);
+  } =
+    await authenticate.webhook(
+      request,
+    );
 
 
-  if (topic !== "FULFILLMENT_EVENTS_CREATE") {
+  // ========================================================
+  // VERIFY TOPIC
+  // ========================================================
+
+  if (
+    topic !==
+    "FULFILLMENT_EVENTS_CREATE"
+  ) {
     console.log(
       `[HairGrab Core] Ignored webhook topic ${topic} from ${shop}`,
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status: 200,
+      },
+    );
   }
 
 
@@ -75,63 +141,117 @@ export const action = async ({
 
 
   const status =
-    String(event?.status || "")
+    String(
+      event?.status ||
+        "",
+    )
       .trim()
       .toLowerCase();
 
 
-  // We only care about confirmed delivery.
-  if (status !== "delivered") {
+  // ========================================================
+  // WE ONLY PROCESS DELIVERED EVENTS
+  // ========================================================
+
+  if (
+    status !==
+    "delivered"
+  ) {
     console.log(
       `[HairGrab Core] Fulfillment event ignored: status=${status}.`,
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status: 200,
+      },
+    );
   }
 
 
-  if (!event?.order_id || !event?.fulfillment_id) {
+  if (
+    !event?.order_id ||
+    !event?.fulfillment_id
+  ) {
     console.error(
       "[HairGrab Core] Delivered fulfillment event missing order_id or fulfillment_id.",
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status: 200,
+      },
+    );
   }
 
 
   const orderId =
-    String(event.order_id);
+    String(
+      event.order_id,
+    );
 
   const fulfillmentId =
-    String(event.fulfillment_id);
+    String(
+      event.fulfillment_id,
+    );
+
 
   const deliveredAt =
     event.happened_at
-      ? new Date(event.happened_at)
+      ? new Date(
+          event.happened_at,
+        )
       : new Date();
 
 
-  if (!session || !admin) {
+  if (
+    Number.isNaN(
+      deliveredAt.getTime(),
+    )
+  ) {
+    console.error(
+      `[HairGrab Core] Invalid delivery date received for Shopify order ${orderId}.`,
+    );
+
+    return new Response(
+      "OK",
+      {
+        status: 200,
+      },
+    );
+  }
+
+
+  if (
+    !session ||
+    !admin
+  ) {
     console.error(
       `[HairGrab Core] No Shopify admin session available for delivered order ${orderId}.`,
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status: 200,
+      },
+    );
   }
 
 
   // ========================================================
-  // LOAD THE EXACT SHOPIFY LINE ITEMS IN THIS FULFILLMENT
+  // LOAD EXACT SHOPIFY LINE ITEMS IN THIS FULFILLMENT
   //
-  // A multi-seller Shopify order may contain several
-  // fulfillments. We must only credit the seller whose
-  // line items are actually inside THIS delivered fulfillment.
+  // One Shopify order may contain:
+  //
+  // - multiple sellers
+  // - multiple packages
+  // - multiple fulfillments
+  //
+  // We therefore cannot assume the entire order was
+  // delivered when one fulfillment event arrives.
   // ========================================================
 
   const response =
@@ -164,7 +284,9 @@ export const action = async ({
 
 
   const fulfillment =
-    fulfillmentData?.data?.fulfillment;
+    fulfillmentData
+      ?.data
+      ?.fulfillment;
 
 
   if (!fulfillment) {
@@ -172,17 +294,24 @@ export const action = async ({
       `[HairGrab Core] Could not load Shopify fulfillment ${fulfillmentId}.`,
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status: 200,
+      },
+    );
   }
 
 
   const fulfillmentLineItems =
     Array.isArray(
-      fulfillment.fulfillmentLineItems?.nodes,
+      fulfillment
+        .fulfillmentLineItems
+        ?.nodes,
     )
-      ? fulfillment.fulfillmentLineItems.nodes
+      ? fulfillment
+          .fulfillmentLineItems
+          .nodes
       : [];
 
 
@@ -191,95 +320,132 @@ export const action = async ({
       .map(
         (item: any) =>
           legacyIdFromGid(
-            item?.lineItem?.id,
+            item
+              ?.lineItem
+              ?.id,
           ),
       )
       .filter(
-        (id: string | null): id is string =>
+        (
+          id: string | null,
+        ): id is string =>
           Boolean(id),
       );
 
 
-  if (lineItemIds.length === 0) {
+  if (
+    lineItemIds.length ===
+    0
+  ) {
     console.log(
       `[HairGrab Core] Delivered fulfillment ${fulfillmentId} contained no usable line item IDs.`,
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status: 200,
+      },
+    );
   }
 
 
   // ========================================================
-  // FIND HAIRGRAB SALE ENTRIES FOR THE DELIVERED LINES
+  // FIND HAIRGRAB SALE ENTRIES FOR DELIVERED LINES
   // ========================================================
 
   const ledgerEntries =
-    await db.sellerLedgerEntry.findMany({
-      where: {
-        shopifyOrderId:
-          orderId,
+    await db
+      .sellerLedgerEntry
+      .findMany({
+        where: {
+          shopifyOrderId:
+            orderId,
 
-        shopifyLineItemId: {
-          in:
-            lineItemIds,
+          shopifyLineItemId: {
+            in:
+              lineItemIds,
+          },
+
+          entryType:
+            "SALE",
         },
 
-        entryType:
-          "SALE",
-      },
+        select: {
+          id:
+            true,
 
-      select: {
-        id:
-          true,
+          sellerId:
+            true,
 
-        sellerId:
-          true,
+          shopifyOrderName:
+            true,
 
-        shopifyOrderName:
-          true,
-      },
-    });
+          shopifyLineItemId:
+            true,
+
+          deliveredAt:
+            true,
+
+          availableOn:
+            true,
+        },
+      });
 
 
-  if (ledgerEntries.length === 0) {
+  if (
+    ledgerEntries.length ===
+    0
+  ) {
     console.log(
       `[HairGrab Core] No HairGrab seller ledger entries matched delivered fulfillment ${fulfillmentId}.`,
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status: 200,
+      },
+    );
   }
 
 
-  // Mark only the SALE rows that belong to this fulfillment.
-  await db.sellerLedgerEntry.updateMany({
-    where: {
-      id: {
-        in:
-          ledgerEntries.map(
-            (entry) =>
-              entry.id,
-          ),
+  // ========================================================
+  // MARK THESE SALE ROWS DELIVERED
+  //
+  // Webhook retries will not overwrite an existing
+  // deliveredAt timestamp.
+  // ========================================================
+
+  await db
+    .sellerLedgerEntry
+    .updateMany({
+      where: {
+        id: {
+          in:
+            ledgerEntries.map(
+              (entry) =>
+                entry.id,
+            ),
+        },
+
+        deliveredAt:
+          null,
       },
 
-      deliveredAt:
-        null,
-    },
+      data: {
+        shopifyFulfillmentId:
+          fulfillmentId,
 
-    data: {
-      shopifyFulfillmentId:
-        fulfillmentId,
-
-      deliveredAt,
-    },
-  });
+        deliveredAt,
+      },
+    });
 
 
-  // One Shopify fulfillment may contain multiple lines for
-  // the same seller, so reduce this to unique sellers.
+  // ========================================================
+  // UNIQUE SELLERS REPRESENTED IN THIS FULFILLMENT
+  // ========================================================
+
   const sellerIds =
     Array.from(
       new Set(
@@ -292,10 +458,13 @@ export const action = async ({
 
 
   // ========================================================
-  // CREDIT EACH SELLER'S SUCCESSFUL DELIVERY ONCE
+  // PROCESS EACH SELLER
   // ========================================================
 
-  for (const sellerId of sellerIds) {
+  for (
+    const sellerId
+    of sellerIds
+  ) {
 
     const sellerOrderEntry =
       ledgerEntries.find(
@@ -305,13 +474,15 @@ export const action = async ({
       );
 
 
-    const seller =
-      await db.seller.findUnique({
-        where: {
-          id:
-            sellerId,
-        },
-      });
+    let seller =
+      await db
+        .seller
+        .findUnique({
+          where: {
+            id:
+              sellerId,
+          },
+        });
 
 
     if (!seller) {
@@ -319,99 +490,182 @@ export const action = async ({
     }
 
 
-    // One qualifying record per seller + Shopify order.
-    // The unique DB constraint protects us from webhook retries
-    // and multiple delivered line items.
-    const existingDelivery =
-      await db.sellerDeliveredOrder.findUnique({
-        where: {
-          sellerId_shopifyOrderId: {
+    // ======================================================
+    // CHECK WHETHER ALL OF THIS SELLER'S ITEMS ON THIS
+    // SHOPIFY ORDER ARE DELIVERED
+    //
+    // This fixes the split-package problem.
+    //
+    // Example:
+    //
+    // Seller A has 3 lines in order #1001.
+    //
+    // Package 1 delivers 2 lines.
+    // Package 2 is still traveling.
+    //
+    // HairGrab does NOT count the order yet.
+    //
+    // Only after all 3 SALE rows have deliveredAt does
+    // the order count toward Fast Payout qualification.
+    // ======================================================
+
+    const allSellerOrderSales =
+      await db
+        .sellerLedgerEntry
+        .findMany({
+          where: {
             sellerId,
+
             shopifyOrderId:
               orderId,
-          },
-        },
-      });
 
+            entryType:
+              "SALE",
+          },
+
+          select: {
+            id:
+              true,
+
+            deliveredAt:
+              true,
+          },
+        });
+
+
+    const allSellerItemsDelivered =
+      allSellerOrderSales.length >
+        0 &&
+      allSellerOrderSales.every(
+        (entry) =>
+          Boolean(
+            entry.deliveredAt,
+          ),
+      );
+
+
+    // ======================================================
+    // COUNT SUCCESSFUL SELLER ORDER ONCE
+    // ======================================================
 
     let newlyCounted =
       false;
 
 
-    if (!existingDelivery) {
+    if (
+      allSellerItemsDelivered
+    ) {
 
-      try {
-
-        await db.$transaction(
-          async (tx) => {
-
-            await tx.sellerDeliveredOrder.create({
-              data: {
+      const existingDelivery =
+        await db
+          .sellerDeliveredOrder
+          .findUnique({
+            where: {
+              sellerId_shopifyOrderId: {
                 sellerId,
 
                 shopifyOrderId:
                   orderId,
-
-                shopifyOrderName:
-                  sellerOrderEntry?.shopifyOrderName ||
-                  orderId,
-
-                shopifyFulfillmentId:
-                  fulfillmentId,
-
-                deliveredAt,
-
-                qualificationCountedAt:
-                  new Date(),
               },
-            });
+            },
+          });
 
 
-            await tx.seller.update({
-              where: {
-                id:
-                  sellerId,
+      if (
+        !existingDelivery
+      ) {
+
+        try {
+
+          await db
+            .$transaction(
+              async (tx) => {
+
+                await tx
+                  .sellerDeliveredOrder
+                  .create({
+                    data: {
+                      sellerId,
+
+                      shopifyOrderId:
+                        orderId,
+
+                      shopifyOrderName:
+                        sellerOrderEntry
+                          ?.shopifyOrderName ||
+                        orderId,
+
+                      shopifyFulfillmentId:
+                        fulfillmentId,
+
+                      deliveredAt,
+
+                      qualificationCountedAt:
+                        new Date(),
+                    },
+                  });
+
+
+                await tx
+                  .seller
+                  .update({
+                    where: {
+                      id:
+                        sellerId,
+                    },
+
+                    data: {
+                      successfulDeliveredOrders: {
+                        increment:
+                          1,
+                      },
+                    },
+                  });
               },
-
-              data: {
-                successfulDeliveredOrders: {
-                  increment:
-                    1,
-                },
-              },
-            });
-          },
-        );
+            );
 
 
-        newlyCounted =
-          true;
+          newlyCounted =
+            true;
 
-      } catch (error: any) {
+        } catch (
+          error: any
+        ) {
 
-        // If Shopify retried at the same moment another request
-        // already created the unique seller/order record,
-        // do not count the order twice.
-        if (error?.code !== "P2002") {
-          throw error;
+          // Unique seller + Shopify order constraint
+          // protects against simultaneous webhook retries.
+          if (
+            error?.code !==
+            "P2002"
+          ) {
+            throw error;
+          }
         }
       }
     }
 
 
-    const refreshedSeller =
+    // Reload seller if the delivery counter changed.
+    if (
       newlyCounted
-        ? await db.seller.findUnique({
+    ) {
+      const refreshedSeller =
+        await db
+          .seller
+          .findUnique({
             where: {
               id:
                 sellerId,
             },
-          })
-        : seller;
+          });
 
 
-    if (!refreshedSeller) {
-      continue;
+      if (
+        refreshedSeller
+      ) {
+        seller =
+          refreshedSeller;
+      }
     }
 
 
@@ -420,7 +674,7 @@ export const action = async ({
     // ======================================================
 
     const approvalDate =
-      refreshedSeller.approvedAt;
+      seller.approvedAt;
 
 
     const thirtyDaysAgo =
@@ -443,18 +697,26 @@ export const action = async ({
 
 
     const has10Deliveries =
-      refreshedSeller.successfulDeliveredOrders >=
+      seller
+        .successfulDeliveredOrders >=
       10;
 
 
     const goodStanding =
-      refreshedSeller.status ===
+      seller.status ===
         "ACTIVE" &&
-      !refreshedSeller.fastPayoutSuspendedAt;
+      !seller
+        .fastPayoutSuspendedAt &&
+      seller.payoutStatus !==
+        "RESTRICTED";
+
+
+    let effectivePayoutTier =
+      seller.payoutTier;
 
 
     if (
-      refreshedSeller.payoutTier ===
+      seller.payoutTier ===
         "STANDARD" &&
       has30Days &&
       has10Deliveries &&
@@ -465,32 +727,112 @@ export const action = async ({
         new Date();
 
 
-      await db.seller.update({
-        where: {
-          id:
-            sellerId,
-        },
+      const updatedSeller =
+        await db
+          .seller
+          .update({
+            where: {
+              id:
+                sellerId,
+            },
 
-        data: {
-          payoutTier:
-            "FAST",
+            data: {
+              payoutTier:
+                "FAST",
 
-          fastPayoutEligibleAt:
-            unlockedAt,
+              fastPayoutEligibleAt:
+                unlockedAt,
 
-          fastPayoutUnlockedAt:
-            unlockedAt,
-        },
-      });
+              fastPayoutUnlockedAt:
+                unlockedAt,
+            },
+          });
+
+
+      seller =
+        updatedSeller;
+
+      effectivePayoutTier =
+        "FAST";
 
 
       console.log(
-        `[HairGrab Core] ${refreshedSeller.sellerCode} unlocked FAST payouts after ${refreshedSeller.successfulDeliveredOrders} successful delivered orders.`,
+        `[HairGrab Core] ${seller.sellerCode} unlocked FAST payouts after ${seller.successfulDeliveredOrders} successful delivered orders.`,
       );
+
     } else {
 
       console.log(
-        `[HairGrab Core] ${refreshedSeller.sellerCode} delivery recorded. Successful deliveries: ${refreshedSeller.successfulDeliveredOrders}. 30-day requirement: ${has30Days}. Fast Payout tier: ${refreshedSeller.payoutTier}.`,
+        `[HairGrab Core] ${seller.sellerCode} delivery recorded. Successful deliveries: ${seller.successfulDeliveredOrders}. All seller items delivered: ${allSellerItemsDelivered}. 30-day requirement: ${has30Days}. Fast Payout tier: ${seller.payoutTier}.`,
+      );
+    }
+
+
+    // ======================================================
+    // SET PAYOUT AVAILABILITY FOR THE LINES IN THIS
+    // DELIVERED FULFILLMENT
+    //
+    // STANDARD:
+    // delivery + 14 days
+    //
+    // FAST:
+    // delivery + 48 hours
+    //
+    // This does NOT make the sale ELIGIBLE yet.
+    // ======================================================
+
+    const sellerLedgerEntryIds =
+      ledgerEntries
+        .filter(
+          (entry) =>
+            entry.sellerId ===
+            sellerId,
+        )
+        .map(
+          (entry) =>
+            entry.id,
+        );
+
+
+    if (
+      sellerLedgerEntryIds.length >
+      0
+    ) {
+
+      const availableOn =
+        effectivePayoutTier ===
+          "FAST"
+          ? addHours(
+              deliveredAt,
+              48,
+            )
+          : addDays(
+              deliveredAt,
+              14,
+            );
+
+
+      await db
+        .sellerLedgerEntry
+        .updateMany({
+          where: {
+            id: {
+              in:
+                sellerLedgerEntryIds,
+            },
+
+            availableOn:
+              null,
+          },
+
+          data: {
+            availableOn,
+          },
+        });
+
+
+      console.log(
+        `[HairGrab Core] ${seller.sellerCode} payout availability set to ${availableOn.toISOString()} using ${effectivePayoutTier} payout rules.`,
       );
     }
   }
@@ -501,7 +843,10 @@ export const action = async ({
   );
 
 
-  return new Response("OK", {
-    status: 200,
-  });
+  return new Response(
+    "OK",
+    {
+      status: 200,
+    },
+  );
 };
