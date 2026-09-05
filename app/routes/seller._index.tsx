@@ -506,6 +506,7 @@ export default function SellerDashboard() {
               stats.activeProducts
             }
             subtext="Active products"
+            link="/seller/products"
           />
 
         </section>
@@ -530,14 +531,6 @@ export default function SellerDashboard() {
               "28px",
           }}
         >
-
-          <DashboardAction
-            title="Products"
-            description="Add new hair, update pricing, inventory, photos and product details."
-            link="/seller/add-product"
-            button="+ Add Product"
-          />
-
 
           <DashboardAction
             title="Orders"
@@ -847,13 +840,15 @@ function StatCard({
   label,
   value,
   subtext,
+  link,
 }: {
   label: string;
   value: string | number;
   subtext: string;
+  link?: string;
 }) {
 
-  return (
+  const card = (
     <div
       style={{
         background:
@@ -867,6 +862,17 @@ function StatCard({
 
         padding:
           "18px",
+
+        height:
+          "100%",
+
+        boxSizing:
+          "border-box",
+
+        cursor:
+          link
+            ? "pointer"
+            : "default",
       }}
     >
 
@@ -921,6 +927,28 @@ function StatCard({
       </div>
 
     </div>
+  );
+
+  if (!link) {
+    return card;
+  }
+
+  return (
+    <Link
+      to={link}
+      style={{
+        textDecoration:
+          "none",
+
+        color:
+          "inherit",
+
+        display:
+          "block",
+      }}
+    >
+      {card}
+    </Link>
   );
 }
 
