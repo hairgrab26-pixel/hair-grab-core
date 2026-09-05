@@ -359,7 +359,266 @@ export const loader =
 // ==========================================================
 // SHOPIFY HELPERS
 // ==========================================================
+// ==========================================================
+// EXISTING SHOPIFY PRODUCT METAFIELDS
+//
+// HairGrab reads the Product metafield definitions that
+// already exist in Shopify and writes into those definitions.
+//
+// This prevents duplicate hairgrab.* metafields and means
+// the Shopify fields Mel already built are populated
+// automatically.
+// ==========================================================
 
+type ShopifyMetafieldDefinition = {
+  name: string;
+  namespace: string;
+  key: string;
+
+  type: {
+    name: string;
+  };
+};
+
+function normalizeMetafieldName(
+  value: string,
+) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+
+async function getProductMetafieldDefinitions(
+  admin: any,
+) {
+  const response =
+    await admin.graphql(
+      `#graphql
+      query HairGrabProductMetafieldDefinitions {
+        metafieldDefinitions(
+          ownerType: PRODUCT
+          first: 250
+        ) {
+          nodes {
+            name
+            namespace
+            key
+
+            type {
+              name
+            }
+          }
+        }
+      }
+      `,
+    );
+
+  const json =
+    await response.json();
+
+  if (
+    json?.errors &&
+    json.errors.length > 0
+  ) {
+    throw new Error(
+      json.errors
+        .map(
+          (error: {
+            message?: string;
+          }) =>
+            error.message ||
+            "Unable to read Shopify metafield definitions.",
+        )
+        .join(" | "),
+    );
+  }
+
+  return (
+    json?.data
+      ?.metafieldDefinitions
+      ?.nodes || []
+  ) as ShopifyMetafieldDefinition[];
+}
+
+
+function findMetafieldDefinition(
+  definitions:
+    ShopifyMetafieldDefinition[],
+  names: string[],
+) {
+  const normalizedNames =
+    names.map(
+      normalizeMetafieldName,
+    );
+
+  const exactMatch =
+    definitions.find(
+      (definition) =>
+        normalizedNames.includes(
+          normalizeMetafieldName(
+            definition.name,
+          ),
+        ),
+    );
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return definitions.find(
+    (definition) => {
+      const definitionName =
+        normalizeMetafieldName(
+          definition.name,
+        );
+
+      return normalizedNames.some(
+        (name) =>
+          name.length >= 8 &&
+          (
+            definitionName.includes(
+              name,
+            ) ||
+            name.includes(
+              definitionName,
+            )
+          ),
+      );
+    },
+  );
+}
+
+
+function metafieldValueForType(
+  type: string,
+  value:
+    | string
+    | string[]
+    | boolean,
+) {
+  // Shopify list metafields require a JSON array.
+  if (
+    type.startsWith("list.")
+  ) {
+    const values =
+      Array.isArray(value)
+        ? value
+        : [String(value)];
+
+    return JSON.stringify(
+      values.filter(Boolean),
+    );
+  }
+
+  // Shopify boolean metafields require "true" / "false".
+  if (
+    type === "boolean"
+  ) {
+    return String(
+      Boolean(value),
+    );
+  }
+
+  // Number types should still be sent as strings.
+  if (
+    type.includes("integer") ||
+    type.includes("decimal")
+  ) {
+    return String(value);
+  }
+
+  // For a single-line Shopify field receiving several
+  // HairGrab values, display them cleanly as a comma list.
+  if (
+    Array.isArray(value)
+  ) {
+    return value
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  return String(value);
+}
+
+
+function addExistingMetafield({
+  definitions,
+  output,
+  names,
+  value,
+}: {
+  definitions:
+    ShopifyMetafieldDefinition[];
+
+  output: Array<{
+    namespace: string;
+    key: string;
+    type: string;
+    value: string;
+  }>;
+
+  names: string[];
+
+  value:
+    | string
+    | string[]
+    | boolean
+    | null
+    | undefined;
+}) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return;
+  }
+
+  if (
+    typeof value === "string" &&
+    !value.trim()
+  ) {
+    return;
+  }
+
+  if (
+    Array.isArray(value) &&
+    value.length === 0
+  ) {
+    return;
+  }
+
+  const definition =
+    findMetafieldDefinition(
+      definitions,
+      names,
+    );
+
+  // If Mel has not created this metafield in Shopify,
+  // HairGrab simply skips it rather than creating a duplicate.
+  if (!definition) {
+    return;
+  }
+
+  output.push({
+    namespace:
+      definition.namespace,
+
+    key:
+      definition.key,
+
+    type:
+      definition.type.name,
+
+    value:
+      metafieldValueForType(
+        definition.type.name,
+        value,
+      ),
+  });
+}
 function formatErrors(
   errors:
     | Array<{
@@ -1094,159 +1353,309 @@ export const action =
         );
 
       // ====================================================
-      // HAIRGRAB METAFIELDS
+      // EXISTING SHOPIFY METAFIELDS
+      //
+      // HairGrab reads the Product metafield definitions that
+      // already exist in Shopify and fills those exact fields.
+      // No duplicate hairgrab.* metafields are created here.
       // ====================================================
 
-      const metafields =
-        [
-          {
-            namespace:
-              "hairgrab",
+      const metafieldDefinitions =
+        await getProductMetafieldDefinitions(
+          admin,
+        );
 
-            key:
-              "material",
-
-            type:
-              "single_line_text_field",
-
-            value:
-              payload.material ||
-              "",
-          },
-
-          {
-            namespace:
-              "hairgrab",
-
-            key:
-              "color",
-
-            type:
-              "single_line_text_field",
-
-            value:
-              payload.color ||
-              "",
-          },
-
-          {
-            namespace:
-              "hairgrab",
-
-            key:
-              "texture",
-
-            type:
-              "single_line_text_field",
-
-            value:
-              payload.texture ||
-              "",
-          },
-
-          {
-            namespace:
-              "hairgrab",
-
-            key:
-              "product_options",
-
-            type:
-              "json",
-
-            value:
-              JSON.stringify(
-                payload.selectedOptions ||
-                  [],
-              ),
-          },
-        ];
-
-      if (
-        payload.density
-      ) {
-        metafields.push({
-          namespace:
-            "hairgrab",
-
-          key:
-            "density",
-
-          type:
-            "single_line_text_field",
-
-          value:
-            payload.density,
-        });
-      }
-
-      if (
-        payload.laceSize
-      ) {
-        metafields.push({
-          namespace:
-            "hairgrab",
-
-          key:
-            "lace_size",
-
-          type:
-            "single_line_text_field",
-
-          value:
-            payload.laceSize,
-        });
-      }
-
-      if (
-        payload.laceType
-      ) {
-        metafields.push({
-          namespace:
-            "hairgrab",
-
-          key:
-            "lace_type",
-
-          type:
-            "single_line_text_field",
-
-          value:
-            payload.laceType,
-        });
-      }
-
-      if (
-        payload.capSize
-      ) {
-        metafields.push({
-          namespace:
-            "hairgrab",
-
-          key:
-            "cap_size",
-
-          type:
-            "single_line_text_field",
-
-          value:
-            payload.capSize,
-        });
-      }
-
-      // ====================================================
-      // PRODUCT TYPE DISPLAY NAME
-      // ====================================================
+      const metafields: Array<{
+        namespace: string;
+        key: string;
+        type: string;
+        value: string;
+      }> = [];
 
       const productTypeDisplay =
         productTypes.find(
-          (
-            type,
-          ) =>
+          (type) =>
             type.value ===
             payload.productType,
         )?.label ||
         payload.productType;
+
+      const selectedLengthValues =
+        Array.from(
+          new Set(
+            payload.variants
+              .map(
+                (variant) =>
+                  variant.length
+                    ? `${variant.length}"`
+                    : "",
+              )
+              .filter(Boolean),
+          ),
+        );
+
+      // ----------------------------------------------------
+      // PRODUCT-SPECIFIC VALUES
+      // ----------------------------------------------------
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Hair Category",
+        ],
+
+        value:
+          productTypeDisplay,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Hair Type",
+          "Material",
+        ],
+
+        value:
+          payload.material,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Color",
+        ],
+
+        value:
+          payload.color,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Texture",
+        ],
+
+        value:
+          payload.texture,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Length",
+        ],
+
+        value:
+          selectedLengthValues,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Cap Type",
+          "Cap Size",
+        ],
+
+        value:
+          payload.capSize,
+      });
+
+      // ----------------------------------------------------
+      // SELLER / SHIPPING VALUES
+      //
+      // These come from the seller profile so the seller does
+      // not have to re-enter the same information per product.
+      // ----------------------------------------------------
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Ships From City",
+        ],
+
+        value:
+          seller.city,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Ships From State",
+        ],
+
+        value:
+          seller.state,
+      });
+
+      const shippingMethods:
+        string[] = [];
+
+      if (
+        seller.sellsNationwide
+      ) {
+        shippingMethods.push(
+          "Shipping Nationwide",
+        );
+      }
+
+      if (
+        seller.offersLocalPickup
+      ) {
+        shippingMethods.push(
+          "Local Pickup",
+        );
+      }
+
+      if (
+        seller.offersLocalDelivery
+      ) {
+        shippingMethods.push(
+          "Local Delivery",
+        );
+      }
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Shipping Method / Shipping Options",
+          "Shipping Method / Shipping",
+          "Shipping Method",
+          "Shipping Methods",
+        ],
+
+        value:
+          shippingMethods,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Shipping Territory",
+        ],
+
+        value:
+          seller.sellsNationwide
+            ? "Nationwide"
+            : "Local",
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Show on HairGrab Map",
+        ],
+
+        value:
+          seller.offersLocalPickup ||
+          seller.offersLocalDelivery,
+      });
+
+      // ----------------------------------------------------
+      // OPTIONAL HAIR DETAILS
+      //
+      // These fill automatically if matching Shopify product
+      // metafield definitions already exist.
+      // ----------------------------------------------------
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Density",
+        ],
+
+        value:
+          payload.density,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Lace Size",
+        ],
+
+        value:
+          payload.laceSize,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Lace Type",
+        ],
+
+        value:
+          payload.laceType,
+      });
 
       // ====================================================
       // CREATE SHOPIFY PRODUCT
