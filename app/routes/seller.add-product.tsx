@@ -44,6 +44,7 @@ type VariantRow = {
   label: string;
   length: string;
   option: string;
+  color: string;
 };
 
 type VariantData = {
@@ -59,7 +60,7 @@ type ProductPayload = {
   productType: ProductType;
 
   material: string;
-  color: string;
+  colors: string[];
   texture: string;
 
   selectedOptions: string[];
@@ -74,11 +75,13 @@ type ProductPayload = {
   shippingMethod: string;
   shipsWithin: string;
   returnPolicy: string;
+  showOnMap: string;
 
   variants: Array<{
     label: string;
     length: string;
     option: string;
+    color: string;
     price: string;
     inventory: string;
     sku: string;
@@ -1532,6 +1535,29 @@ export const action =
       }
 
       if (
+        Array.isArray(
+          payload.colors,
+        ) &&
+        payload.colors.length >
+          1
+      ) {
+        productOptionsInput.push({
+          name:
+            "Color",
+
+          values:
+            payload.colors.map(
+              (
+                colorValue,
+              ) => ({
+                name:
+                  colorValue,
+              }),
+            ),
+        });
+      }
+
+      if (
         productOptionsInput.length ===
         0
       ) {
@@ -1592,6 +1618,23 @@ export const action =
                   styleLabel(
                     variant.option,
                   ),
+              });
+            }
+
+            if (
+              Array.isArray(
+                payload.colors,
+              ) &&
+              payload.colors.length >
+                1 &&
+              variant.color
+            ) {
+              optionValues.push({
+                optionName:
+                  "Color",
+
+                name:
+                  variant.color,
               });
             }
 
@@ -1826,7 +1869,7 @@ export const action =
         ],
 
         value:
-          payload.color,
+          payload.colors,
       });
 
       addExistingMetafield({
@@ -1945,7 +1988,11 @@ export const action =
 
       const isLocalPickup =
         payload.shippingMethod ===
-        "Local Pickup Available";
+        "Local Pickup";
+
+      const isLocalDelivery =
+        payload.shippingMethod ===
+        "Local Delivery";
 
       addExistingMetafield({
         definitions:
@@ -1959,7 +2006,8 @@ export const action =
         ],
 
         value:
-          isLocalPickup
+          isLocalPickup ||
+          isLocalDelivery
             ? "Local"
             : "Nationwide",
       });
@@ -1976,9 +2024,7 @@ export const action =
         ],
 
         value:
-          isLocalPickup ||
-          seller.offersLocalPickup ||
-          seller.offersLocalDelivery,
+          payload.showOnMap,
       });
 
       addExistingMetafield({
@@ -2956,6 +3002,16 @@ export default function SellerAddProductPage() {
     useState("");
 
   const [
+    selectedColors,
+    setSelectedColors,
+  ] =
+    useState<string[]>(
+      [
+        "Natural / 1B",
+      ],
+    );
+
+  const [
     texture,
     setTexture,
   ] =
@@ -3037,6 +3093,14 @@ export default function SellerAddProductPage() {
   ] =
     useState(
       "14-Day Returns",
+    );
+
+  const [
+    showOnMap,
+    setShowOnMap,
+  ] =
+    useState(
+      "Yes",
     );
 
   const [
@@ -3168,6 +3232,10 @@ export default function SellerAddProductPage() {
 
               option:
                 "",
+
+              color:
+                selectedColors[0] ||
+                "Natural / 1B",
             },
           ];
         }
@@ -3186,6 +3254,12 @@ export default function SellerAddProductPage() {
             ? selectedOptions
             : [""];
 
+        const colorVariants =
+          selectedColors.length >
+            0
+            ? selectedColors
+            : ["Natural / 1B"];
+
         const rows:
           VariantRow[] =
           [];
@@ -3198,24 +3272,49 @@ export default function SellerAddProductPage() {
             const option of
             optionVariants
           ) {
-            rows.push({
-              key:
-                `${length}__${
-                  option ||
-                  "NO_OPTION"
-                }`,
+            for (
+              const colorValue of
+              colorVariants
+            ) {
+              const showColorInLabel =
+                colorVariants.length >
+                1;
 
-              length,
+              const labelParts =
+                [
+                  `${length}"`,
+                  option
+                    ? optionLabel(
+                        option,
+                      )
+                    : "",
+                  showColorInLabel
+                    ? colorValue
+                    : "",
+                ].filter(
+                  Boolean,
+                );
 
-              option,
+              rows.push({
+                key:
+                  `${length}__${
+                    option ||
+                    "NO_OPTION"
+                  }__${colorValue}`,
 
-              label:
-                option
-                  ? `${length}" / ${optionLabel(
-                      option,
-                    )}`
-                  : `${length}"`,
-            });
+                length,
+
+                option,
+
+                color:
+                  colorValue,
+
+                label:
+                  labelParts.join(
+                    " / ",
+                  ),
+              });
+            }
           }
         }
 
@@ -3226,6 +3325,7 @@ export default function SellerAddProductPage() {
         selectedLengths,
         optionsAreVariants,
         selectedOptions,
+        selectedColors,
         currentOptions,
       ],
     );
@@ -3270,6 +3370,60 @@ export default function SellerAddProductPage() {
             value,
         },
       }),
+    );
+  }
+
+  function addSelectedColor() {
+    const resolved =
+      color ===
+      "Other / Custom"
+        ? customColor.trim()
+        : color;
+
+    if (!resolved) {
+      return;
+    }
+
+    if (
+      !selectedColors.includes(
+        resolved,
+      )
+    ) {
+      setSelectedColors(
+        (
+          current,
+        ) => [
+          ...current,
+          resolved,
+        ],
+      );
+    }
+
+    if (
+      color ===
+      "Other / Custom"
+    ) {
+      setCustomColor(
+        "",
+      );
+    }
+  }
+
+  function removeSelectedColor(
+    colorValue: string,
+  ) {
+    setSelectedColors(
+      (
+        current,
+      ) =>
+        current.length <=
+        1
+          ? current
+          : current.filter(
+              (item) =>
+                item !==
+                colorValue,
+            ),
     );
   }
 
@@ -3584,7 +3738,7 @@ export default function SellerAddProductPage() {
     resolvedMaterial
       .length >
       0 &&
-    resolvedColor
+    selectedColors
       .length >
       0 &&
     shippingMethod
@@ -3594,6 +3748,9 @@ export default function SellerAddProductPage() {
       .length >
       0 &&
     returnPolicy
+      .length >
+      0 &&
+    showOnMap
       .length >
       0 &&
     hasPrices;
@@ -3620,8 +3777,8 @@ export default function SellerAddProductPage() {
         material:
           resolvedMaterial,
 
-        color:
-          resolvedColor,
+        colors:
+          selectedColors,
 
         texture,
 
@@ -3645,6 +3802,8 @@ export default function SellerAddProductPage() {
 
         returnPolicy,
 
+        showOnMap,
+
         variants:
           variantRows.map(
             (
@@ -3658,6 +3817,9 @@ export default function SellerAddProductPage() {
 
               option:
                 row.option,
+
+              color:
+                row.color,
 
               price:
                 variantValues[
@@ -3898,7 +4060,9 @@ export default function SellerAddProductPage() {
             <ReviewValue
               label="Color"
               value={
-                resolvedColor
+                selectedColors.join(
+                  ", ",
+                )
               }
             />
 
@@ -3938,6 +4102,13 @@ export default function SellerAddProductPage() {
               label="Return Policy"
               value={
                 returnPolicy
+              }
+            />
+
+            <ReviewValue
+              label="Show on HairGrab Map"
+              value={
+                showOnMap
               }
             />
           </ReviewGrid>
@@ -4533,37 +4704,65 @@ export default function SellerAddProductPage() {
                   Color *
                 </label>
 
-                <select
-                  value={
-                    color
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setColor(
-                      event
-                        .target
-                        .value,
-                    )
-                  }
-                  style={
-                    fieldStyle
-                  }
+                <div
+                  style={{
+                    display:
+                      "flex",
+
+                    gap:
+                      "7px",
+
+                    alignItems:
+                      "flex-start",
+                  }}
                 >
-                  {colors.map(
-                    (
-                      item,
-                    ) => (
-                      <option
-                        key={
-                          item
-                        }
-                      >
-                        {item}
-                      </option>
-                    ),
-                  )}
-                </select>
+                  <select
+                    value={
+                      color
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      setColor(
+                        event
+                          .target
+                          .value,
+                      )
+                    }
+                    style={
+                      fieldStyle
+                    }
+                  >
+                    {colors.map(
+                      (
+                        item,
+                      ) => (
+                        <option
+                          key={
+                            item
+                          }
+                        >
+                          {item}
+                        </option>
+                      ),
+                    )}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={
+                      addSelectedColor
+                    }
+                    style={{
+                      ...secondaryButton,
+
+                      whiteSpace:
+                        "nowrap",
+                    }}
+                  >
+                    + Add Color
+                  </button>
+                </div>
 
                 {color ===
                   "Other / Custom" && (
@@ -4587,6 +4786,98 @@ export default function SellerAddProductPage() {
                         "8px",
                     }}
                   />
+                )}
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+
+                    gap:
+                      "7px",
+
+                    flexWrap:
+                      "wrap",
+
+                    marginTop:
+                      "9px",
+                  }}
+                >
+                  {selectedColors.map(
+                    (
+                      colorValue,
+                    ) => (
+                      <button
+                        key={
+                          colorValue
+                        }
+                        type="button"
+                        onClick={() =>
+                          removeSelectedColor(
+                            colorValue,
+                          )
+                        }
+                        title={
+                          selectedColors.length >
+                          1
+                            ? "Remove color"
+                            : "At least one color is required"
+                        }
+                        style={{
+                          border:
+                            "1px solid #4B1678",
+
+                          background:
+                            "#f7f0fb",
+
+                          color:
+                            "#4B1678",
+
+                          borderRadius:
+                            "20px",
+
+                          padding:
+                            "6px 9px",
+
+                          fontWeight:
+                            "800",
+
+                          fontSize:
+                            "11px",
+
+                          cursor:
+                            selectedColors.length >
+                            1
+                              ? "pointer"
+                              : "default",
+                        }}
+                      >
+                        ✓ {colorValue}
+                        {selectedColors.length >
+                        1
+                          ? " ×"
+                          : ""}
+                      </button>
+                    ),
+                  )}
+                </div>
+
+                {selectedColors.length >
+                  1 && (
+                  <div
+                    style={{
+                      marginTop:
+                        "6px",
+
+                      color:
+                        "#817787",
+
+                      fontSize:
+                        "10px",
+                    }}
+                  >
+                    Multiple colors will create separate Shopify variants.
+                  </div>
                 )}
               </div>
             </div>
@@ -5309,6 +5600,10 @@ export default function SellerAddProductPage() {
                   fieldStyle
                 }
               >
+                <option value="Free Shipping">
+                  Free Shipping
+                </option>
+
                 <option value="Calculated at Checkout">
                   Calculated at Checkout
                 </option>
@@ -5317,8 +5612,12 @@ export default function SellerAddProductPage() {
                   $9.99 Flat Rate Shipping
                 </option>
 
-                <option value="Local Pickup Available">
-                  Local Pickup Available
+                <option value="Local Pickup">
+                  Local Pickup
+                </option>
+
+                <option value="Local Delivery">
+                  Local Delivery
                 </option>
               </select>
             </div>
@@ -5416,6 +5715,59 @@ export default function SellerAddProductPage() {
                 }}
               >
                 Return policy is saved with the product, but it will not be shown on the HairGrab product card.
+              </div>
+            </div>
+
+            <div>
+              <label
+                style={
+                  labelStyle
+                }
+              >
+                Show on HairGrab Map *
+              </label>
+
+              <select
+                value={
+                  showOnMap
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setShowOnMap(
+                    event.target
+                      .value,
+                  )
+                }
+                style={
+                  fieldStyle
+                }
+              >
+                <option value="Yes">
+                  Yes
+                </option>
+
+                <option value="No">
+                  No
+                </option>
+              </select>
+
+              <div
+                style={{
+                  marginTop:
+                    "6px",
+
+                  color:
+                    "#817787",
+
+                  fontSize:
+                    "10px",
+
+                  lineHeight:
+                    "1.4",
+                }}
+              >
+                Yes makes this product eligible for HairGrab local/map discovery.
               </div>
             </div>
           </div>
