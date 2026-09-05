@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { redirect, useLoaderData } from "react-router";
+import { Link, redirect, useLoaderData } from "react-router";
 import crypto from "node:crypto";
 
 import db from "../db.server";
@@ -617,8 +617,8 @@ export default function SellerOnboardingPage() {
               borderTop: "1px solid #eee7f2",
             }}
           >
-            <a
-              href="/seller/onboarding/business"
+            <Link
+              to="/seller/onboarding/business"
               style={{
                 display: "block",
                 width: "100%",
@@ -636,7 +636,7 @@ export default function SellerOnboardingPage() {
               }}
             >
               Continue Seller Setup
-            </a>
+            </Link>
 
             <div
               style={{
