@@ -396,6 +396,12 @@ type ShopifyMetafieldDefinition = {
     type: string;
     value: string | null;
   }>;
+
+  constraints:
+    | {
+        key: string | null;
+      }
+    | null;
 };
 
 function normalizeMetafieldName(
@@ -433,6 +439,10 @@ async function getProductMetafieldDefinitions(
               name
               type
               value
+            }
+
+            constraints {
+              key
             }
           }
         }
@@ -478,19 +488,60 @@ function findMetafieldDefinition(
       normalizeMetafieldName,
     );
 
-  // Exact display-name match only.
-  // Do not fuzzy-match metafield names because that can send
-  // a HairGrab value into the wrong Shopify definition.
-  return definitions.find(
-    (definition) =>
-      normalizedNames.includes(
-        normalizeMetafieldName(
-          definition.name,
+  const matches =
+    definitions.filter(
+      (definition) =>
+        normalizedNames.includes(
+          normalizeMetafieldName(
+            definition.name,
+          ),
         ),
-      ),
-  );
-}
+    );
 
+  if (
+    matches.length === 0
+  ) {
+    return undefined;
+  }
+
+  // Shopify can expose more than one definition with the
+  // same display name. HairGrab should use Mel's normal
+  // custom product metafield before a category-constrained
+  // or standard definition with the same label.
+  const ranked =
+    [...matches].sort(
+      (a, b) => {
+        const score = (
+          definition:
+            ShopifyMetafieldDefinition,
+        ) => {
+          let points = 0;
+
+          if (
+            definition.namespace ===
+            "custom"
+          ) {
+            points += 20;
+          }
+
+          if (
+            !definition.constraints
+          ) {
+            points += 10;
+          }
+
+          return points;
+        };
+
+        return (
+          score(b) -
+          score(a)
+        );
+      },
+    );
+
+  return ranked[0];
+}
 
 function getDefinitionChoices(
   definition:
@@ -544,6 +595,25 @@ const METAFIELD_VALUE_ALIASES:
 
   humansyntheticblend: [
     "humanhairblend",
+  ],
+
+  // Shipping Method
+  freeshipping: [
+    "free",
+    "freeshippingavailable",
+  ],
+
+  calculatedatcheckout: [
+    "calculatedshipping",
+    "calculated",
+  ],
+
+  localpickup: [
+    "localpickupavailable",
+  ],
+
+  localdelivery: [
+    "localdeliveryavailable",
   ],
 
   // Boolean-style Shopify choice fields
