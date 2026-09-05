@@ -1125,31 +1125,23 @@ export default function SellerOnboardingPage() {
                 );
               }}
             >
-              Continue Seller Setup
-            </button>
-
-
-            <div
-              style={{
-                textAlign:
-                  "center",
-                color:
-                  "#817787",
-                fontSize:
-                  "11px",
-                lineHeight:
-                  "1.5",
-                marginTop:
-                  "10px",
-              }}
-            >
-              Your progress will save as you complete each section.
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-    </div>
-  );
-}
+<a
+  href="/seller/onboarding/business"
+  style={{
+    display: "block",
+    width: "100%",
+    boxSizing: "border-box",
+    textAlign: "center",
+    border: "none",
+    borderRadius: "10px",
+    background: "#4B1678",
+    color: "#ffffff",
+    padding: "14px 18px",
+    fontSize: "14px",
+    fontWeight: "800",
+    cursor: "pointer",
+    textDecoration: "none",
+  }}
+>
+  Continue Seller Setup
+</a>
