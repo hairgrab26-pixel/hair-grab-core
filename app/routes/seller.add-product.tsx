@@ -64,55 +64,73 @@ const productGroups: Array<{
   },
 ];
 
-const subtypes: Record<
+const features: Record<
   ProductGroup,
   ProductChoice[]
 > = {
   WIGS: [
     {
-      value: "LACE_WIG",
-      label: "Lace Wig",
+      value: "LACE",
+      label: "Lace",
       description:
-        "Front lace, full lace or similar lace construction.",
+        "The wig includes lace construction.",
     },
     {
-      value: "GLUELESS_WIG",
-      label: "Glueless Wig",
+      value: "GLUELESS",
+      label: "Glueless",
       description:
-        "Designed to wear without adhesive.",
+        "Can be worn without adhesive.",
     },
     {
       value: "CLOSURE_WIG",
       label: "Closure Wig",
       description:
-        "Wig constructed with a lace closure.",
+        "Constructed with a lace closure.",
     },
     {
-      value: "HEADBAND_WIG",
+      value: "FRONTAL_WIG",
+      label: "Frontal Wig",
+      description:
+        "Constructed with a lace frontal.",
+    },
+    {
+      value: "FULL_LACE",
+      label: "Full Lace",
+      description:
+        "Full lace cap construction.",
+    },
+    {
+      value: "HEADBAND",
       label: "Headband Wig",
       description:
-        "Wig designed with an attached headband.",
-    },
-    {
-      value: "OTHER_WIG",
-      label: "Other Wig",
-      description:
-        "Another wig construction or style.",
+        "Includes or uses a headband-style construction.",
     },
   ],
 
   BUNDLES: [
     {
-      value: "HAIR_BUNDLE",
-      label: "Hair Bundle",
+      value: "SINGLE_BUNDLE",
+      label: "Single Bundle",
       description:
-        "Traditional wefted bundle of hair.",
+        "One bundle sold individually.",
     },
     {
       value: "BUNDLE_DEAL",
       label: "Bundle Deal",
       description:
-        "Multiple bundles sold together as a set.",
+        "Multiple bundles sold together.",
+    },
+    {
+      value: "WITH_CLOSURE",
+      label: "Includes Closure",
+      description:
+        "Bundle package includes a closure.",
+    },
+    {
+      value: "WITH_FRONTAL",
+      label: "Includes Frontal",
+      description:
+        "Bundle package includes a frontal.",
     },
   ],
 
@@ -121,19 +139,31 @@ const subtypes: Record<
       value: "CLOSURE",
       label: "Closure",
       description:
-        "4x4, 5x5, 6x6, 7x7 and similar lace closures.",
+        "4x4, 5x5, 6x6, 7x7 and similar closures.",
     },
     {
       value: "FRONTAL",
       label: "Frontal",
       description:
-        "13x4, 13x6 and similar lace frontals.",
+        "13x4, 13x6 and similar frontals.",
     },
     {
       value: "360_FRONTAL",
       label: "360 Frontal",
       description:
-        "Lace piece designed to wrap around the perimeter.",
+        "Lace designed around the perimeter.",
+    },
+    {
+      value: "HD_LACE",
+      label: "HD Lace",
+      description:
+        "Uses HD lace.",
+    },
+    {
+      value: "TRANSPARENT_LACE",
+      label: "Transparent Lace",
+      description:
+        "Uses transparent lace.",
     },
   ],
 
@@ -142,58 +172,58 @@ const subtypes: Record<
       value: "CLIP_IN",
       label: "Clip-Ins",
       description:
-        "Reusable extension sets with attached clips.",
+        "Reusable extensions with attached clips.",
     },
     {
       value: "TAPE_IN",
       label: "Tape-Ins",
       description:
-        "Extensions installed using adhesive tabs.",
+        "Extensions installed with adhesive tabs.",
     },
     {
       value: "I_TIP",
       label: "I-Tips / Microlinks",
       description:
-        "Individual extensions installed with beads or links.",
+        "Installed with beads or microlinks.",
     },
     {
       value: "PONYTAIL",
       label: "Ponytail",
       description:
-        "Wrap, drawstring or clip-on ponytail extensions.",
+        "Wrap, drawstring or clip-on ponytail.",
     },
     {
       value: "HALO",
       label: "Halo",
       description:
-        "Extension worn using a concealed halo wire.",
-    },
-    {
-      value: "OTHER_EXTENSION",
-      label: "Other Extension",
-      description:
-        "Another extension installation method.",
+        "Halo-style extension system.",
     },
   ],
 
   BRAIDING_HAIR: [
     {
-      value: "HUMAN_BRAIDING_HAIR",
+      value: "HUMAN_HAIR",
       label: "Human Hair",
       description:
-        "Human hair for braids, boho styles and protective styles.",
+        "Made with human hair.",
     },
     {
-      value: "SYNTHETIC_BRAIDING_HAIR",
-      label: "Synthetic Hair",
+      value: "SYNTHETIC",
+      label: "Synthetic",
       description:
-        "Synthetic braiding and protective-style hair.",
+        "Made with synthetic hair.",
     },
     {
       value: "PRE_STRETCHED",
-      label: "Pre-Stretched Hair",
+      label: "Pre-Stretched",
       description:
-        "Braiding hair prepared for easier installation.",
+        "Prepared for easier installation.",
+    },
+    {
+      value: "BOHO",
+      label: "Boho / Loose Curl",
+      description:
+        "Designed for boho or curly braid styles.",
     },
   ],
 
@@ -202,19 +232,19 @@ const subtypes: Record<
       value: "HAIR_CARE",
       label: "Hair Care",
       description:
-        "Shampoo, conditioner, mousse, oils and treatments.",
+        "Shampoo, conditioner, oils and treatments.",
     },
     {
       value: "TOOLS",
       label: "Tools",
       description:
-        "Combs, brushes, styling tools and installation tools.",
+        "Combs, brushes and styling tools.",
     },
     {
       value: "ACCESSORIES",
       label: "Accessories",
       description:
-        "Caps, bands, bonnets, clips and other accessories.",
+        "Caps, bands, bonnets, clips and more.",
     },
   ],
 };
@@ -223,14 +253,26 @@ export default function SellerAddProductPage() {
   const [group, setGroup] =
     useState<ProductGroup | null>(null);
 
-  const [productType, setProductType] =
-    useState<string | null>(null);
+  const [selectedFeatures, setSelectedFeatures] =
+    useState<string[]>([]);
 
   const selectGroup = (
     value: ProductGroup,
   ) => {
     setGroup(value);
-    setProductType(null);
+    setSelectedFeatures([]);
+  };
+
+  const toggleFeature = (
+    value: string,
+  ) => {
+    setSelectedFeatures((current) =>
+      current.includes(value)
+        ? current.filter(
+            (item) => item !== value,
+          )
+        : [...current, value],
+    );
   };
 
   const selectedGroup =
@@ -311,10 +353,9 @@ export default function SellerAddProductPage() {
               lineHeight: "1.6",
             }}
           >
-            Choose the closest category.
-            HairGrab will show you only the
-            product details that apply to
-            that type of hair.
+            Choose the main category first.
+            Then select every feature that
+            applies to this product.
           </p>
 
           <div
@@ -400,9 +441,7 @@ export default function SellerAddProductPage() {
                   fontSize: "21px",
                 }}
               >
-                What kind of{" "}
-                {selectedGroup?.label.toLowerCase()}
-                ?
+                Select all that apply
               </h2>
 
               <p
@@ -412,9 +451,12 @@ export default function SellerAddProductPage() {
                   fontSize: "12px",
                 }}
               >
-                This helps HairGrab build
-                the right product options
-                automatically.
+                This product is in{" "}
+                <strong>
+                  {selectedGroup?.label}
+                </strong>
+                . Choose as many features
+                as needed.
               </p>
 
               <div
@@ -425,68 +467,101 @@ export default function SellerAddProductPage() {
                   gap: "12px",
                 }}
               >
-                {subtypes[group].map(
+                {features[group].map(
                   (item) => {
                     const selected =
-                      productType ===
-                      item.value;
+                      selectedFeatures.includes(
+                        item.value,
+                      );
 
                     return (
                       <button
                         key={item.value}
                         type="button"
                         onClick={() =>
-                          setProductType(
+                          toggleFeature(
                             item.value,
                           )
                         }
                         style={{
-                          textAlign:
-                            "left",
-                          padding:
-                            "15px",
-                          borderRadius:
-                            "12px",
-                          border:
-                            selected
-                              ? "2px solid #4B1678"
-                              : "1px solid #ded3e5",
-                          background:
-                            selected
-                              ? "#f7f0fb"
-                              : "#ffffff",
-                          cursor:
-                            "pointer",
+                          textAlign: "left",
+                          padding: "15px",
+                          borderRadius: "12px",
+                          border: selected
+                            ? "2px solid #4B1678"
+                            : "1px solid #ded3e5",
+                          background: selected
+                            ? "#f7f0fb"
+                            : "#ffffff",
+                          cursor: "pointer",
+                          position: "relative",
                         }}
                       >
                         <div
                           style={{
-                            color:
-                              "#4B1678",
-                            fontSize:
-                              "14px",
-                            fontWeight:
-                              "800",
+                            display: "flex",
+                            gap: "10px",
+                            alignItems:
+                              "flex-start",
                           }}
                         >
-                          {item.label}
-                        </div>
+                          <div
+                            style={{
+                              width: "19px",
+                              height: "19px",
+                              minWidth: "19px",
+                              borderRadius: "5px",
+                              border: selected
+                                ? "2px solid #4B1678"
+                                : "1px solid #bcaec6",
+                              background: selected
+                                ? "#4B1678"
+                                : "#ffffff",
+                              color: "#ffffff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent:
+                                "center",
+                              fontSize: "12px",
+                              fontWeight: "800",
+                            }}
+                          >
+                            {selected
+                              ? "✓"
+                              : ""}
+                          </div>
 
-                        <div
-                          style={{
-                            color:
-                              "#776e7b",
-                            fontSize:
-                              "11px",
-                            lineHeight:
-                              "1.45",
-                            marginTop:
-                              "4px",
-                          }}
-                        >
-                          {
-                            item.description
-                          }
+                          <div>
+                            <div
+                              style={{
+                                color:
+                                  "#4B1678",
+                                fontSize:
+                                  "14px",
+                                fontWeight:
+                                  "800",
+                              }}
+                            >
+                              {item.label}
+                            </div>
+
+                            <div
+                              style={{
+                                color:
+                                  "#776e7b",
+                                fontSize:
+                                  "11px",
+                                lineHeight:
+                                  "1.45",
+                                marginTop:
+                                  "4px",
+                              }}
+                            >
+                              {
+                                item.description
+                              }
+                            </div>
+                          </div>
                         </div>
                       </button>
                     );
@@ -506,7 +581,7 @@ export default function SellerAddProductPage() {
           >
             <button
               type="button"
-              disabled={!productType}
+              disabled={!group}
               style={{
                 width: "100%",
                 border: "none",
@@ -514,11 +589,11 @@ export default function SellerAddProductPage() {
                 padding: "14px 18px",
                 fontSize: "14px",
                 fontWeight: "800",
-                background: productType
+                background: group
                   ? "#4B1678"
                   : "#c9bdcf",
                 color: "#ffffff",
-                cursor: productType
+                cursor: group
                   ? "pointer"
                   : "not-allowed",
               }}
@@ -526,7 +601,7 @@ export default function SellerAddProductPage() {
               Continue to Product Details
             </button>
 
-            {productType && (
+            {group && (
               <div
                 style={{
                   textAlign: "center",
@@ -535,10 +610,13 @@ export default function SellerAddProductPage() {
                   fontSize: "11px",
                 }}
               >
-                Product type selected:{" "}
-                <strong>
-                  {productType}
-                </strong>
+                {selectedFeatures.length}{" "}
+                feature
+                {selectedFeatures.length ===
+                1
+                  ? ""
+                  : "s"}{" "}
+                selected
               </div>
             )}
           </div>
