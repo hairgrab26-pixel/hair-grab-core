@@ -378,6 +378,12 @@ type ShopifyMetafieldDefinition = {
   type: {
     name: string;
   };
+
+  validations: Array<{
+    name: string;
+    type: string;
+    value: string | null;
+  }>;
 };
 
 function normalizeMetafieldName(
@@ -409,6 +415,12 @@ async function getProductMetafieldDefinitions(
 
             type {
               name
+            }
+
+            validations {
+              name
+              type
+              value
             }
           }
         }
@@ -454,66 +466,225 @@ function findMetafieldDefinition(
       normalizeMetafieldName,
     );
 
-  const exactMatch =
-    definitions.find(
-      (definition) =>
-        normalizedNames.includes(
-          normalizeMetafieldName(
-            definition.name,
-          ),
-        ),
-    );
-
-  if (exactMatch) {
-    return exactMatch;
-  }
-
+  // Exact display-name match only.
+  // Do not fuzzy-match metafield names because that can send
+  // a HairGrab value into the wrong Shopify definition.
   return definitions.find(
-    (definition) => {
-      const definitionName =
+    (definition) =>
+      normalizedNames.includes(
         normalizeMetafieldName(
           definition.name,
-        );
-
-      return normalizedNames.some(
-        (name) =>
-          name.length >= 8 &&
-          (
-            definitionName.includes(
-              name,
-            ) ||
-            name.includes(
-              definitionName,
-            )
-          ),
-      );
-    },
+        ),
+      ),
   );
 }
 
 
-function metafieldValueForType(
-  type: string,
+function getDefinitionChoices(
+  definition:
+    ShopifyMetafieldDefinition,
+) {
+  const choiceValidation =
+    definition.validations.find(
+      (validation) =>
+        normalizeMetafieldName(
+          validation.name,
+        ) === "choices",
+    );
+
+  if (
+    !choiceValidation?.value
+  ) {
+    return [] as string[];
+  }
+
+  try {
+    const parsed =
+      JSON.parse(
+        choiceValidation.value,
+      );
+
+    return Array.isArray(parsed)
+      ? parsed.map(String)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+
+const METAFIELD_VALUE_ALIASES:
+  Record<string, string[]> = {
+  // Hair Category
+  wig: [
+    "wigs",
+  ],
+
+  closurefrontal: [
+    "closuresandfrontals",
+    "closuresfrontals",
+  ],
+
+  // Hair Type
+  humanhair: [
+    "100humanhair",
+  ],
+
+  humansyntheticblend: [
+    "humanhairblend",
+  ],
+
+  // Boolean-style Shopify choice fields
+  true: [
+    "yes",
+  ],
+
+  false: [
+    "no",
+  ],
+};
+
+
+function resolveChoiceValue(
+  value: string,
+  choices: string[],
+) {
+  if (
+    choices.length === 0
+  ) {
+    return value;
+  }
+
+  const normalizedValue =
+    normalizeMetafieldName(
+      value,
+    );
+
+  const exact =
+    choices.find(
+      (choice) =>
+        normalizeMetafieldName(
+          choice,
+        ) ===
+        normalizedValue,
+    );
+
+  if (exact) {
+    return exact;
+  }
+
+  const aliases =
+    METAFIELD_VALUE_ALIASES[
+      normalizedValue
+    ] || [];
+
+  for (
+    const alias of
+    aliases
+  ) {
+    const matched =
+      choices.find(
+        (choice) =>
+          normalizeMetafieldName(
+            choice,
+          ) ===
+          alias,
+      );
+
+    if (matched) {
+      return matched;
+    }
+  }
+
+  // Simple singular/plural tolerance, e.g. Wig -> Wigs.
+  const singularPluralMatch =
+    choices.find(
+      (choice) => {
+        const normalizedChoice =
+          normalizeMetafieldName(
+            choice,
+          );
+
+        return (
+          normalizedChoice ===
+            `${normalizedValue}s` ||
+          `${normalizedChoice}s` ===
+            normalizedValue
+        );
+      },
+    );
+
+  return (
+    singularPluralMatch ||
+    null
+  );
+}
+
+
+function prepareMetafieldValue(
+  definition:
+    ShopifyMetafieldDefinition,
   value:
     | string
     | string[]
     | boolean,
 ) {
-  // Shopify list metafields require a JSON array.
-  if (
-    type.startsWith("list.")
-  ) {
-    const values =
-      Array.isArray(value)
-        ? value
-        : [String(value)];
+  const type =
+    definition.type.name;
 
+  const choices =
+    getDefinitionChoices(
+      definition,
+    );
+
+  const rawValues =
+    Array.isArray(value)
+      ? value.map(String)
+      : [
+          typeof value ===
+          "boolean"
+            ? value
+              ? "true"
+              : "false"
+            : String(value),
+        ];
+
+  const resolvedValues =
+    rawValues
+      .map(
+        (item) =>
+          resolveChoiceValue(
+            item,
+            choices,
+          ),
+      )
+      .filter(
+        (
+          item,
+        ): item is string =>
+          Boolean(item),
+      );
+
+  // If Shopify has restricted choices and HairGrab doesn't
+  // have a valid matching value, skip this metafield instead
+  // of rejecting the entire product save.
+  if (
+    choices.length > 0 &&
+    resolvedValues.length === 0
+  ) {
+    return null;
+  }
+
+  if (
+    type.startsWith(
+      "list.",
+    )
+  ) {
     return JSON.stringify(
-      values.filter(Boolean),
+      resolvedValues,
     );
   }
 
-  // Shopify boolean metafields require "true" / "false".
   if (
     type === "boolean"
   ) {
@@ -522,25 +693,32 @@ function metafieldValueForType(
     );
   }
 
-  // Number types should still be sent as strings.
   if (
-    type.includes("integer") ||
-    type.includes("decimal")
+    type.includes(
+      "integer",
+    ) ||
+    type.includes(
+      "decimal",
+    )
   ) {
-    return String(value);
+    return String(
+      resolvedValues[0] ??
+      rawValues[0],
+    );
   }
 
-  // For a single-line Shopify field receiving several
-  // HairGrab values, display them cleanly as a comma list.
   if (
     Array.isArray(value)
   ) {
-    return value
-      .filter(Boolean)
-      .join(", ");
+    return resolvedValues.join(
+      ", ",
+    );
   }
 
-  return String(value);
+  return (
+    resolvedValues[0] ??
+    rawValues[0]
+  );
 }
 
 
@@ -596,9 +774,23 @@ function addExistingMetafield({
       names,
     );
 
-  // If Mel has not created this metafield in Shopify,
-  // HairGrab simply skips it rather than creating a duplicate.
   if (!definition) {
+    return;
+  }
+
+  const preparedValue =
+    prepareMetafieldValue(
+      definition,
+      value,
+    );
+
+  if (
+    preparedValue === null
+  ) {
+    console.warn(
+      `[HairGrab Core] Skipping metafield "${definition.name}" because "${String(value)}" is not one of its allowed Shopify choices.`,
+    );
+
     return;
   }
 
@@ -613,12 +805,11 @@ function addExistingMetafield({
       definition.type.name,
 
     value:
-      metafieldValueForType(
-        definition.type.name,
-        value,
-      ),
+      preparedValue,
   });
 }
+
+
 function formatErrors(
   errors:
     | Array<{
@@ -1387,7 +1578,9 @@ export const action =
               .map(
                 (variant) =>
                   variant.length
-                    ? `${variant.length}"`
+                    ? String(
+                        variant.length,
+                      )
                     : "",
               )
               .filter(Boolean),
@@ -1397,6 +1590,63 @@ export const action =
       // ----------------------------------------------------
       // PRODUCT-SPECIFIC VALUES
       // ----------------------------------------------------
+
+      let hairCategoryMetafieldValue =
+        productTypeDisplay;
+
+      if (
+        payload.productType ===
+        "WIG"
+      ) {
+        hairCategoryMetafieldValue =
+          "Wigs";
+      }
+
+      if (
+        payload.productType ===
+        "CLOSURE_FRONTAL"
+      ) {
+        hairCategoryMetafieldValue =
+          "Closures & Frontals";
+      }
+
+      if (
+        payload.productType ===
+        "EXTENSION"
+      ) {
+        if (
+          payload.selectedOptions.includes(
+            "CLIP_IN",
+          )
+        ) {
+          hairCategoryMetafieldValue =
+            "Clip-Ins";
+        } else if (
+          payload.selectedOptions.includes(
+            "TAPE_IN",
+          )
+        ) {
+          hairCategoryMetafieldValue =
+            "Tape-Ins";
+        } else if (
+          payload.selectedOptions.includes(
+            "I_TIP",
+          )
+        ) {
+          hairCategoryMetafieldValue =
+            "I-Tips & K Tips";
+        } else if (
+          payload.selectedOptions.includes(
+            "HALO",
+          )
+        ) {
+          hairCategoryMetafieldValue =
+            "Halo Extensions";
+        } else {
+          hairCategoryMetafieldValue =
+            "Other";
+        }
+      }
 
       addExistingMetafield({
         definitions:
@@ -1410,7 +1660,7 @@ export const action =
         ],
 
         value:
-          productTypeDisplay,
+          hairCategoryMetafieldValue,
       });
 
       addExistingMetafield({
