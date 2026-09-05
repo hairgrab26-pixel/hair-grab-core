@@ -104,11 +104,12 @@ export const loader = async ({
     },
 
     stats: {
-      grossSales,
-      sellerEarnings,
-      commission,
-      totalOrders:
-        orderIds.size,
+  grossSales,
+  sellerEarnings,
+  commission,
+  payoutReady,
+  totalOrders:
+    orderIds.size,
 
       activeProducts,
 
