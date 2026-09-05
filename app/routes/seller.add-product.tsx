@@ -71,6 +71,10 @@ type ProductPayload = {
   capSize: string;
   bundleWeight: string;
 
+  shippingMethod: string;
+  shipsWithin: string;
+  returnPolicy: string;
+
   variants: Array<{
     label: string;
     length: string;
@@ -300,6 +304,11 @@ async function getSellerFromRequest(
       where: {
         id:
           session.sellerId,
+      },
+
+      include: {
+        approvedApplication:
+          true,
       },
     });
 
@@ -1869,9 +1878,22 @@ export const action =
       // ----------------------------------------------------
       // SELLER / SHIPPING VALUES
       //
-      // These come from the seller profile so the seller does
-      // not have to re-enter the same information per product.
+      // Product-specific choices come from this quick form.
+      // Seller city/state are auto-filled from HairGrab seller
+      // data, with the approved application as a fallback.
       // ----------------------------------------------------
+
+      const shipsFromCity =
+        seller.city ||
+        seller.approvedApplication
+          ?.city ||
+        "";
+
+      const shipsFromState =
+        seller.state ||
+        seller.approvedApplication
+          ?.state ||
+        "";
 
       addExistingMetafield({
         definitions:
@@ -1885,7 +1907,7 @@ export const action =
         ],
 
         value:
-          seller.city,
+          shipsFromCity,
       });
 
       addExistingMetafield({
@@ -1900,35 +1922,8 @@ export const action =
         ],
 
         value:
-          seller.state,
+          shipsFromState,
       });
-
-      const shippingMethods:
-        string[] = [];
-
-      if (
-        seller.sellsNationwide
-      ) {
-        shippingMethods.push(
-          "Shipping Nationwide",
-        );
-      }
-
-      if (
-        seller.offersLocalPickup
-      ) {
-        shippingMethods.push(
-          "Local Pickup",
-        );
-      }
-
-      if (
-        seller.offersLocalDelivery
-      ) {
-        shippingMethods.push(
-          "Local Delivery",
-        );
-      }
 
       addExistingMetafield({
         definitions:
@@ -1945,8 +1940,12 @@ export const action =
         ],
 
         value:
-          shippingMethods,
+          payload.shippingMethod,
       });
+
+      const isLocalPickup =
+        payload.shippingMethod ===
+        "Local Pickup Available";
 
       addExistingMetafield({
         definitions:
@@ -1960,9 +1959,9 @@ export const action =
         ],
 
         value:
-          seller.sellsNationwide
-            ? "Nationwide"
-            : "Local",
+          isLocalPickup
+            ? "Local"
+            : "Nationwide",
       });
 
       addExistingMetafield({
@@ -1977,8 +1976,39 @@ export const action =
         ],
 
         value:
+          isLocalPickup ||
           seller.offersLocalPickup ||
           seller.offersLocalDelivery,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Ships Within",
+        ],
+
+        value:
+          payload.shipsWithin,
+      });
+
+      addExistingMetafield({
+        definitions:
+          metafieldDefinitions,
+
+        output:
+          metafields,
+
+        names: [
+          "Return Policy",
+        ],
+
+        value:
+          payload.returnPolicy,
       });
 
       // ----------------------------------------------------
@@ -2986,6 +3016,30 @@ export default function SellerAddProductPage() {
     );
 
   const [
+    shippingMethod,
+    setShippingMethod,
+  ] =
+    useState(
+      "Calculated at Checkout",
+    );
+
+  const [
+    shipsWithin,
+    setShipsWithin,
+  ] =
+    useState(
+      "48 Hours",
+    );
+
+  const [
+    returnPolicy,
+    setReturnPolicy,
+  ] =
+    useState(
+      "14-Day Returns",
+    );
+
+  const [
     startingPrice,
     setStartingPrice,
   ] =
@@ -3533,6 +3587,15 @@ export default function SellerAddProductPage() {
     resolvedColor
       .length >
       0 &&
+    shippingMethod
+      .length >
+      0 &&
+    shipsWithin
+      .length >
+      0 &&
+    returnPolicy
+      .length >
+      0 &&
     hasPrices;
 
   function saveProduct() {
@@ -3575,6 +3638,12 @@ export default function SellerAddProductPage() {
         capSize,
 
         bundleWeight,
+
+        shippingMethod,
+
+        shipsWithin,
+
+        returnPolicy,
 
         variants:
           variantRows.map(
@@ -3849,6 +3918,27 @@ export default function SellerAddProductPage() {
             <ReviewValue
               label="Videos"
               value={`${videos.length}/3`}
+            />
+
+            <ReviewValue
+              label="Shipping"
+              value={
+                shippingMethod
+              }
+            />
+
+            <ReviewValue
+              label="Ships Within"
+              value={
+                shipsWithin
+              }
+            />
+
+            <ReviewValue
+              label="Return Policy"
+              value={
+                returnPolicy
+              }
             />
           </ReviewGrid>
         </div>
@@ -4932,7 +5022,7 @@ export default function SellerAddProductPage() {
               headingStyle
             }
           >
-            Variant Pricing
+            Price & Inventory
           </h2>
 
           {isHair &&
@@ -4964,114 +5054,6 @@ export default function SellerAddProductPage() {
           {variantRows.length >
             0 && (
             <>
-              <div
-                style={{
-                  marginBottom:
-                    "15px",
-
-                  padding:
-                    "14px",
-
-                  background:
-                    "#f7f0fb",
-
-                  borderRadius:
-                    "11px",
-                }}
-              >
-               
-                <div
-                  style={{
-                    ...gridTwo,
-                    marginTop:
-                      "10px",
-                  }}
-                >
-                  <div>
-                    <label
-                      style={
-                        labelStyle
-                      }
-                    >
-                      Starting Price
-                    </label>
-
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={
-                        startingPrice
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        setStartingPrice(
-                          event
-                            .target
-                            .value,
-                        )
-                      }
-                      style={
-                        fieldStyle
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      style={
-                        labelStyle
-                      }
-                    >
-                      Increase Each Length By
-                    </label>
-
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={
-                        priceIncrease
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        setPriceIncrease(
-                          event
-                            .target
-                            .value,
-                        )
-                      }
-                      style={
-                        fieldStyle
-                      }
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={
-                    autoPriceByLength
-                  }
-                  style={{
-                    ...primaryButton,
-                    marginTop:
-                      "10px",
-                  }}
-                >
-                  Auto-Fill Variant Prices
-                </button>
-              </div>
-
-              <div
-                style={{
-                  ...gridTwo,
-                  marginBottom:
-                    "14px",
-                }}
-              >
-                              </div>
-
               <div
                 style={{
                   overflowX:
@@ -5256,6 +5238,187 @@ export default function SellerAddProductPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* FULFILLMENT */}
+
+      {productType && (
+        <div
+          style={
+            sectionStyle
+          }
+        >
+          <h2
+            style={
+              headingStyle
+            }
+          >
+            Fulfillment
+          </h2>
+
+          <p
+            style={{
+              margin:
+                "-5px 0 14px",
+
+              color:
+                "#776e7b",
+
+              fontSize:
+                "11px",
+            }}
+          >
+            Choose the product shipping details. HairGrab fills your seller city and state automatically.
+          </p>
+
+          <div
+            style={{
+              display:
+                "grid",
+
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(210px, 1fr))",
+
+              gap:
+                "14px",
+            }}
+          >
+            <div>
+              <label
+                style={
+                  labelStyle
+                }
+              >
+                Shipping Method *
+              </label>
+
+              <select
+                value={
+                  shippingMethod
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setShippingMethod(
+                    event.target
+                      .value,
+                  )
+                }
+                style={
+                  fieldStyle
+                }
+              >
+                <option value="Calculated at Checkout">
+                  Calculated at Checkout
+                </option>
+
+                <option value="$9.99 Flat Rate Shipping">
+                  $9.99 Flat Rate Shipping
+                </option>
+
+                <option value="Local Pickup Available">
+                  Local Pickup Available
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                style={
+                  labelStyle
+                }
+              >
+                Ships Within *
+              </label>
+
+              <select
+                value={
+                  shipsWithin
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setShipsWithin(
+                    event.target
+                      .value,
+                  )
+                }
+                style={
+                  fieldStyle
+                }
+              >
+                <option value="Same Day">
+                  Same Day
+                </option>
+
+                <option value="24 Hours">
+                  24 Hours
+                </option>
+
+                <option value="48 Hours">
+                  48 Hours
+                </option>
+
+                <option value="72 Hours">
+                  72 Hours
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                style={
+                  labelStyle
+                }
+              >
+                Return Policy *
+              </label>
+
+              <select
+                value={
+                  returnPolicy
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setReturnPolicy(
+                    event.target
+                      .value,
+                  )
+                }
+                style={
+                  fieldStyle
+                }
+              >
+                <option value="14-Day Returns">
+                  14-Day Returns
+                </option>
+
+                <option value="Final Sale">
+                  Final Sale
+                </option>
+              </select>
+
+              <div
+                style={{
+                  marginTop:
+                    "6px",
+
+                  color:
+                    "#817787",
+
+                  fontSize:
+                    "10px",
+
+                  lineHeight:
+                    "1.4",
+                }}
+              >
+                Return policy is saved with the product, but it will not be shown on the HairGrab product card.
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
