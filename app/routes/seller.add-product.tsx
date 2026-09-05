@@ -834,6 +834,132 @@ function formatErrors(
     .join(" | ");
 }
 
+async function setProductMetafieldsSafely({
+  admin,
+  productId,
+  metafields,
+}: {
+  admin: any;
+  productId: string;
+
+  metafields: Array<{
+    namespace: string;
+    key: string;
+    type: string;
+    value: string;
+  }>;
+}) {
+  const saved: string[] = [];
+  const skipped: string[] = [];
+
+  for (
+    const metafield of
+    metafields
+  ) {
+    try {
+      const response =
+        await admin.graphql(
+          `#graphql
+          mutation HairGrabSetProductMetafield(
+            $metafields: [MetafieldsSetInput!]!
+          ) {
+            metafieldsSet(
+              metafields: $metafields
+            ) {
+              metafields {
+                id
+                namespace
+                key
+                value
+              }
+
+              userErrors {
+                field
+                message
+                code
+              }
+            }
+          }
+          `,
+          {
+            variables: {
+              metafields: [
+                {
+                  ownerId:
+                    productId,
+
+                  namespace:
+                    metafield.namespace,
+
+                  key:
+                    metafield.key,
+
+                  type:
+                    metafield.type,
+
+                  value:
+                    metafield.value,
+                },
+              ],
+            },
+          },
+        );
+
+      const json =
+        await response.json();
+
+      const result =
+        json?.data
+          ?.metafieldsSet;
+
+      const errors =
+        result?.userErrors ||
+        [];
+
+      if (
+        errors.length > 0
+      ) {
+        skipped.push(
+          `${metafield.namespace}.${metafield.key}`,
+        );
+
+        console.warn(
+          `[HairGrab Core] Skipping incompatible Shopify metafield ${metafield.namespace}.${metafield.key}:`,
+          errors
+            .map(
+              (error: {
+                message?: string;
+              }) =>
+                error.message ||
+                "Unknown metafield error.",
+            )
+            .join(" | "),
+        );
+
+        continue;
+      }
+
+      saved.push(
+        `${metafield.namespace}.${metafield.key}`,
+      );
+    } catch (error) {
+      skipped.push(
+        `${metafield.namespace}.${metafield.key}`,
+      );
+
+      console.warn(
+        `[HairGrab Core] Could not write Shopify metafield ${metafield.namespace}.${metafield.key}:`,
+        error,
+      );
+    }
+  }
+
+  return {
+    saved,
+    skipped,
+  };
+}
+
 async function getShopifyAdmin() {
   const offlineSession =
     await db.session.findFirst({
@@ -1990,8 +2116,6 @@ export const action =
                   productTypeDisplay,
                 ],
 
-                metafields,
-
                 productOptions:
                   productOptionsInput,
 
@@ -2041,6 +2165,28 @@ export const action =
           "Shopify did not return a product after saving.",
         );
       }
+
+      // ====================================================
+      // WRITE EXISTING SHOPIFY METAFIELDS SAFELY
+      //
+      // The product is already created at this point.
+      // Each existing Shopify metafield is written separately.
+      // If Shopify rejects one because of category/subtype
+      // constraints, HairGrab skips only that field instead of
+      // rejecting the entire seller product.
+      // ====================================================
+
+      const metafieldSaveResult =
+        await setProductMetafieldsSafely({
+          admin,
+
+          productId:
+            String(
+              shopifyProduct.id,
+            ),
+
+          metafields,
+        });
 
       // ====================================================
       // SAVE HAIRGRAB OWNERSHIP RECORD
@@ -2123,6 +2269,14 @@ export const action =
             ?.nodes
             ?.length ||
           productFiles.length,
+
+        metafieldsSaved:
+          metafieldSaveResult
+            .saved.length,
+
+        metafieldsSkipped:
+          metafieldSaveResult
+            .skipped.length,
       };
 
     } catch (error) {
@@ -3597,6 +3751,26 @@ export default function SellerAddProductPage() {
                   saveResult.mediaCount
                 }{" "}
                 media file(s)
+
+                {" · "}
+
+                {
+                  saveResult.metafieldsSaved ||
+                  0
+                }{" "}
+                metafield(s) filled
+
+                {Boolean(
+                  saveResult.metafieldsSkipped,
+                ) && (
+                  <>
+                    {" · "}
+                    {
+                      saveResult.metafieldsSkipped
+                    }{" "}
+                    incompatible field(s) skipped
+                  </>
+                )}
               </div>
             )}
           </div>
