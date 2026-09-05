@@ -6,6 +6,7 @@ import type {
 import {
   Form,
   Link,
+  redirect,
   useActionData,
   useLoaderData,
 } from "react-router";
@@ -236,6 +237,98 @@ export const action = async ({
 
     const formData =
       await request.formData();
+
+    const intent =
+      String(
+        formData.get(
+          "intent",
+        ) || "save",
+      ).trim();
+
+    if (
+      intent ===
+      "delete"
+    ) {
+      const { admin } =
+        await getShopifyAdmin();
+
+      const deleteResponse =
+        await admin.graphql(
+          `#graphql
+          mutation HairGrabDeleteSellerProduct(
+            $input: ProductDeleteInput!
+          ) {
+            productDelete(
+              input: $input
+            ) {
+              deletedProductId
+
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+          `,
+          {
+            variables: {
+              input: {
+                id:
+                  coreProduct
+                    .shopifyProductId,
+              },
+            },
+          },
+        );
+
+      const deleteJson =
+        await deleteResponse.json();
+
+      const deleteResult =
+        deleteJson?.data
+          ?.productDelete;
+
+      const deleteErrors =
+        deleteResult?.userErrors ||
+        [];
+
+      if (
+        deleteErrors.length >
+        0
+      ) {
+        throw new Error(
+          deleteErrors
+            .map(
+              (error: {
+                message?: string;
+              }) =>
+                error.message ||
+                "Unable to delete product.",
+            )
+            .join(" | "),
+        );
+      }
+
+      if (
+        !deleteResult
+          ?.deletedProductId
+      ) {
+        throw new Error(
+          "Shopify did not confirm the product deletion.",
+        );
+      }
+
+      await db.sellerProduct.delete({
+        where: {
+          id:
+            coreProduct.id,
+        },
+      });
+
+      return redirect(
+        "/seller/products",
+      );
+    }
 
     const title =
       String(
@@ -843,6 +936,12 @@ export default function SellerEditProductPage() {
           >
             <input
               type="hidden"
+              name="intent"
+              value="save"
+            />
+
+            <input
+              type="hidden"
               name="variants"
               defaultValue="[]"
             />
@@ -1043,6 +1142,93 @@ export default function SellerEditProductPage() {
               </Link>
             </div>
           </Form>
+
+          <div
+            style={{
+              marginTop:
+                "28px",
+              paddingTop:
+                "20px",
+              borderTop:
+                "1px solid #eee7f2",
+            }}
+          >
+            <div
+              style={{
+                color:
+                  "#922f2f",
+                fontWeight:
+                  "800",
+                fontSize:
+                  "13px",
+              }}
+            >
+              Remove Product
+            </div>
+
+            <div
+              style={{
+                color:
+                  "#756b79",
+                fontSize:
+                  "11px",
+                marginTop:
+                  "4px",
+                lineHeight:
+                  1.5,
+              }}
+            >
+              This permanently removes the product from HairGrab and Shopify.
+            </div>
+
+            <Form
+              method="post"
+              onSubmit={(
+                event,
+              ) => {
+                const confirmed =
+                  window.confirm(
+                    "Delete this product permanently? This cannot be undone.",
+                  );
+
+                if (
+                  !confirmed
+                ) {
+                  event.preventDefault();
+                }
+              }}
+            >
+              <input
+                type="hidden"
+                name="intent"
+                value="delete"
+              />
+
+              <button
+                type="submit"
+                style={{
+                  marginTop:
+                    "12px",
+                  border:
+                    "1px solid #cfa9a9",
+                  background:
+                    "#fff7f7",
+                  color:
+                    "#922f2f",
+                  borderRadius:
+                    "9px",
+                  padding:
+                    "10px 14px",
+                  fontWeight:
+                    "800",
+                  cursor:
+                    "pointer",
+                }}
+              >
+                Delete Product
+              </button>
+            </Form>
+          </div>
         </div>
       </div>
     </div>

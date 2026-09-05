@@ -1026,7 +1026,7 @@ function ProductRow({
         }}
       >
         <Link
-          to={`/seller/products/${product.coreId}/edit`}
+          to={`/seller/edit-product/${product.coreId}`}
           style={
             primaryLink
           }
