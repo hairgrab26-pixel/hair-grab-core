@@ -4979,15 +4979,7 @@ export default function SellerAddProductPage() {
                     "11px",
                 }}
               >
-                <strong
-                  style={{
-                    color:
-                      "#4B1678",
-                  }}
-                >
-                  Fast Price Builder
-                </strong>
-
+               
                 <div
                   style={{
                     ...gridTwo,
@@ -5078,32 +5070,7 @@ export default function SellerAddProductPage() {
                     "14px",
                 }}
               >
-                <QuickFill
-                  label="Fill All Prices"
-                  value={
-                    quickPrice
-                  }
-                  onChange={
-                    setQuickPrice
-                  }
-                  onFill={
-                    fillAllPrices
-                  }
-                />
-
-                <QuickFill
-                  label="Fill All Inventory"
-                  value={
-                    quickInventory
-                  }
-                  onChange={
-                    setQuickInventory
-                  }
-                  onFill={
-                    fillAllInventory
-                  }
-                />
-              </div>
+                              </div>
 
               <div
                 style={{
