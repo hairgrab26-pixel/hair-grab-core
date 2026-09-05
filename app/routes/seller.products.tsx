@@ -910,9 +910,9 @@ export default function SellerProductsPage() {
 
 
                     <a
-                      href={
-                        `/products/${product.handle}`
-                      }
+                     href={
+  `https://hairgrab.com/products/${product.handle}`
+}
                       target="_blank"
                       rel="noreferrer"
                       style={{
