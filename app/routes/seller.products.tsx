@@ -5,6 +5,10 @@ import {
   useLoaderData,
 } from "react-router";
 
+import {
+  useState,
+} from "react";
+
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
@@ -70,8 +74,10 @@ function formatMoney(
   return new Intl.NumberFormat(
     "en-US",
     {
-      style: "currency",
-      currency: "USD",
+      style:
+        "currency",
+      currency:
+        "USD",
     },
   ).format(amount);
 }
@@ -95,7 +101,10 @@ function getPriceLabel(
           price >= 0,
       );
 
-  if (prices.length === 0) {
+  if (
+    prices.length ===
+    0
+  ) {
     return "—";
   }
 
@@ -136,12 +145,10 @@ function getInventory(
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
-
   const { seller } =
     await requireSellerSession(
       request,
     );
-
 
   const ownedProducts =
     await db.sellerProduct.findMany({
@@ -151,6 +158,9 @@ export const loader = async ({
       },
 
       select: {
+        id:
+          true,
+
         shopifyProductId:
           true,
 
@@ -167,7 +177,6 @@ export const loader = async ({
       },
     });
 
-
   const shopifyIds =
     ownedProducts
       .map(
@@ -181,45 +190,38 @@ export const loader = async ({
           Boolean(id),
       );
 
-
   if (
-    shopifyIds.length === 0
+    shopifyIds.length ===
+    0
   ) {
     return {
       seller: {
         businessName:
           seller.businessName,
-
         sellerCode:
           seller.sellerCode,
       },
-
       products: [],
     };
   }
 
-
   const { admin } =
     await getShopifyAdmin();
-
 
   const shopifyProducts:
     ShopifyProductNode[] = [];
 
-
-  // Keep the query small and predictable as HairGrab grows.
   for (
     let index = 0;
-    index < shopifyIds.length;
+    index <
+    shopifyIds.length;
     index += 50
   ) {
-
     const ids =
       shopifyIds.slice(
         index,
         index + 50,
       );
-
 
     const response =
       await admin.graphql(
@@ -256,15 +258,14 @@ export const loader = async ({
         },
       );
 
-
     const json =
       (await response.json()) as
         ShopifyNodesResponse;
 
-
     if (
       json.errors &&
-      json.errors.length > 0
+      json.errors.length >
+        0
     ) {
       throw new Error(
         json.errors
@@ -277,12 +278,11 @@ export const loader = async ({
       );
     }
 
-
-    const nodes =
-      json.data?.nodes || [];
-
-
-    for (const node of nodes) {
+    for (
+      const node of
+      json.data?.nodes ||
+      []
+    ) {
       if (node?.id) {
         shopifyProducts.push(
           node,
@@ -291,14 +291,11 @@ export const loader = async ({
     }
   }
 
-
   const coreByShopifyId =
     new Map(
       ownedProducts
         .filter(
-          (
-            product,
-          ) =>
+          (product) =>
             Boolean(
               product.shopifyProductId,
             ),
@@ -313,20 +310,21 @@ export const loader = async ({
         ),
     );
 
-
   const products =
     shopifyProducts
       .map(
         (product) => {
-
           const core =
             coreByShopifyId.get(
               product.id,
             );
 
-
           return {
-            id:
+            coreId:
+              core?.id ||
+              "",
+
+            shopifyId:
               product.id,
 
             title:
@@ -365,6 +363,12 @@ export const loader = async ({
           };
         },
       )
+      .filter(
+        (product) =>
+          Boolean(
+            product.coreId,
+          ),
+      )
       .sort(
         (a, b) =>
           a.title.localeCompare(
@@ -372,23 +376,19 @@ export const loader = async ({
           ),
       );
 
-
   return {
     seller: {
       businessName:
         seller.businessName,
-
       sellerCode:
         seller.sellerCode,
     },
-
     products,
   };
 };
 
 
 export default function SellerProductsPage() {
-
   const {
     seller,
     products,
@@ -397,32 +397,36 @@ export default function SellerProductsPage() {
       typeof loader
     >();
 
+  const [
+    viewMode,
+    setViewMode,
+  ] =
+    useState<
+      "tile" |
+      "list"
+    >(
+      "tile",
+    );
 
   return (
     <div
       style={{
         minHeight:
           "100vh",
-
         background:
           "#faf8fc",
-
         color:
           "#21152a",
-
         fontFamily:
           "Arial, Helvetica, sans-serif",
       }}
     >
-
       <header
         style={{
           background:
             "#4B1678",
-
           color:
             "white",
-
           padding:
             "18px 22px",
         }}
@@ -431,39 +435,29 @@ export default function SellerProductsPage() {
           style={{
             maxWidth:
               "1180px",
-
             margin:
               "0 auto",
-
             display:
               "flex",
-
             alignItems:
               "center",
-
             justifyContent:
               "space-between",
-
             gap:
               "14px",
-
             flexWrap:
               "wrap",
           }}
         >
-
           <div>
             <div
               style={{
                 fontSize:
                   "11px",
-
                 fontWeight:
                   800,
-
                 letterSpacing:
                   "1px",
-
                 opacity:
                   0.8,
               }}
@@ -475,10 +469,8 @@ export default function SellerProductsPage() {
               style={{
                 fontSize:
                   "23px",
-
                 fontWeight:
                   800,
-
                 marginTop:
                   "3px",
               }}
@@ -487,103 +479,79 @@ export default function SellerProductsPage() {
             </div>
           </div>
 
-
           <Link
             to="/seller/add-product"
             style={{
               background:
                 "white",
-
               color:
                 "#4B1678",
-
               textDecoration:
                 "none",
-
               fontWeight:
                 800,
-
               fontSize:
                 "13px",
-
               padding:
                 "11px 16px",
-
               borderRadius:
                 "8px",
             }}
           >
             + Add Product
           </Link>
-
         </div>
       </header>
-
 
       <main
         style={{
           maxWidth:
             "1180px",
-
           margin:
             "0 auto",
-
           padding:
             "26px 20px 60px",
         }}
       >
+        <Link
+          to="/seller"
+          style={{
+            color:
+              "#4B1678",
+            textDecoration:
+              "none",
+            fontWeight:
+              800,
+            fontSize:
+              "12px",
+          }}
+        >
+          ← Back to Dashboard
+        </Link>
 
         <div
           style={{
             display:
               "flex",
-
-            alignItems:
-              "flex-end",
-
             justifyContent:
               "space-between",
-
+            alignItems:
+              "end",
             gap:
               "14px",
-
             flexWrap:
               "wrap",
-
-            marginBottom:
-              "20px",
+            margin:
+              "10px 0 20px",
           }}
         >
-
           <div>
-            <Link
-              to="/seller"
-              style={{
-                color:
-                  "#4B1678",
-
-                textDecoration:
-                  "none",
-
-                fontWeight:
-                  800,
-
-                fontSize:
-                  "12px",
-              }}
-            >
-              ← Dashboard
-            </Link>
-
-
             <h1
               style={{
                 margin:
-                  "9px 0 5px",
-
+                  "0 0 5px",
                 color:
                   "#4B1678",
-
                 fontSize:
                   "28px",
               }}
@@ -591,12 +559,10 @@ export default function SellerProductsPage() {
               Your Products
             </h1>
 
-
             <div
               style={{
                 color:
                   "#756b79",
-
                 fontSize:
                   "13px",
               }}
@@ -605,351 +571,526 @@ export default function SellerProductsPage() {
             </div>
           </div>
 
+          <div
+            style={{
+              display:
+                "flex",
+              gap:
+                "8px",
+              alignItems:
+                "center",
+              flexWrap:
+                "wrap",
+            }}
+          >
+            <div
+              style={{
+                color:
+                  "#4B1678",
+                fontWeight:
+                  800,
+                fontSize:
+                  "12px",
+                background:
+                  "#f2eafa",
+                border:
+                  "1px solid #e2d1ef",
+                borderRadius:
+                  "20px",
+                padding:
+                  "8px 12px",
+              }}
+            >
+              {products.length} {products.length === 1 ? "Product" : "Products"}
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setViewMode(
+                  "tile",
+                )
+              }
+              style={
+                toggleStyle(
+                  viewMode ===
+                    "tile",
+                )
+              }
+            >
+              ▦ Tile
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setViewMode(
+                  "list",
+                )
+              }
+              style={
+                toggleStyle(
+                  viewMode ===
+                    "list",
+                )
+              }
+            >
+              ☰ List
+            </button>
+          </div>
+        </div>
+
+        {products.length ===
+        0 ? (
+          <EmptyProducts />
+        ) : viewMode ===
+          "tile" ? (
+          <div
+            style={{
+              display:
+                "grid",
+              gridTemplateColumns:
+                "repeat(auto-fill, minmax(210px, 1fr))",
+              gap:
+                "16px",
+            }}
+          >
+            {products.map(
+              (product) => (
+                <ProductTile
+                  key={
+                    product.coreId
+                  }
+                  product={
+                    product
+                  }
+                />
+              ),
+            )}
+          </div>
+        ) : (
+          <div
+            style={{
+              display:
+                "grid",
+              gap:
+                "10px",
+            }}
+          >
+            {products.map(
+              (product) => (
+                <ProductRow
+                  key={
+                    product.coreId
+                  }
+                  product={
+                    product
+                  }
+                />
+              ),
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+
+function ProductTile({
+  product,
+}: {
+  product: {
+    coreId: string;
+    title: string;
+    handle: string;
+    imageUrl: string | null;
+    imageAlt: string;
+    price: string;
+    inventory: number;
+    status: string;
+  };
+}) {
+  return (
+    <div
+      style={{
+        background:
+          "white",
+        border:
+          "1px solid #e5dce9",
+        borderRadius:
+          "14px",
+        overflow:
+          "hidden",
+      }}
+    >
+      <Link
+        to={`/seller/products/${product.coreId}/edit`}
+        style={{
+          color:
+            "inherit",
+          textDecoration:
+            "none",
+          display:
+            "block",
+        }}
+      >
+        <div
+          style={{
+            aspectRatio:
+              "1 / 1",
+            background:
+              "#f4eff7",
+            overflow:
+              "hidden",
+          }}
+        >
+          {product.imageUrl ? (
+            <img
+              src={
+                product.imageUrl
+              }
+              alt={
+                product.imageAlt
+              }
+              style={{
+                width:
+                  "100%",
+                height:
+                  "100%",
+                objectFit:
+                  "cover",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                height:
+                  "100%",
+                display:
+                  "flex",
+                alignItems:
+                  "center",
+                justifyContent:
+                  "center",
+                color:
+                  "#8c7c95",
+                fontSize:
+                  "12px",
+              }}
+            >
+              No Image
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            padding:
+              "14px 14px 9px",
+          }}
+        >
+          <div
+            style={{
+              display:
+                "flex",
+              gap:
+                "8px",
+              justifyContent:
+                "space-between",
+              alignItems:
+                "start",
+            }}
+          >
+            <div
+              style={{
+                fontWeight:
+                  "800",
+                fontSize:
+                  "14px",
+                lineHeight:
+                  1.35,
+              }}
+            >
+              {product.title}
+            </div>
+
+            <StatusBadge
+              status={
+                product.status
+              }
+            />
+          </div>
 
           <div
             style={{
               color:
                 "#4B1678",
-
               fontWeight:
-                800,
-
+                "800",
               fontSize:
-                "13px",
-
-              background:
-                "#f2eafa",
-
-              border:
-                "1px solid #e2d1ef",
-
-              borderRadius:
-                "20px",
-
-              padding:
-                "8px 12px",
+                "14px",
+              marginTop:
+                "10px",
             }}
           >
-            {products.length} {products.length === 1 ? "Product" : "Products"}
+            {product.price}
           </div>
 
+          <div
+            style={{
+              color:
+                "#817686",
+              fontSize:
+                "11px",
+              marginTop:
+                "5px",
+            }}
+          >
+            Inventory: {product.inventory}
+          </div>
+
+          <div
+            style={{
+              color:
+                "#4B1678",
+              fontWeight:
+                "800",
+              fontSize:
+                "12px",
+              marginTop:
+                "12px",
+            }}
+          >
+            Edit Product →
+          </div>
+        </div>
+      </Link>
+
+      <div
+        style={{
+          padding:
+            "0 14px 14px",
+        }}
+      >
+        <a
+          href={`https://hairgrab.com/products/${product.handle}`}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            color:
+              "#6f6575",
+            fontSize:
+              "11px",
+            fontWeight:
+              "800",
+            textDecoration:
+              "none",
+          }}
+        >
+          Store View ↗
+        </a>
+      </div>
+    </div>
+  );
+}
+
+
+function ProductRow({
+  product,
+}: {
+  product: {
+    coreId: string;
+    title: string;
+    handle: string;
+    imageUrl: string | null;
+    imageAlt: string;
+    price: string;
+    inventory: number;
+    status: string;
+  };
+}) {
+  return (
+    <div
+      style={{
+        background:
+          "white",
+        border:
+          "1px solid #e5dce9",
+        borderRadius:
+          "12px",
+        padding:
+          "10px",
+        display:
+          "grid",
+        gridTemplateColumns:
+          "70px minmax(160px, 1fr) minmax(90px, .45fr) minmax(80px, .35fr) auto",
+        gap:
+          "14px",
+        alignItems:
+          "center",
+      }}
+    >
+      <div
+        style={{
+          width:
+            "70px",
+          height:
+            "70px",
+          borderRadius:
+            "9px",
+          overflow:
+            "hidden",
+          background:
+            "#f4eff7",
+        }}
+      >
+        {product.imageUrl && (
+          <img
+            src={
+              product.imageUrl
+            }
+            alt={
+              product.imageAlt
+            }
+            style={{
+              width:
+                "100%",
+              height:
+                "100%",
+              objectFit:
+                "cover",
+            }}
+          />
+        )}
+      </div>
+
+      <div>
+        <div
+          style={{
+            fontWeight:
+              "800",
+            fontSize:
+              "13px",
+          }}
+        >
+          {product.title}
         </div>
 
-
-        {products.length === 0 ? (
-
-          <div
-            style={{
-              background:
-                "white",
-
-              border:
-                "1px solid #e5dce9",
-
-              borderRadius:
-                "14px",
-
-              padding:
-                "42px 20px",
-
-              textAlign:
-                "center",
-            }}
-          >
-            <div
-              style={{
-                color:
-                  "#4B1678",
-
-                fontSize:
-                  "18px",
-
-                fontWeight:
-                  800,
-              }}
-            >
-              No products yet
-            </div>
-
-            <div
-              style={{
-                marginTop:
-                  "7px",
-
-                color:
-                  "#817686",
-
-                fontSize:
-                  "13px",
-              }}
-            >
-              Add your first product to start selling on HairGrab.
-            </div>
-
-            <Link
-              to="/seller/add-product"
-              style={{
-                display:
-                  "inline-block",
-
-                marginTop:
-                  "17px",
-
-                background:
-                  "#4B1678",
-
-                color:
-                  "white",
-
-                textDecoration:
-                  "none",
-
-                fontWeight:
-                  800,
-
-                fontSize:
-                  "13px",
-
-                padding:
-                  "11px 16px",
-
-                borderRadius:
-                  "8px",
-              }}
-            >
-              + Add Product
-            </Link>
-          </div>
-
-        ) : (
-
-          <div
-            style={{
-              display:
-                "grid",
-
-              gridTemplateColumns:
-                "repeat(auto-fill, minmax(210px, 1fr))",
-
-              gap:
-                "16px",
-            }}
-          >
-
-            {products.map(
-              (product) => (
-
-                <div
-                  key={
-                    product.id
-                  }
-                  style={{
-                    background:
-                      "white",
-
-                    border:
-                      "1px solid #e5dce9",
-
-                    borderRadius:
-                      "14px",
-
-                    overflow:
-                      "hidden",
-                  }}
-                >
-
-                  <div
-                    style={{
-                      aspectRatio:
-                        "1 / 1",
-
-                      background:
-                        "#f4eff7",
-
-                      display:
-                        "flex",
-
-                      alignItems:
-                        "center",
-
-                      justifyContent:
-                        "center",
-
-                      overflow:
-                        "hidden",
-                    }}
-                  >
-
-                    {product.imageUrl ? (
-
-                      <img
-                        src={
-                          product.imageUrl
-                        }
-                        alt={
-                          product.imageAlt
-                        }
-                        style={{
-                          width:
-                            "100%",
-
-                          height:
-                            "100%",
-
-                          objectFit:
-                            "cover",
-                        }}
-                      />
-
-                    ) : (
-
-                      <div
-                        style={{
-                          color:
-                            "#8c7c95",
-
-                          fontWeight:
-                            700,
-
-                          fontSize:
-                            "12px",
-                        }}
-                      >
-                        No Image
-                      </div>
-
-                    )}
-
-                  </div>
-
-
-                  <div
-                    style={{
-                      padding:
-                        "15px",
-                    }}
-                  >
-
-                    <div
-                      style={{
-                        display:
-                          "flex",
-
-                        alignItems:
-                          "flex-start",
-
-                        justifyContent:
-                          "space-between",
-
-                        gap:
-                          "8px",
-                      }}
-                    >
-
-                      <div
-                        style={{
-                          color:
-                            "#2a1b31",
-
-                          fontWeight:
-                            800,
-
-                          fontSize:
-                            "14px",
-
-                          lineHeight:
-                            1.35,
-                        }}
-                      >
-                        {product.title}
-                      </div>
-
-
-                      <StatusBadge
-                        status={
-                          product.status
-                        }
-                      />
-
-                    </div>
-
-
-                    <div
-                      style={{
-                        color:
-                          "#4B1678",
-
-                        fontSize:
-                          "15px",
-
-                        fontWeight:
-                          800,
-
-                        marginTop:
-                          "11px",
-                      }}
-                    >
-                      {product.price}
-                    </div>
-
-
-                    <div
-                      style={{
-                        color:
-                          "#817686",
-
-                        fontSize:
-                          "12px",
-
-                        marginTop:
-                          "5px",
-                      }}
-                    >
-                      Inventory: {product.inventory}
-                    </div>
-
-
-                    <a
-                     href={
-  `https://hairgrab.com/products/${product.handle}`
+        <div
+          style={{
+            marginTop:
+              "6px",
+          }}
+        >
+          <StatusBadge
+            status={
+              product.status
+            }
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          color:
+            "#4B1678",
+          fontWeight:
+            "800",
+          fontSize:
+            "13px",
+        }}
+      >
+        {product.price}
+      </div>
+
+      <div
+        style={{
+          color:
+            "#756b79",
+          fontSize:
+            "12px",
+        }}
+      >
+        Inventory: {product.inventory}
+      </div>
+
+      <div
+        style={{
+          display:
+            "flex",
+          gap:
+            "8px",
+          flexWrap:
+            "wrap",
+        }}
+      >
+        <Link
+          to={`/seller/products/${product.coreId}/edit`}
+          style={
+            primaryLink
+          }
+        >
+          Edit
+        </Link>
+
+        <a
+          href={`https://hairgrab.com/products/${product.handle}`}
+          target="_blank"
+          rel="noreferrer"
+          style={
+            secondaryLink
+          }
+        >
+          Store View
+        </a>
+      </div>
+    </div>
+  );
 }
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        display:
-                          "inline-block",
 
-                        marginTop:
-                          "14px",
 
-                        color:
-                          "#4B1678",
+function EmptyProducts() {
+  return (
+    <div
+      style={{
+        background:
+          "white",
+        border:
+          "1px solid #e5dce9",
+        borderRadius:
+          "14px",
+        padding:
+          "42px 20px",
+        textAlign:
+          "center",
+      }}
+    >
+      <div
+        style={{
+          color:
+            "#4B1678",
+          fontSize:
+            "18px",
+          fontWeight:
+            800,
+        }}
+      >
+        No products yet
+      </div>
 
-                        textDecoration:
-                          "none",
-
-                        fontSize:
-                          "12px",
-
-                        fontWeight:
-                          800,
-                      }}
-                    >
-                      View Product →
-                    </a>
-
-                  </div>
-
-                </div>
-
-              ),
-            )}
-
-          </div>
-
-        )}
-
-      </main>
+      <Link
+        to="/seller/add-product"
+        style={{
+          ...primaryLink,
+          display:
+            "inline-block",
+          marginTop:
+            "16px",
+        }}
+      >
+        + Add Product
+      </Link>
     </div>
   );
 }
@@ -960,41 +1101,31 @@ function StatusBadge({
 }: {
   status: string;
 }) {
-
   const normalized =
     String(
-      status || "DRAFT",
+      status ||
+      "DRAFT",
     ).toUpperCase();
-
 
   const active =
     normalized ===
     "ACTIVE";
 
-
   return (
     <span
       style={{
-        flexShrink:
-          0,
-
         borderRadius:
           "20px",
-
         padding:
           "4px 7px",
-
         fontSize:
           "9px",
-
         fontWeight:
           800,
-
         background:
           active
             ? "#edf8ef"
             : "#f3edf7",
-
         color:
           active
             ? "#28743b"
@@ -1005,3 +1136,66 @@ function StatusBadge({
     </span>
   );
 }
+
+
+function toggleStyle(
+  active: boolean,
+) {
+  return {
+    border:
+      "1px solid #d8c8e2",
+    borderRadius:
+      "8px",
+    padding:
+      "8px 11px",
+    background:
+      active
+        ? "#4B1678"
+        : "white",
+    color:
+      active
+        ? "white"
+        : "#4B1678",
+    fontWeight:
+      "800",
+    fontSize:
+      "11px",
+    cursor:
+      "pointer",
+  };
+}
+
+
+const primaryLink = {
+  background:
+    "#4B1678",
+  color:
+    "white",
+  borderRadius:
+    "8px",
+  padding:
+    "8px 11px",
+  textDecoration:
+    "none",
+  fontSize:
+    "11px",
+  fontWeight:
+    "800",
+};
+
+const secondaryLink = {
+  border:
+    "1px solid #d8c8e2",
+  color:
+    "#4B1678",
+  borderRadius:
+    "8px",
+  padding:
+    "7px 10px",
+  textDecoration:
+    "none",
+  fontSize:
+    "11px",
+  fontWeight:
+    "800",
+};

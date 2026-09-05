@@ -11,6 +11,7 @@ import {
 } from "react-router";
 
 import {
+  useEffect,
   useMemo,
   useState,
   type ChangeEvent,
@@ -3045,6 +3046,20 @@ export default function SellerAddProductPage() {
       false,
     );
 
+  // HairGrab keeps this dumb easy:
+  // selecting 2+ product options automatically turns those
+  // options into separate variants. No hidden checkbox needed.
+  useEffect(
+    () => {
+      setOptionsAreVariants(
+        selectedOptions.length > 1,
+      );
+    },
+    [
+      selectedOptions.length,
+    ],
+  );
+
   const [
     material,
     setMaterial,
@@ -5014,7 +5029,7 @@ export default function SellerAddProductPage() {
 
             {selectedOptions.length >
               1 && (
-              <label
+              <div
                 style={{
                   display:
                     "block",
@@ -5026,32 +5041,26 @@ export default function SellerAddProductPage() {
                     "12px",
 
                   background:
-                    "#faf7fc",
+                    "#f2eafa",
+
+                  border:
+                    "1px solid #e2d1ef",
 
                   borderRadius:
                     "10px",
+
+                  color:
+                    "#4B1678",
+
+                  fontSize:
+                    "12px",
+
+                  fontWeight:
+                    "800",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={
-                    optionsAreVariants
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setOptionsAreVariants(
-                      event
-                        .target
-                        .checked,
-                    )
-                  }
-                />{" "}
-                <strong>
-                  Price these
-                  options separately
-                </strong>
-              </label>
+                ✓ Separate variant pricing is on for the options you selected.
+              </div>
             )}
           </div>
         </>
@@ -6081,6 +6090,32 @@ function PageShell({
             "0 auto",
         }}
       >
+        <div
+          style={{
+            marginBottom:
+              "12px",
+          }}
+        >
+          <a
+            href="/seller"
+            style={{
+              color:
+                "#4B1678",
+
+              textDecoration:
+                "none",
+
+              fontWeight:
+                "800",
+
+              fontSize:
+                "12px",
+            }}
+          >
+            ← Back to Dashboard
+          </a>
+        </div>
+
         <div
           style={{
             textAlign:

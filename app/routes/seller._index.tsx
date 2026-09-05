@@ -9,43 +9,20 @@ import { requireSellerSession } from "../seller-session.server";
 import { syncSellerProductsFromShopify } from "../shopify-product-sync.server";
 
 
-// ==========================================================
-// LOADER
-// ==========================================================
-
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
-
-  // Identify the seller from the signed HairGrab seller cookie.
   const { seller } =
     await requireSellerSession(request);
-
-
-  // --------------------------------------------------------
-  // ADOPT / SYNC EXISTING SHOPIFY PRODUCTS
-  //
-  // Quietly makes sure every Shopify product whose Vendor
-  // matches this seller belongs to the seller in HairGrab Core.
-  // This is idempotent: refreshing the dashboard will not
-  // duplicate products.
-  // --------------------------------------------------------
 
   try {
     await syncSellerProductsFromShopify(seller);
   } catch (error) {
-    // A temporary Shopify sync issue should never prevent the
-    // seller from opening their HairGrab dashboard.
     console.error(
       "[HairGrab Core] Seller product adoption sync failed:",
       error,
     );
   }
-
-
-  // --------------------------------------------------------
-  // PRODUCTS
-  // --------------------------------------------------------
 
   const activeProducts =
     await db.sellerProduct.count({
@@ -55,31 +32,21 @@ export const loader = async ({
       },
     });
 
-
-  // --------------------------------------------------------
-  // SELLER LEDGER
-  //
-  // Money is stored in Prisma as cents.
-  // One Shopify order can have multiple ledger entries, so
-  // financial totals come from the ledger while order count
-  // uses unique Shopify order IDs.
-  // --------------------------------------------------------
-
   const ledgerEntries =
     await db.sellerLedgerEntry.findMany({
       where: {
         sellerId: seller.id,
       },
-
       select: {
         shopifyOrderId: true,
         grossAmountCents: true,
         sellerEarningsCents: true,
         commissionAmountCents: true,
         status: true,
+        shopifyFulfillmentId: true,
+        deliveredAt: true,
       },
     });
-
 
   let grossSales = 0;
   let sellerEarnings = 0;
@@ -89,66 +56,110 @@ export const loader = async ({
   const orderIds =
     new Set<string>();
 
+  const shippedOrderIds =
+    new Set<string>();
+
+  const deliveredOrderIds =
+    new Set<string>();
 
   for (const entry of ledgerEntries) {
-
     grossSales +=
-      Number(entry.grossAmountCents || 0) / 100;
+      Number(
+        entry.grossAmountCents || 0,
+      ) / 100;
 
     sellerEarnings +=
-      Number(entry.sellerEarningsCents || 0) / 100;
+      Number(
+        entry.sellerEarningsCents || 0,
+      ) / 100;
 
     commission +=
-      Number(entry.commissionAmountCents || 0) / 100;
+      Number(
+        entry.commissionAmountCents || 0,
+      ) / 100;
 
-    if (entry.status === "ELIGIBLE") {
+    if (
+      entry.status ===
+      "ELIGIBLE"
+    ) {
       payoutReady +=
-        Number(entry.sellerEarningsCents || 0) / 100;
+        Number(
+          entry.sellerEarningsCents || 0,
+        ) / 100;
     }
 
+    if (
+      entry.shopifyOrderId
+    ) {
+      const orderId =
+        String(
+          entry.shopifyOrderId,
+        );
 
-    if (entry.shopifyOrderId) {
       orderIds.add(
-        String(entry.shopifyOrderId),
+        orderId,
       );
+
+      if (
+        entry.deliveredAt
+      ) {
+        deliveredOrderIds.add(
+          orderId,
+        );
+      } else if (
+        entry.shopifyFulfillmentId
+      ) {
+        shippedOrderIds.add(
+          orderId,
+        );
+      }
     }
   }
 
+  const delivered =
+    deliveredOrderIds.size;
+
+  const shipped =
+    Array.from(
+      shippedOrderIds,
+    ).filter(
+      (id) =>
+        !deliveredOrderIds.has(
+          id,
+        ),
+    ).length;
+
+  const readyToShip =
+    Math.max(
+      0,
+      orderIds.size -
+        shipped -
+        delivered,
+    );
 
   return {
     seller: {
-      id:
-        seller.id,
-
       businessName:
         seller.businessName,
-
       sellerCode:
         seller.sellerCode,
     },
 
     stats: {
-      grossSales,
-      sellerEarnings,
-      commission,
-      payoutReady,
-
+      activeProducts,
       totalOrders:
         orderIds.size,
-
-      activeProducts,
-
-      // Shopify fulfillment status will be wired next.
-      ordersToFulfill:
-        0,
+      readyToShip,
+      shipped,
+      delivered,
+      grossSales,
+      commission,
+      sellerEarnings,
+      payoutReady,
     },
   };
 };
 
-
-// ==========================================================
-// MONEY FORMATTER
-// ==========================================================
 
 function money(
   amount: number,
@@ -158,7 +169,6 @@ function money(
     {
       style:
         "currency",
-
       currency:
         "USD",
     },
@@ -166,12 +176,7 @@ function money(
 }
 
 
-// ==========================================================
-// DASHBOARD
-// ==========================================================
-
 export default function SellerDashboard() {
-
   const {
     seller,
     stats,
@@ -180,36 +185,25 @@ export default function SellerDashboard() {
       typeof loader
     >();
 
-
   return (
     <div
       style={{
         minHeight:
           "100vh",
-
         background:
           "#faf8fc",
-
         fontFamily:
           "Arial, Helvetica, sans-serif",
-
         color:
           "#21152a",
       }}
     >
-
-      {/* ================================================== */}
-      {/* HEADER */}
-      {/* ================================================== */}
-
       <header
         style={{
           background:
             "#4B1678",
-
           color:
             "white",
-
           padding:
             "18px 24px",
         }}
@@ -218,40 +212,29 @@ export default function SellerDashboard() {
           style={{
             maxWidth:
               "1180px",
-
             margin:
               "0 auto",
-
             display:
               "flex",
-
             justifyContent:
               "space-between",
-
             alignItems:
               "center",
-
             gap:
-              "20px",
-
+              "16px",
             flexWrap:
               "wrap",
           }}
         >
-
           <div>
-
             <div
               style={{
                 fontSize:
-                  "12px",
-
+                  "10px",
                 fontWeight:
-                  700,
-
+                  "800",
                 letterSpacing:
                   "1px",
-
                 opacity:
                   0.8,
               }}
@@ -259,350 +242,275 @@ export default function SellerDashboard() {
               HAIRGRAB SELLER
             </div>
 
-
             <div
               style={{
                 fontSize:
-                  "24px",
-
+                  "23px",
                 fontWeight:
-                  800,
-
-                marginTop:
-                  "3px",
+                  "800",
               }}
             >
               Seller Dashboard
             </div>
-
           </div>
-
 
           <Link
             to="/seller/add-product"
             style={{
               background:
                 "white",
-
               color:
                 "#4B1678",
-
-              padding:
-                "11px 18px",
-
-              borderRadius:
-                "8px",
-
               textDecoration:
                 "none",
-
               fontWeight:
-                800,
-
+                "800",
               fontSize:
-                "14px",
+                "13px",
+              padding:
+                "11px 16px",
+              borderRadius:
+                "8px",
             }}
           >
             + Add Product
           </Link>
-
         </div>
       </header>
-
-
-      {/* ================================================== */}
-      {/* MAIN */}
-      {/* ================================================== */}
 
       <main
         style={{
           maxWidth:
             "1180px",
-
           margin:
             "0 auto",
-
           padding:
-            "30px 20px 60px",
+            "28px 20px 60px",
         }}
       >
-
-        {/* ================================================ */}
-        {/* WELCOME */}
-        {/* ================================================ */}
-
         <section
           style={{
             marginBottom:
-              "26px",
+              "22px",
           }}
         >
-
           <div
             style={{
               color:
                 "#4B1678",
-
               fontSize:
-                "12px",
-
+                "11px",
               fontWeight:
-                800,
-
+                "800",
               letterSpacing:
                 "0.8px",
-
-              marginBottom:
-                "6px",
             }}
           >
             {seller.sellerCode}
           </div>
 
-
           <h1
             style={{
               margin:
-                0,
-
-              fontSize:
-                "30px",
-
+                "5px 0 5px",
               color:
                 "#4B1678",
+              fontSize:
+                "30px",
             }}
           >
             Welcome, {seller.businessName}
           </h1>
 
-
-          <p
+          <div
             style={{
-              margin:
-                "7px 0 0",
-
               color:
                 "#6f6575",
-
               fontSize:
-                "15px",
+                "14px",
             }}
           >
-            Here's what's happening with your HairGrab store.
-          </p>
-
+            Everything you need to run your HairGrab store.
+          </div>
         </section>
-
-
-        {/* ================================================ */}
-        {/* ANNOUNCEMENT */}
-        {/* ================================================ */}
 
         <section
           style={{
             background:
               "#f2eafa",
-
             border:
               "1px solid #e2d1ef",
-
             borderRadius:
               "12px",
-
             padding:
-              "16px 18px",
-
+              "14px 16px",
             marginBottom:
-              "24px",
+              "26px",
           }}
         >
-
           <div
             style={{
               color:
                 "#4B1678",
-
               fontWeight:
-                800,
-
+                "800",
               fontSize:
-                "14px",
-
-              marginBottom:
-                "4px",
+                "13px",
             }}
           >
             HairGrab Announcement
           </div>
 
-
           <div
             style={{
+              marginTop:
+                "4px",
               fontSize:
-                "14px",
-
-              lineHeight:
-                1.5,
+                "13px",
             }}
           >
             Welcome to HairGrab! Your seller dashboard is ready.
           </div>
-
         </section>
 
-
-        {/* ================================================ */}
-        {/* STATS */}
-        {/* ================================================ */}
-
-        <section
-          style={{
-            display:
-              "grid",
-
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(190px, 1fr))",
-
-            gap:
-              "14px",
-
-            marginBottom:
-              "28px",
-          }}
-        >
-
-          <StatCard
-            label="Sales"
-            value={
-              money(
-                stats.grossSales,
-              )
-            }
-            subtext="Gross marketplace sales"
-          />
-
-
-          <StatCard
-            label="Orders"
-            value={
-              stats.totalOrders
-            }
-            subtext="Total HairGrab orders"
-          />
-
-
-          <StatCard
-            label="To Fulfill"
-            value={
-              stats.ordersToFulfill
-            }
-            subtext="Orders needing attention"
-          />
-
-
-          <StatCard
-            label="Products"
-            value={
-              stats.activeProducts
-            }
-            subtext="Active products"
-            link="/seller/products"
-          />
-
-        </section>
-
-
-        {/* ================================================ */}
-        {/* MAIN ACTIONS */}
-        {/* ================================================ */}
-
-        <section
-          style={{
-            display:
-              "grid",
-
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(260px, 1fr))",
-
-            gap:
-              "16px",
-
-            marginBottom:
-              "28px",
-          }}
-        >
-
-          <DashboardAction
-            title="Orders"
-            description="See new orders and quickly find what needs to be shipped or fulfilled."
-            link="/seller/orders"
-            button="View Orders"
-          />
-
-
-          <DashboardAction
-            title="My Store"
-            description="Manage the information shoppers see about your HairGrab store."
-            link="/seller/store"
-            button="Manage Store"
-          />
-
-        </section>
-
-
-        {/* ================================================ */}
-        {/* FINANCIAL SUMMARY */}
-        {/* ================================================ */}
-
-        <section
-          style={{
-            background:
-              "white",
-
-            border:
-              "1px solid #e5dce9",
-
-            borderRadius:
-              "14px",
-
-            padding:
-              "20px",
-
-            marginBottom:
-              "28px",
-          }}
-        >
-
-          <h2
+        <section>
+          <div
             style={{
-              margin:
-                "0 0 16px",
-
-              color:
-                "#4B1678",
-
-              fontSize:
-                "19px",
+              display:
+                "flex",
+              justifyContent:
+                "space-between",
+              alignItems:
+                "end",
+              gap:
+                "12px",
+              flexWrap:
+                "wrap",
+              marginBottom:
+                "14px",
             }}
           >
-            Earnings
-          </h2>
+            <div>
+              <h2
+                style={{
+                  margin:
+                    0,
+                  color:
+                    "#4B1678",
+                  fontSize:
+                    "23px",
+                }}
+              >
+                My Store
+              </h2>
 
+              <div
+                style={{
+                  color:
+                    "#756b79",
+                  fontSize:
+                    "12px",
+                  marginTop:
+                    "3px",
+                }}
+              >
+                Manage your products, orders and storefront from one place.
+              </div>
+            </div>
+          </div>
 
           <div
             style={{
               display:
                 "grid",
-
               gridTemplateColumns:
-                "repeat(auto-fit, minmax(180px, 1fr))",
-
+                "repeat(auto-fit, minmax(250px, 1fr))",
               gap:
-                "18px",
+                "14px",
             }}
           >
+            <StoreTile
+              title="Products"
+              value={`${stats.activeProducts} Active`}
+              text="Edit listings, inventory, pricing and store view."
+              to="/seller/products"
+            />
 
-            <FinancialItem
+            <StoreTile
+              title="Orders & Shipping"
+              value={`${stats.readyToShip} Ready to Ship`}
+              text={`${stats.shipped} Shipped · ${stats.delivered} Delivered · ${stats.totalOrders} Total`}
+              to="/seller/orders"
+            />
+
+            <StoreTile
+              title="Storefront"
+              value="Store View"
+              text="Manage the information shoppers see about your HairGrab store."
+              to="/seller/store"
+            />
+
+            <StoreTile
+              title="Messages"
+              value="HairGrab Support"
+              text="Communication between your store and HairGrab."
+              comingSoon
+            />
+
+            <StoreTile
+              title="Notifications"
+              value="Marketplace Alerts"
+              text="Important HairGrab, order and shipping notices."
+              comingSoon
+            />
+
+            <StoreTile
+              title="Store Settings"
+              value="Business & Fulfillment"
+              text="Manage store contact information and selling preferences."
+              to="/seller/settings"
+            />
+          </div>
+        </section>
+
+        <section
+          style={{
+            marginTop:
+              "28px",
+            background:
+              "white",
+            border:
+              "1px solid #e5dce9",
+            borderRadius:
+              "14px",
+            padding:
+              "20px",
+          }}
+        >
+          <h2
+            style={{
+              margin:
+                "0 0 15px",
+              color:
+                "#4B1678",
+              fontSize:
+                "19px",
+            }}
+          >
+            Financials
+          </h2>
+
+          <div
+            style={{
+              display:
+                "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(160px, 1fr))",
+              gap:
+                "16px",
+            }}
+          >
+            <Financial
               label="Gross Sales"
               value={
                 money(
@@ -611,9 +519,8 @@ export default function SellerDashboard() {
               }
             />
 
-
-            <FinancialItem
-              label="HairGrab Commission"
+            <Financial
+              label="HairGrab Fee"
               value={
                 money(
                   stats.commission,
@@ -621,8 +528,7 @@ export default function SellerDashboard() {
               }
             />
 
-
-            <FinancialItem
+            <Financial
               label="Your Earnings"
               value={
                 money(
@@ -631,320 +537,147 @@ export default function SellerDashboard() {
               }
             />
 
+            <Financial
+              label="Payout Ready"
+              value={
+                money(
+                  stats.payoutReady,
+                )
+              }
+            />
           </div>
-
         </section>
-
-
-        {/* ================================================ */}
-        {/* ORDERS TO FULFILL */}
-        {/* ================================================ */}
-
-        <section
-          style={{
-            background:
-              "white",
-
-            border:
-              "1px solid #e5dce9",
-
-            borderRadius:
-              "14px",
-
-            overflow:
-              "hidden",
-
-            marginBottom:
-              "28px",
-          }}
-        >
-
-          <div
-            style={{
-              padding:
-                "18px 20px",
-
-              borderBottom:
-                "1px solid #eee5f1",
-
-              display:
-                "flex",
-
-              justifyContent:
-                "space-between",
-
-              alignItems:
-                "center",
-
-              gap:
-                "15px",
-            }}
-          >
-
-            <div>
-
-              <h2
-                style={{
-                  margin:
-                    0,
-
-                  color:
-                    "#4B1678",
-
-                  fontSize:
-                    "19px",
-                }}
-              >
-                Orders To Fulfill
-              </h2>
-
-
-              <div
-                style={{
-                  fontSize:
-                    "13px",
-
-                  color:
-                    "#817686",
-
-                  marginTop:
-                    "3px",
-                }}
-              >
-                New orders that need your attention.
-              </div>
-
-            </div>
-
-
-            <Link
-              to="/seller/orders"
-              style={{
-                color:
-                  "#4B1678",
-
-                fontWeight:
-                  800,
-
-                textDecoration:
-                  "none",
-
-                fontSize:
-                  "13px",
-              }}
-            >
-              View All
-            </Link>
-
-          </div>
-
-
-          <div
-            style={{
-              padding:
-                "38px 20px",
-
-              textAlign:
-                "center",
-
-              color:
-                "#817686",
-
-              fontSize:
-                "14px",
-            }}
-          >
-            Shopify fulfillment status will appear here.
-          </div>
-
-        </section>
-
-
-        {/* ================================================ */}
-        {/* SELLER TOOLS */}
-        {/* ================================================ */}
-
-        <section>
-
-          <h2
-            style={{
-              color:
-                "#4B1678",
-
-              fontSize:
-                "20px",
-
-              marginBottom:
-                "14px",
-            }}
-          >
-            Seller Tools
-          </h2>
-
-
-          <div
-            style={{
-              display:
-                "grid",
-
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(220px, 1fr))",
-
-              gap:
-                "12px",
-            }}
-          >
-
-            <ToolCard
-              title="Messages"
-              description="Chat with HairGrab support."
-              status="Coming Soon"
-            />
-
-
-            <ToolCard
-              title="Notifications"
-              description="Order and marketplace alerts."
-              status="Coming Soon"
-            />
-
-
-            <ToolCard
-              title="Announcements"
-              description="Important HairGrab marketplace updates."
-              status="Active"
-            />
-
-
-            <ToolCard
-              title="Store Settings"
-              description="Update your seller and storefront information."
-              status="Coming Soon"
-            />
-
-          </div>
-
-        </section>
-
       </main>
     </div>
   );
 }
 
 
-// ==========================================================
-// STAT CARD
-// ==========================================================
-
-function StatCard({
-  label,
+function StoreTile({
+  title,
   value,
-  subtext,
-  link,
+  text,
+  to,
+  comingSoon,
 }: {
-  label: string;
-  value: string | number;
-  subtext: string;
-  link?: string;
+  title: string;
+  value: string;
+  text: string;
+  to?: string;
+  comingSoon?: boolean;
 }) {
-
   const card = (
     <div
       style={{
         background:
           "white",
-
         border:
           "1px solid #e5dce9",
-
         borderRadius:
-          "12px",
-
+          "14px",
         padding:
-          "18px",
-
-        height:
-          "100%",
-
+          "20px",
+        minHeight:
+          "125px",
         boxSizing:
           "border-box",
-
         cursor:
-          link
+          to
             ? "pointer"
             : "default",
       }}
     >
-
       <div
         style={{
-          fontSize:
-            "12px",
-
-          color:
-            "#756b79",
-
-          fontWeight:
-            700,
-
-          marginBottom:
-            "7px",
+          display:
+            "flex",
+          justifyContent:
+            "space-between",
+          gap:
+            "8px",
+          alignItems:
+            "start",
         }}
       >
-        {label}
-      </div>
+        <div
+          style={{
+            color:
+              "#4B1678",
+            fontWeight:
+              "800",
+            fontSize:
+              "17px",
+          }}
+        >
+          {title}
+        </div>
 
+        {comingSoon && (
+          <span
+            style={{
+              background:
+                "#f2eafa",
+              color:
+                "#6d447e",
+              borderRadius:
+                "20px",
+              padding:
+                "4px 7px",
+              fontSize:
+                "9px",
+              fontWeight:
+                "800",
+            }}
+          >
+            Coming Soon
+          </span>
+        )}
+      </div>
 
       <div
         style={{
-          fontSize:
-            "26px",
-
           color:
-            "#4B1678",
-
+            "#2b1b35",
+          fontSize:
+            "14px",
           fontWeight:
-            800,
+            "800",
+          marginTop:
+            "16px",
         }}
       >
         {value}
       </div>
 
-
       <div
         style={{
-          marginTop:
-            "5px",
-
           color:
-            "#938a97",
-
+            "#756b79",
           fontSize:
             "12px",
+          lineHeight:
+            1.45,
+          marginTop:
+            "5px",
         }}
       >
-        {subtext}
+        {text}
       </div>
-
     </div>
   );
 
-  if (!link) {
+  if (!to) {
     return card;
   }
 
   return (
     <Link
-      to={link}
+      to={to}
       style={{
-        textDecoration:
-          "none",
-
         color:
           "inherit",
-
-        display:
-          "block",
+        textDecoration:
+          "none",
       }}
     >
       {card}
@@ -953,276 +686,40 @@ function StatCard({
 }
 
 
-// ==========================================================
-// DASHBOARD ACTION
-// ==========================================================
-
-function DashboardAction({
-  title,
-  description,
-  link,
-  button,
-}: {
-  title: string;
-  description: string;
-  link: string;
-  button: string;
-}) {
-
-  return (
-    <div
-      style={{
-        background:
-          "white",
-
-        border:
-          "1px solid #e5dce9",
-
-        borderRadius:
-          "14px",
-
-        padding:
-          "20px",
-      }}
-    >
-
-      <h2
-        style={{
-          margin:
-            "0 0 8px",
-
-          color:
-            "#4B1678",
-
-          fontSize:
-            "19px",
-        }}
-      >
-        {title}
-      </h2>
-
-
-      <p
-        style={{
-          color:
-            "#746b78",
-
-          fontSize:
-            "14px",
-
-          lineHeight:
-            1.5,
-
-          minHeight:
-            "63px",
-
-          margin:
-            "0 0 16px",
-        }}
-      >
-        {description}
-      </p>
-
-
-      <Link
-        to={link}
-        style={{
-          display:
-            "inline-block",
-
-          background:
-            "#4B1678",
-
-          color:
-            "white",
-
-          padding:
-            "10px 15px",
-
-          borderRadius:
-            "7px",
-
-          textDecoration:
-            "none",
-
-          fontSize:
-            "13px",
-
-          fontWeight:
-            800,
-        }}
-      >
-        {button}
-      </Link>
-
-    </div>
-  );
-}
-
-
-// ==========================================================
-// FINANCIAL ITEM
-// ==========================================================
-
-function FinancialItem({
+function Financial({
   label,
   value,
 }: {
   label: string;
   value: string;
 }) {
-
   return (
     <div>
-
       <div
         style={{
           color:
-            "#817686",
-
+            "#756b79",
           fontSize:
-            "12px",
-
-          marginBottom:
-            "5px",
+            "11px",
         }}
       >
         {label}
       </div>
 
-
       <div
         style={{
           color:
             "#4B1678",
-
           fontSize:
-            "20px",
-
+            "19px",
           fontWeight:
-            800,
+            "800",
+          marginTop:
+            "4px",
         }}
       >
         {value}
       </div>
-
-    </div>
-  );
-}
-
-
-// ==========================================================
-// TOOL CARD
-// ==========================================================
-
-function ToolCard({
-  title,
-  description,
-  status,
-}: {
-  title: string;
-  description: string;
-  status: string;
-}) {
-
-  return (
-    <div
-      style={{
-        background:
-          "white",
-
-        border:
-          "1px solid #e5dce9",
-
-        borderRadius:
-          "12px",
-
-        padding:
-          "16px",
-      }}
-    >
-
-      <div
-        style={{
-          display:
-            "flex",
-
-          justifyContent:
-            "space-between",
-
-          alignItems:
-            "flex-start",
-
-          gap:
-            "10px",
-        }}
-      >
-
-        <strong
-          style={{
-            color:
-              "#4B1678",
-
-            fontSize:
-              "15px",
-          }}
-        >
-          {title}
-        </strong>
-
-
-        <span
-          style={{
-            background:
-              status === "Active"
-                ? "#edf8ef"
-                : "#f3edf7",
-
-            color:
-              status === "Active"
-                ? "#28743b"
-                : "#6d447e",
-
-            padding:
-              "4px 7px",
-
-            borderRadius:
-              "20px",
-
-            fontSize:
-              "10px",
-
-            fontWeight:
-              800,
-
-            whiteSpace:
-              "nowrap",
-          }}
-        >
-          {status}
-        </span>
-
-      </div>
-
-
-      <div
-        style={{
-          marginTop:
-            "8px",
-
-          color:
-            "#817686",
-
-          fontSize:
-            "12px",
-
-          lineHeight:
-            1.4,
-        }}
-      >
-        {description}
-      </div>
-
     </div>
   );
 }
