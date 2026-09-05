@@ -6,6 +6,7 @@ import {
 
 import db from "../db.server";
 import { requireSellerSession } from "../seller-session.server";
+import { syncSellerProductsFromShopify } from "../shopify-product-sync.server";
 
 
 // ==========================================================
@@ -19,6 +20,27 @@ export const loader = async ({
   // Identify the seller from the signed HairGrab seller cookie.
   const { seller } =
     await requireSellerSession(request);
+
+
+  // --------------------------------------------------------
+  // ADOPT / SYNC EXISTING SHOPIFY PRODUCTS
+  //
+  // Quietly makes sure every Shopify product whose Vendor
+  // matches this seller belongs to the seller in HairGrab Core.
+  // This is idempotent: refreshing the dashboard will not
+  // duplicate products.
+  // --------------------------------------------------------
+
+  try {
+    await syncSellerProductsFromShopify(seller);
+  } catch (error) {
+    // A temporary Shopify sync issue should never prevent the
+    // seller from opening their HairGrab dashboard.
+    console.error(
+      "[HairGrab Core] Seller product adoption sync failed:",
+      error,
+    );
+  }
 
 
   // --------------------------------------------------------
