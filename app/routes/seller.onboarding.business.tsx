@@ -1,14 +1,8 @@
-import type {
-  ActionFunctionArgs,
-  LoaderFunctionArgs,
-} from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 
 import {
-  Form,
   redirect,
-  useActionData,
   useLoaderData,
-  useNavigation,
 } from "react-router";
 
 import crypto from "node:crypto";
@@ -29,6 +23,7 @@ const SELLER_SESSION_COOKIE =
 // ==========================================================
 
 function getSessionSecret() {
+
   // eslint-disable-next-line no-undef
   const secret =
     process.env.SESSION_SECRET ||
@@ -46,7 +41,9 @@ function getSessionSecret() {
 }
 
 
-function signValue(value: string) {
+function signValue(
+  value: string,
+) {
   return crypto
     .createHmac(
       "sha256",
@@ -62,6 +59,7 @@ function safeEqual(
   second: string,
 ) {
   try {
+
     const a =
       Buffer.from(
         first,
@@ -74,6 +72,7 @@ function safeEqual(
         "utf8",
       );
 
+
     if (
       a.length !==
       b.length
@@ -81,12 +80,14 @@ function safeEqual(
       return false;
     }
 
+
     return crypto.timingSafeEqual(
       a,
       b,
     );
 
   } catch {
+
     return false;
   }
 }
@@ -96,36 +97,40 @@ function getCookie(
   request: Request,
   name: string,
 ) {
+
   const cookieHeader =
     request.headers.get(
       "Cookie",
     );
 
+
   if (!cookieHeader) {
     return null;
   }
 
+
   const cookies =
     cookieHeader.split(";");
 
-  for (const cookie of cookies) {
-    const [
-      cookieName,
-      ...rest
-    ] =
+
+  for (
+    const cookie of cookies
+  ) {
+
+    const [cookieName, ...rest] =
       cookie
         .trim()
         .split("=");
 
+
     if (
-      cookieName === name
+      cookieName ===
+      name
     ) {
-      return (
-        rest.join("=") ||
-        null
-      );
+      return rest.join("=") || null;
     }
   }
+
 
   return null;
 }
@@ -148,28 +153,35 @@ function readSellerSession(
       SELLER_SESSION_COOKIE,
     );
 
+
   if (!sessionValue) {
     return null;
   }
 
+
   const parts =
     sessionValue.split(".");
 
+
   if (
-    parts.length !== 2
+    parts.length !==
+    2
   ) {
     return null;
   }
+
 
   const [
     encodedPayload,
     suppliedSignature,
   ] = parts;
 
+
   const expectedSignature =
     signValue(
       encodedPayload,
     );
+
 
   if (
     !safeEqual(
@@ -180,7 +192,9 @@ function readSellerSession(
     return null;
   }
 
+
   try {
+
     const payload =
       JSON.parse(
         Buffer
@@ -193,6 +207,7 @@ function readSellerSession(
           ),
       ) as SellerSessionPayload;
 
+
     if (
       !payload.sellerId ||
       !payload.portalAccountId ||
@@ -201,6 +216,7 @@ function readSellerSession(
       return null;
     }
 
+
     if (
       payload.expiresAt <
       Date.now()
@@ -208,29 +224,32 @@ function readSellerSession(
       return null;
     }
 
+
     return payload;
 
   } catch {
+
     return null;
   }
 }
 
 
 // ==========================================================
-// AUTHENTICATED SELLER
+// LOADER
 // ==========================================================
 
-async function requireSeller(
-  request: Request,
-) {
+export const loader = async ({
+  request,
+}: LoaderFunctionArgs) => {
 
   const session =
     readSellerSession(
       request,
     );
 
+
   if (!session) {
-    throw redirect(
+    return redirect(
       "/seller/login",
     );
   }
@@ -252,7 +271,7 @@ async function requireSeller(
     portalAccount.status !==
       "ACTIVE"
   ) {
-    throw redirect(
+    return redirect(
       "/seller/login",
     );
   }
@@ -268,7 +287,7 @@ async function requireSeller(
 
 
   if (!seller) {
-    throw redirect(
+    return redirect(
       "/seller/login",
     );
   }
@@ -282,84 +301,10 @@ async function requireSeller(
     seller.status ===
       "CLOSED"
   ) {
-    throw redirect(
+    return redirect(
       "/seller/login",
     );
   }
-
-
-  return {
-    seller,
-    portalAccount,
-  };
-}
-
-
-// ==========================================================
-// FORM HELPERS
-// ==========================================================
-
-function cleanText(
-  value:
-    | FormDataEntryValue
-    | null,
-) {
-  return String(
-    value || "",
-  ).trim();
-}
-
-
-function cleanOptional(
-  value:
-    | FormDataEntryValue
-    | null,
-) {
-  const cleaned =
-    String(
-      value || "",
-    ).trim();
-
-  return (
-    cleaned ||
-    null
-  );
-}
-
-
-function isValidZip(
-  value: string,
-) {
-  return /^\d{5}(-\d{4})?$/.test(
-    value,
-  );
-}
-
-
-function isValidState(
-  value: string,
-) {
-  return /^[A-Za-z]{2}$/.test(
-    value,
-  );
-}
-
-
-// ==========================================================
-// LOADER
-// ==========================================================
-
-export const loader = async ({
-  request,
-}: LoaderFunctionArgs) => {
-
-  const {
-    seller,
-    portalAccount,
-  } =
-    await requireSeller(
-      request,
-    );
 
 
   const onboarding =
@@ -386,292 +331,39 @@ export const loader = async ({
     onboarding,
 
     portalAccount: {
-      email:
-        portalAccount.email,
-
       firstName:
         portalAccount.firstName,
 
-      lastName:
-        portalAccount.lastName,
+      email:
+        portalAccount.email,
     },
   };
 };
 
 
 // ==========================================================
-// ACTION
+// DISPLAY HELPERS
 // ==========================================================
 
-export const action = async ({
-  request,
-}: ActionFunctionArgs) => {
-
-  const {
-    seller,
-  } =
-    await requireSeller(
-      request,
-    );
+function yesNo(
+  value: boolean,
+) {
+  return value
+    ? "Yes"
+    : "No";
+}
 
 
-  const formData =
-    await request.formData();
-
-
-  const legalBusinessName =
-    cleanText(
-      formData.get(
-        "legalBusinessName",
-      ),
-    );
-
-
-  const phone =
-    cleanOptional(
-      formData.get(
-        "phone",
-      ),
-    );
-
-
-  const website =
-    cleanOptional(
-      formData.get(
-        "website",
-      ),
-    );
-
-
-  const address1 =
-    cleanText(
-      formData.get(
-        "address1",
-      ),
-    );
-
-
-  const address2 =
-    cleanOptional(
-      formData.get(
-        "address2",
-      ),
-    );
-
-
-  const city =
-    cleanText(
-      formData.get(
-        "city",
-      ),
-    );
-
-
-  const state =
-    cleanText(
-      formData.get(
-        "state",
-      ),
-    ).toUpperCase();
-
-
-  const postalCode =
-    cleanText(
-      formData.get(
-        "postalCode",
-      ),
-    );
-
-
-  if (
-    !legalBusinessName ||
-    !address1 ||
-    !city ||
-    !state ||
-    !postalCode
-  ) {
-    return {
-      success:
-        false,
-
-      message:
-        "Please complete all required business fields.",
-
-      values: {
-        legalBusinessName,
-        phone:
-          phone || "",
-        website:
-          website || "",
-        address1,
-        address2:
-          address2 || "",
-        city,
-        state,
-        postalCode,
-      },
-    };
-  }
-
-
-  if (
-    !isValidState(
-      state,
-    )
-  ) {
-    return {
-      success:
-        false,
-
-      message:
-        "Please enter your two-letter state abbreviation.",
-
-      values: {
-        legalBusinessName,
-        phone:
-          phone || "",
-        website:
-          website || "",
-        address1,
-        address2:
-          address2 || "",
-        city,
-        state,
-        postalCode,
-      },
-    };
-  }
-
-
-  if (
-    !isValidZip(
-      postalCode,
-    )
-  ) {
-    return {
-      success:
-        false,
-
-      message:
-        "Please enter a valid U.S. ZIP code.",
-
-      values: {
-        legalBusinessName,
-        phone:
-          phone || "",
-        website:
-          website || "",
-        address1,
-        address2:
-          address2 || "",
-        city,
-        state,
-        postalCode,
-      },
-    };
-  }
-
-
-  try {
-
-    const now =
-      new Date();
-
-
-    await db.$transaction(
-      async (tx) => {
-
-        await tx.seller.update({
-          where: {
-            id:
-              seller.id,
-          },
-
-          data: {
-            legalBusinessName,
-
-            phone,
-
-            website,
-
-            address1,
-
-            address2,
-
-            city,
-
-            state,
-
-            postalCode,
-
-            country:
-              "US",
-          },
-        });
-
-
-        await tx.sellerOnboarding.update({
-          where: {
-            sellerId:
-              seller.id,
-          },
-
-          data: {
-            businessComplete:
-              true,
-
-            currentStep:
-              "STOREFRONT",
-
-            status:
-              "IN_PROGRESS",
-
-            startedAt:
-              now,
-
-            lastSavedAt:
-              now,
-          },
-        });
-      },
-    );
-
-
-    return redirect(
-      "/seller/onboarding?business=saved",
-    );
-
-  } catch (error) {
-
-    console.error(
-      "[HairGrab Core] Business onboarding save error:",
-      error,
-    );
-
-
-    return {
-      success:
-        false,
-
-      message:
-        "We couldn't save your business information right now. Please try again.",
-
-      values: {
-        legalBusinessName,
-        phone:
-          phone || "",
-        website:
-          website || "",
-        address1,
-        address2:
-          address2 || "",
-        city,
-        state,
-        postalCode,
-      },
-    };
-  }
-};
+function displayValue(
+  value:
+    | string
+    | null
+    | undefined,
+) {
+  return value?.trim()
+    ? value
+    : "Not provided yet";
+}
 
 
 // ==========================================================
@@ -692,78 +384,166 @@ const pageStyle = {
 };
 
 
-const cardStyle = {
+const shellStyle = {
   maxWidth:
-    "720px",
+    "900px",
   margin:
     "0 auto",
+};
+
+
+const cardStyle = {
   background:
     "#ffffff",
   border:
     "1px solid #e6d9ef",
   borderRadius:
-    "18px",
+    "16px",
   padding:
-    "28px",
+    "22px",
   boxShadow:
-    "0 4px 18px rgba(75, 22, 120, 0.07)",
-};
-
-
-const inputStyle = {
-  width:
-    "100%",
-  boxSizing:
-    "border-box" as const,
-  border:
-    "1px solid #d8cce0",
-  borderRadius:
-    "10px",
-  padding:
-    "12px 13px",
-  fontSize:
-    "14px",
-  color:
-    "#21152a",
-  background:
-    "#ffffff",
+    "0 3px 12px rgba(75, 22, 120, 0.06)",
 };
 
 
 const labelStyle = {
-  display:
-    "block",
   fontSize:
-    "12px",
+    "11px",
+  color:
+    "#817787",
+  marginBottom:
+    "4px",
+};
+
+
+const valueStyle = {
+  fontSize:
+    "14px",
+  color:
+    "#2b1b35",
   fontWeight:
     "700",
-  color:
-    "#35263e",
-  marginBottom:
-    "6px",
 };
 
 
-const savedBoxStyle = {
-  background:
-    "#faf7fc",
-  border:
-    "1px solid #e4d8ec",
-  borderRadius:
-    "10px",
-  padding:
-    "12px 13px",
-};
+function ChecklistRow({
+  title,
+  description,
+  complete,
+  current = false,
+}: {
+  title: string;
+  description: string;
+  complete: boolean;
+  current?: boolean;
+}) {
+
+  return (
+    <div
+      style={{
+        display:
+          "flex",
+        alignItems:
+          "flex-start",
+        gap:
+          "13px",
+        padding:
+          "16px 0",
+        borderBottom:
+          "1px solid #eee7f2",
+      }}
+    >
+
+      <div
+        style={{
+          width:
+            "28px",
+          height:
+            "28px",
+          minWidth:
+            "28px",
+          borderRadius:
+            "50%",
+          display:
+            "flex",
+          alignItems:
+            "center",
+          justifyContent:
+            "center",
+          fontSize:
+            "13px",
+          fontWeight:
+            "800",
+
+          background:
+            complete
+              ? "#eaf7ed"
+              : current
+                ? "#f0e6f7"
+                : "#f4f1f6",
+
+          color:
+            complete
+              ? "#347143"
+              : current
+                ? "#4B1678"
+                : "#887f8c",
+        }}
+      >
+        {complete
+          ? "✓"
+          : current
+            ? "→"
+            : "•"}
+      </div>
+
+
+      <div>
+        <div
+          style={{
+            color:
+              complete
+                ? "#347143"
+                : "#4B1678",
+            fontSize:
+              "14px",
+            fontWeight:
+              "800",
+          }}
+        >
+          {title}
+        </div>
+
+        <div
+          style={{
+            color:
+              "#766d7a",
+            fontSize:
+              "12px",
+            lineHeight:
+              "1.5",
+            marginTop:
+              "4px",
+          }}
+        >
+          {description}
+        </div>
+      </div>
+
+    </div>
+  );
+}
 
 
 // ==========================================================
 // PAGE
 // ==========================================================
 
-export default function SellerBusinessOnboardingPage() {
+export default function SellerOnboardingPage() {
 
   const {
     seller,
+    onboarding,
     portalAccount,
   } =
     useLoaderData<
@@ -771,159 +551,369 @@ export default function SellerBusinessOnboardingPage() {
     >();
 
 
-  const actionData =
-    useActionData<
-      typeof action
-    >();
+  const firstName =
+    portalAccount.firstName ||
+    seller.contactFirstName ||
+    "Seller";
 
 
-  const navigation =
-    useNavigation();
-
-
-  const saving =
-    navigation.state ===
-    "submitting";
-
-
-  const values =
-    actionData?.success ===
-    false
-      ? actionData.values
-      : undefined;
+  const currentStep =
+    onboarding.currentStep;
 
 
   return (
     <div style={pageStyle}>
+      <div style={shellStyle}>
 
-      <div
-        style={{
-          textAlign:
-            "center",
-          marginBottom:
-            "22px",
-        }}
-      >
-        <img
-          src="/hairgrab-logo.png"
-          alt="HairGrab"
-          style={{
-            width:
-              "250px",
-            maxWidth:
-              "72%",
-            height:
-              "auto",
-          }}
-        />
-      </div>
-
-
-      <div style={cardStyle}>
+        {/* LOGO */}
 
         <div
           style={{
-            color:
-              "#7b3fa0",
-            fontSize:
-              "11px",
-            fontWeight:
-              "800",
-            textTransform:
-              "uppercase",
-            letterSpacing:
-              "1.3px",
+            textAlign:
+              "center",
             marginBottom:
-              "6px",
+              "24px",
           }}
         >
-          Seller Setup · Business Details
+          <img
+            src="/hairgrab-logo.png"
+            alt="HairGrab"
+            style={{
+              width:
+                "260px",
+              maxWidth:
+                "76%",
+              height:
+                "auto",
+            }}
+          />
         </div>
 
 
-        <h1
-          style={{
-            margin:
-              "0",
-            color:
-              "#4B1678",
-            fontSize:
-              "28px",
-          }}
-        >
-          Confirm your business
-        </h1>
-
-
-        <p
-          style={{
-            color:
-              "#706776",
-            fontSize:
-              "13px",
-            lineHeight:
-              "1.6",
-            margin:
-              "8px 0 24px",
-          }}
-        >
-          We already saved what you provided when
-          you applied. Just complete the few business
-          details HairGrab still needs.
-        </p>
-
-
-        {actionData?.success ===
-          false &&
-          actionData.message && (
-            <div
-              style={{
-                background:
-                  "#fff2f2",
-                border:
-                  "1px solid #efcaca",
-                color:
-                  "#922f2f",
-                padding:
-                  "12px 14px",
-                borderRadius:
-                  "10px",
-                marginBottom:
-                  "20px",
-                fontSize:
-                  "12px",
-                fontWeight:
-                  "700",
-              }}
-            >
-              {
-                actionData.message
-              }
-            </div>
-          )}
-
-
-        {/* ALREADY SAVED */}
+        {/* WELCOME */}
 
         <div
           style={{
+            ...cardStyle,
             marginBottom:
-              "24px",
+              "18px",
           }}
         >
           <div
             style={{
               color:
-                "#4B1678",
+                "#7b3fa0",
+              fontSize:
+                "12px",
               fontWeight:
                 "800",
-              fontSize:
-                "14px",
-              marginBottom:
-                "12px",
+              textTransform:
+                "uppercase",
+              letterSpacing:
+                "1.3px",
             }}
           >
-            Already saved
+            HairGrab Seller Setup
+          </div>
+
+
+          <h1
+            style={{
+              margin:
+                "7px 0 8px",
+              color:
+                "#4B1678",
+              fontSize:
+                "29px",
+            }}
+          >
+            Welcome, {firstName}
+          </h1>
+
+
+          <p
+            style={{
+              margin:
+                "0",
+              color:
+                "#6f6675",
+              fontSize:
+                "14px",
+              lineHeight:
+                "1.6",
+            }}
+          >
+            Your HairGrab seller account is approved.
+            We already carried your registration
+            information into your account, so you
+            won't need to enter it again.
+          </p>
+
+
+          <div
+            style={{
+              display:
+                "flex",
+              gap:
+                "12px",
+              flexWrap:
+                "wrap",
+              marginTop:
+                "18px",
+            }}
+          >
+            <div
+              style={{
+                background:
+                  "#f6effa",
+                border:
+                  "1px solid #dfd0e9",
+                borderRadius:
+                  "9px",
+                padding:
+                  "9px 12px",
+                color:
+                  "#4B1678",
+                fontWeight:
+                  "800",
+                fontSize:
+                  "12px",
+              }}
+            >
+              Seller ID: {seller.sellerCode}
+            </div>
+
+
+            <div
+              style={{
+                background:
+                  "#eef8f0",
+                border:
+                  "1px solid #cbe3d0",
+                borderRadius:
+                  "9px",
+                padding:
+                  "9px 12px",
+                color:
+                  "#347143",
+                fontWeight:
+                  "800",
+                fontSize:
+                  "12px",
+              }}
+            >
+              Account Approved
+            </div>
+          </div>
+        </div>
+
+
+        {/* PROGRESS */}
+
+        <div
+          style={{
+            ...cardStyle,
+            marginBottom:
+              "18px",
+          }}
+        >
+          <div
+            style={{
+              display:
+                "flex",
+              justifyContent:
+                "space-between",
+              gap:
+                "12px",
+              alignItems:
+                "center",
+              flexWrap:
+                "wrap",
+              marginBottom:
+                "4px",
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin:
+                    "0",
+                  color:
+                    "#4B1678",
+                  fontSize:
+                    "20px",
+                }}
+              >
+                Finish your seller setup
+              </h2>
+
+              <div
+                style={{
+                  color:
+                    "#817787",
+                  fontSize:
+                    "12px",
+                  marginTop:
+                    "4px",
+                }}
+              >
+                Status: {onboarding.status}
+              </div>
+            </div>
+
+
+            <div
+              style={{
+                color:
+                  "#4B1678",
+                background:
+                  "#f6effa",
+                padding:
+                  "7px 10px",
+                borderRadius:
+                  "8px",
+                fontSize:
+                  "11px",
+                fontWeight:
+                  "800",
+              }}
+            >
+              Current step: {currentStep}
+            </div>
+          </div>
+
+
+          <ChecklistRow
+            title="Business details"
+            description="Confirm the remaining legal and business information HairGrab needs."
+            complete={
+              onboarding.businessComplete
+            }
+            current={
+              currentStep ===
+              "BUSINESS"
+            }
+          />
+
+
+          <ChecklistRow
+            title="Storefront"
+            description="Add your storefront description, logo and public seller information."
+            complete={
+              onboarding.storefrontComplete
+            }
+            current={
+              currentStep ===
+              "STOREFRONT"
+            }
+          />
+
+
+          <ChecklistRow
+            title="Shipping & fulfillment"
+            description="Confirm shipping speed, nationwide shipping, local pickup and local delivery."
+            complete={
+              onboarding.fulfillmentComplete
+            }
+            current={
+              currentStep ===
+              "FULFILLMENT"
+            }
+          />
+
+
+          <ChecklistRow
+            title="Returns"
+            description="Choose the return policy shoppers will see on your HairGrab products."
+            complete={
+              onboarding.returnsComplete
+            }
+            current={
+              currentStep ===
+              "RETURNS"
+            }
+          />
+
+
+          <ChecklistRow
+            title="Payouts"
+            description="Connect your payout account so HairGrab can send your seller earnings."
+            complete={
+              onboarding.payoutsComplete
+            }
+            current={
+              currentStep ===
+              "PAYOUTS"
+            }
+          />
+
+
+          <ChecklistRow
+            title="Seller agreements"
+            description="Review and accept HairGrab marketplace seller terms."
+            complete={
+              onboarding.agreementsComplete
+            }
+            current={
+              currentStep ===
+              "AGREEMENTS"
+            }
+          />
+
+
+          <ChecklistRow
+            title="Products"
+            description="Add products manually or import your hair catalog when you're ready."
+            complete={
+              onboarding.productsComplete
+            }
+            current={
+              currentStep ===
+              "PRODUCTS"
+            }
+          />
+
+        </div>
+
+
+        {/* WHAT WE ALREADY KNOW */}
+
+        <div style={cardStyle}>
+
+          <div
+            style={{
+              marginBottom:
+                "18px",
+            }}
+          >
+            <h2
+              style={{
+                margin:
+                  "0",
+                color:
+                  "#4B1678",
+                fontSize:
+                  "20px",
+              }}
+            >
+              Already saved from your application
+            </h2>
+
+            <p
+              style={{
+                color:
+                  "#817787",
+                fontSize:
+                  "12px",
+                lineHeight:
+                  "1.5",
+                margin:
+                  "5px 0 0",
+              }}
+            >
+              HairGrab carried this information forward
+              automatically.
+            </p>
           </div>
 
 
@@ -934,582 +924,221 @@ export default function SellerBusinessOnboardingPage() {
               gridTemplateColumns:
                 "repeat(auto-fit, minmax(190px, 1fr))",
               gap:
-                "12px",
+                "18px",
             }}
           >
-            <div
-              style={
-                savedBoxStyle
-              }
-            >
-              <div
-                style={{
-                  color:
-                    "#817787",
-                  fontSize:
-                    "10px",
-                  marginBottom:
-                    "4px",
-                }}
-              >
+
+            <div>
+              <div style={labelStyle}>
                 Business Name
               </div>
 
-              <div
-                style={{
-                  fontWeight:
-                    "700",
-                  fontSize:
-                    "13px",
-                }}
-              >
-                {
-                  seller.businessName
-                }
+              <div style={valueStyle}>
+                {seller.businessName}
               </div>
-            </div>
-
-
-            <div
-              style={
-                savedBoxStyle
-              }
-            >
-              <div
-                style={{
-                  color:
-                    "#817787",
-                  fontSize:
-                    "10px",
-                  marginBottom:
-                    "4px",
-                }}
-              >
-                Seller ID
-              </div>
-
-              <div
-                style={{
-                  fontWeight:
-                    "700",
-                  fontSize:
-                    "13px",
-                }}
-              >
-                {
-                  seller.sellerCode
-                }
-              </div>
-            </div>
-
-
-            <div
-              style={
-                savedBoxStyle
-              }
-            >
-              <div
-                style={{
-                  color:
-                    "#817787",
-                  fontSize:
-                    "10px",
-                  marginBottom:
-                    "4px",
-                }}
-              >
-                Contact Name
-              </div>
-
-              <div
-                style={{
-                  fontWeight:
-                    "700",
-                  fontSize:
-                    "13px",
-                }}
-              >
-                {[
-                  seller.contactFirstName,
-                  seller.contactLastName,
-                ]
-                  .filter(Boolean)
-                  .join(" ") ||
-                  "Not provided"}
-              </div>
-            </div>
-
-
-            <div
-              style={
-                savedBoxStyle
-              }
-            >
-              <div
-                style={{
-                  color:
-                    "#817787",
-                  fontSize:
-                    "10px",
-                  marginBottom:
-                    "4px",
-                }}
-              >
-                Account Email
-              </div>
-
-              <div
-                style={{
-                  fontWeight:
-                    "700",
-                  fontSize:
-                    "13px",
-                  wordBreak:
-                    "break-word",
-                }}
-              >
-                {
-                  portalAccount.email
-                }
-              </div>
-            </div>
-          </div>
-        </div>
-
-
-        <Form method="post">
-
-          <div
-            style={{
-              borderTop:
-                "1px solid #eee7f2",
-              paddingTop:
-                "22px",
-            }}
-          >
-            <div
-              style={{
-                color:
-                  "#4B1678",
-                fontWeight:
-                  "800",
-                fontSize:
-                  "14px",
-                marginBottom:
-                  "16px",
-              }}
-            >
-              Complete your business details
             </div>
 
 
             <div>
-              <label
-                htmlFor="legalBusinessName"
-                style={
-                  labelStyle
-                }
-              >
-                Legal business name *
-              </label>
+              <div style={labelStyle}>
+                Seller ID
+              </div>
 
-              <input
-                id="legalBusinessName"
-                name="legalBusinessName"
-                required
-                defaultValue={
-                  values?.legalBusinessName ??
-                  seller.legalBusinessName ??
-                  seller.businessName
-                }
-                style={
-                  inputStyle
-                }
-              />
-
-              <div
-                style={{
-                  color:
-                    "#817787",
-                  fontSize:
-                    "10px",
-                  marginTop:
-                    "5px",
-                }}
-              >
-                Use the legal name associated with your business.
+              <div style={valueStyle}>
+                {seller.sellerCode}
               </div>
             </div>
 
 
-            <div
-              style={{
-                display:
-                  "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(220px, 1fr))",
-                gap:
-                  "14px",
-                marginTop:
-                  "16px",
-              }}
-            >
-              <div>
-                <label
-                  htmlFor="phone"
-                  style={
-                    labelStyle
-                  }
-                >
-                  Phone
-                </label>
-
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  defaultValue={
-                    values?.phone ??
-                    seller.phone ??
-                    ""
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
+            <div>
+              <div style={labelStyle}>
+                Contact
               </div>
 
-
-              <div>
-                <label
-                  htmlFor="website"
-                  style={
-                    labelStyle
-                  }
-                >
-                  Website
-                </label>
-
-                <input
-                  id="website"
-                  name="website"
-                  defaultValue={
-                    values?.website ??
-                    seller.website ??
-                    ""
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
+              <div style={valueStyle}>
+                {displayValue(
+                  [
+                    seller.contactFirstName,
+                    seller.contactLastName,
+                  ]
+                    .filter(Boolean)
+                    .join(" "),
+                )}
               </div>
             </div>
 
 
-            <div
-              style={{
-                marginTop:
-                  "24px",
-                color:
-                  "#4B1678",
-                fontWeight:
-                  "800",
-                fontSize:
-                  "14px",
-              }}
-            >
-              Business address
-            </div>
-
-
-            <div
-              style={{
-                marginTop:
-                  "14px",
-              }}
-            >
-              <label
-                htmlFor="address1"
-                style={
-                  labelStyle
-                }
-              >
-                Street address *
-              </label>
-
-              <input
-                id="address1"
-                name="address1"
-                required
-                defaultValue={
-                  values?.address1 ??
-                  seller.address1 ??
-                  ""
-                }
-                style={
-                  inputStyle
-                }
-                placeholder="123 Main Street"
-              />
-            </div>
-
-
-            <div
-              style={{
-                marginTop:
-                  "14px",
-              }}
-            >
-              <label
-                htmlFor="address2"
-                style={
-                  labelStyle
-                }
-              >
-                Suite, unit, etc.
-              </label>
-
-              <input
-                id="address2"
-                name="address2"
-                defaultValue={
-                  values?.address2 ??
-                  seller.address2 ??
-                  ""
-                }
-                style={
-                  inputStyle
-                }
-                placeholder="Optional"
-              />
-            </div>
-
-
-            <div
-              style={{
-                display:
-                  "grid",
-                gridTemplateColumns:
-                  "2fr 1fr 1fr",
-                gap:
-                  "14px",
-                marginTop:
-                  "14px",
-              }}
-            >
-              <div>
-                <label
-                  htmlFor="city"
-                  style={
-                    labelStyle
-                  }
-                >
-                  City *
-                </label>
-
-                <input
-                  id="city"
-                  name="city"
-                  required
-                  defaultValue={
-                    values?.city ??
-                    seller.city ??
-                    ""
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
+            <div>
+              <div style={labelStyle}>
+                Email
               </div>
 
-
-              <div>
-                <label
-                  htmlFor="state"
-                  style={
-                    labelStyle
-                  }
-                >
-                  State *
-                </label>
-
-                <input
-                  id="state"
-                  name="state"
-                  required
-                  maxLength={2}
-                  defaultValue={
-                    values?.state ??
-                    seller.state ??
-                    ""
-                  }
-                  style={
-                    inputStyle
-                  }
-                  placeholder="CT"
-                />
-              </div>
-
-
-              <div>
-                <label
-                  htmlFor="postalCode"
-                  style={
-                    labelStyle
-                  }
-                >
-                  ZIP *
-                </label>
-
-                <input
-                  id="postalCode"
-                  name="postalCode"
-                  required
-                  inputMode="numeric"
-                  defaultValue={
-                    values?.postalCode ??
-                    seller.postalCode ??
-                    ""
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
+              <div style={valueStyle}>
+                {displayValue(
+                  seller.email,
+                )}
               </div>
             </div>
 
 
-            <div
-              style={{
-                marginTop:
-                  "14px",
-              }}
-            >
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                Country
-              </label>
+            <div>
+              <div style={labelStyle}>
+                Phone
+              </div>
 
-              <div
-                style={{
-                  ...savedBoxStyle,
-                  fontWeight:
-                    "700",
-                  fontSize:
-                    "13px",
-                }}
-              >
-                United States
+              <div style={valueStyle}>
+                {displayValue(
+                  seller.phone,
+                )}
               </div>
             </div>
+
+
+            <div>
+              <div style={labelStyle}>
+                ZIP Code
+              </div>
+
+              <div style={valueStyle}>
+                {displayValue(
+                  seller.postalCode,
+                )}
+              </div>
+            </div>
+
+
+            <div>
+              <div style={labelStyle}>
+                Website
+              </div>
+
+              <div style={valueStyle}>
+                {displayValue(
+                  seller.website,
+                )}
+              </div>
+            </div>
+
+
+            <div>
+              <div style={labelStyle}>
+                Instagram
+              </div>
+
+              <div style={valueStyle}>
+                {displayValue(
+                  seller.instagram,
+                )}
+              </div>
+            </div>
+
+
+            <div>
+              <div style={labelStyle}>
+                TikTok
+              </div>
+
+              <div style={valueStyle}>
+                {displayValue(
+                  seller.tiktok,
+                )}
+              </div>
+            </div>
+
+
+            <div>
+              <div style={labelStyle}>
+                Ships Nationwide
+              </div>
+
+              <div style={valueStyle}>
+                {yesNo(
+                  seller.sellsNationwide,
+                )}
+              </div>
+            </div>
+
+
+            <div>
+              <div style={labelStyle}>
+                Local Pickup
+              </div>
+
+              <div style={valueStyle}>
+                {yesNo(
+                  seller.offersLocalPickup,
+                )}
+              </div>
+            </div>
+
+
+            <div>
+              <div style={labelStyle}>
+                Local Delivery
+              </div>
+
+              <div style={valueStyle}>
+                {yesNo(
+                  seller.offersLocalDelivery,
+                )}
+              </div>
+            </div>
+
           </div>
 
 
           <div
             style={{
-              display:
-                "flex",
-              gap:
-                "10px",
               marginTop:
-                "28px",
+                "24px",
               paddingTop:
                 "20px",
               borderTop:
                 "1px solid #eee7f2",
-              flexWrap:
-                "wrap",
             }}
           >
             <a
-              href="/seller/onboarding"
+              href="/seller/onboarding/business"
               style={{
-                flex:
-                  "1 1 160px",
-                boxSizing:
-                  "border-box",
-                textAlign:
-                  "center",
-                border:
-                  "1px solid #d8cce0",
-                borderRadius:
-                  "10px",
-                background:
-                  "#ffffff",
-                color:
-                  "#4B1678",
-                padding:
-                  "13px 16px",
-                fontSize:
-                  "13px",
-                fontWeight:
-                  "800",
-                textDecoration:
-                  "none",
+                display: "block",
+                width: "100%",
+                boxSizing: "border-box",
+                textAlign: "center",
+                border: "none",
+                borderRadius: "10px",
+                background: "#4B1678",
+                color: "#ffffff",
+                padding: "14px 18px",
+                fontSize: "14px",
+                fontWeight: "800",
+                cursor: "pointer",
+                textDecoration: "none",
               }}
             >
-              Back
+              Continue Seller Setup
             </a>
 
 
-            <button
-              type="submit"
-              disabled={
-                saving
-              }
+            <div
               style={{
-                flex:
-                  "2 1 280px",
-                border:
-                  "none",
-                borderRadius:
-                  "10px",
-                background:
-                  saving
-                    ? "#8c72a0"
-                    : "#4B1678",
+                textAlign:
+                  "center",
                 color:
-                  "#ffffff",
-                padding:
-                  "13px 16px",
+                  "#817787",
                 fontSize:
-                  "13px",
-                fontWeight:
-                  "800",
-                cursor:
-                  saving
-                    ? "wait"
-                    : "pointer",
+                  "11px",
+                lineHeight:
+                  "1.5",
+                marginTop:
+                  "10px",
               }}
             >
-              {saving
-                ? "Saving..."
-                : "Save Business Details"}
-            </button>
+              Your progress will save as you complete each section.
+            </div>
           </div>
 
+        </div>
 
-          <p
-            style={{
-              textAlign:
-                "center",
-              color:
-                "#817787",
-              fontSize:
-                "10px",
-              lineHeight:
-                "1.5",
-              margin:
-                "11px 0 0",
-            }}
-          >
-            Your progress is saved to your HairGrab seller account.
-          </p>
-
-        </Form>
       </div>
     </div>
   );
