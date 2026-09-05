@@ -1,272 +1,221 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-type ProductGroup =
-  | "WIGS"
-  | "BUNDLES"
-  | "CLOSURES_FRONTALS"
-  | "EXTENSIONS"
+type ProductType =
+  | "WIG"
+  | "BUNDLE"
+  | "CLOSURE_FRONTAL"
+  | "EXTENSION"
   | "BRAIDING_HAIR"
-  | "HAIR_ESSENTIALS";
+  | "HAIR_ESSENTIAL";
 
-type ProductChoice = {
-  value: string;
+const productTypes: Array<{
+  value: ProductType;
   label: string;
   description: string;
-};
-
-const productGroups: Array<{
-  value: ProductGroup;
-  label: string;
-  description: string;
-  icon: string;
 }> = [
   {
-    value: "WIGS",
-    label: "Wigs",
-    description:
-      "Lace wigs, glueless wigs, closure wigs and more.",
-    icon: "◯",
+    value: "WIG",
+    label: "Wig",
+    description: "Glueless, lace, closure, frontal and other wigs.",
   },
   {
-    value: "BUNDLES",
+    value: "BUNDLE",
     label: "Bundles",
-    description:
-      "Human hair bundles and wefted hair.",
-    icon: "≋",
+    description: "Single bundles, bundle deals and bundle packages.",
   },
   {
-    value: "CLOSURES_FRONTALS",
-    label: "Closures & Frontals",
-    description:
-      "Lace closures, frontals and related pieces.",
-    icon: "◇",
+    value: "CLOSURE_FRONTAL",
+    label: "Closure / Frontal",
+    description: "Closures, frontals and 360 lace pieces.",
   },
   {
-    value: "EXTENSIONS",
+    value: "EXTENSION",
     label: "Extensions",
-    description:
-      "Clip-ins, tape-ins, microlinks and more.",
-    icon: "↕",
+    description: "Clip-ins, tape-ins, I-tips, ponytails and halos.",
   },
   {
     value: "BRAIDING_HAIR",
     label: "Braiding Hair",
-    description:
-      "Human and synthetic hair for protective styles.",
-    icon: "〰",
+    description: "Human or synthetic hair for braids and protective styles.",
   },
   {
-    value: "HAIR_ESSENTIALS",
+    value: "HAIR_ESSENTIAL",
     label: "Hair Essentials",
-    description:
-      "Hair care, tools and accessories.",
-    icon: "✦",
+    description: "Hair care, tools and accessories.",
   },
 ];
 
-const features: Record<
-  ProductGroup,
-  ProductChoice[]
-> = {
-  WIGS: [
-    {
-      value: "LACE",
-      label: "Lace",
-      description:
-        "The wig includes lace construction.",
-    },
-    {
-      value: "GLUELESS",
-      label: "Glueless",
-      description:
-        "Can be worn without adhesive.",
-    },
-    {
-      value: "CLOSURE_WIG",
-      label: "Closure Wig",
-      description:
-        "Constructed with a lace closure.",
-    },
-    {
-      value: "FRONTAL_WIG",
-      label: "Frontal Wig",
-      description:
-        "Constructed with a lace frontal.",
-    },
-    {
-      value: "FULL_LACE",
-      label: "Full Lace",
-      description:
-        "Full lace cap construction.",
-    },
-    {
-      value: "HEADBAND",
-      label: "Headband Wig",
-      description:
-        "Includes or uses a headband-style construction.",
-    },
-  ],
+const textures = [
+  "Straight",
+  "Body Wave",
+  "Loose Wave",
+  "Deep Wave",
+  "Water Wave",
+  "Curly",
+  "Deep Curly",
+  "Kinky Curly",
+  "Kinky Straight",
+  "Coily",
+  "Other",
+];
 
-  BUNDLES: [
-    {
-      value: "SINGLE_BUNDLE",
-      label: "Single Bundle",
-      description:
-        "One bundle sold individually.",
-    },
-    {
-      value: "BUNDLE_DEAL",
-      label: "Bundle Deal",
-      description:
-        "Multiple bundles sold together.",
-    },
-    {
-      value: "WITH_CLOSURE",
-      label: "Includes Closure",
-      description:
-        "Bundle package includes a closure.",
-    },
-    {
-      value: "WITH_FRONTAL",
-      label: "Includes Frontal",
-      description:
-        "Bundle package includes a frontal.",
-    },
-  ],
+const lengths = [
+  "8",
+  "10",
+  "12",
+  "14",
+  "16",
+  "18",
+  "20",
+  "22",
+  "24",
+  "26",
+  "28",
+  "30",
+  "32",
+  "34",
+  "36",
+  "40",
+];
 
-  CLOSURES_FRONTALS: [
-    {
-      value: "CLOSURE",
-      label: "Closure",
-      description:
-        "4x4, 5x5, 6x6, 7x7 and similar closures.",
-    },
-    {
-      value: "FRONTAL",
-      label: "Frontal",
-      description:
-        "13x4, 13x6 and similar frontals.",
-    },
-    {
-      value: "360_FRONTAL",
-      label: "360 Frontal",
-      description:
-        "Lace designed around the perimeter.",
-    },
-    {
-      value: "HD_LACE",
-      label: "HD Lace",
-      description:
-        "Uses HD lace.",
-    },
-    {
-      value: "TRANSPARENT_LACE",
-      label: "Transparent Lace",
-      description:
-        "Uses transparent lace.",
-    },
-  ],
-
-  EXTENSIONS: [
-    {
-      value: "CLIP_IN",
-      label: "Clip-Ins",
-      description:
-        "Reusable extensions with attached clips.",
-    },
-    {
-      value: "TAPE_IN",
-      label: "Tape-Ins",
-      description:
-        "Extensions installed with adhesive tabs.",
-    },
-    {
-      value: "I_TIP",
-      label: "I-Tips / Microlinks",
-      description:
-        "Installed with beads or microlinks.",
-    },
-    {
-      value: "PONYTAIL",
-      label: "Ponytail",
-      description:
-        "Wrap, drawstring or clip-on ponytail.",
-    },
-    {
-      value: "HALO",
-      label: "Halo",
-      description:
-        "Halo-style extension system.",
-    },
-  ],
-
-  BRAIDING_HAIR: [
-    {
-      value: "HUMAN_HAIR",
-      label: "Human Hair",
-      description:
-        "Made with human hair.",
-    },
-    {
-      value: "SYNTHETIC",
-      label: "Synthetic",
-      description:
-        "Made with synthetic hair.",
-    },
-    {
-      value: "PRE_STRETCHED",
-      label: "Pre-Stretched",
-      description:
-        "Prepared for easier installation.",
-    },
-    {
-      value: "BOHO",
-      label: "Boho / Loose Curl",
-      description:
-        "Designed for boho or curly braid styles.",
-    },
-  ],
-
-  HAIR_ESSENTIALS: [
-    {
-      value: "HAIR_CARE",
-      label: "Hair Care",
-      description:
-        "Shampoo, conditioner, oils and treatments.",
-    },
-    {
-      value: "TOOLS",
-      label: "Tools",
-      description:
-        "Combs, brushes and styling tools.",
-    },
-    {
-      value: "ACCESSORIES",
-      label: "Accessories",
-      description:
-        "Caps, bands, bonnets, clips and more.",
-    },
-  ],
+const fieldStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  padding: "12px 13px",
+  border: "1px solid #d8cce0",
+  borderRadius: "10px",
+  background: "#ffffff",
+  color: "#21152a",
+  fontSize: "14px",
 };
 
-export default function SellerAddProductPage() {
-  const [group, setGroup] =
-    useState<ProductGroup | null>(null);
+const labelStyle = {
+  display: "block",
+  marginBottom: "7px",
+  color: "#4B1678",
+  fontWeight: "800",
+  fontSize: "13px",
+};
 
-  const [selectedFeatures, setSelectedFeatures] =
+const sectionStyle = {
+  marginTop: "26px",
+  paddingTop: "24px",
+  borderTop: "1px solid #eee7f2",
+};
+
+type MultiChoiceProps = {
+  value: string;
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+};
+
+function MultiChoice({
+  label,
+  selected,
+  onClick,
+}: MultiChoiceProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: selected
+          ? "2px solid #4B1678"
+          : "1px solid #d8cce0",
+        background: selected
+          ? "#f7f0fb"
+          : "#ffffff",
+        color: "#4B1678",
+        borderRadius: "10px",
+        padding: "10px 13px",
+        fontSize: "12px",
+        fontWeight: "800",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+      }}
+    >
+      <span
+        style={{
+          width: "17px",
+          height: "17px",
+          minWidth: "17px",
+          borderRadius: "4px",
+          border: selected
+            ? "2px solid #4B1678"
+            : "1px solid #bcaec6",
+          background: selected
+            ? "#4B1678"
+            : "#ffffff",
+          color: "#ffffff",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "11px",
+        }}
+      >
+        {selected ? "✓" : ""}
+      </span>
+
+      {label}
+    </button>
+  );
+}
+
+export default function SellerAddProductPage() {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] =
+    useState("");
+
+  const [productType, setProductType] =
+    useState<ProductType | null>(null);
+
+  const [features, setFeatures] =
     useState<string[]>([]);
 
-  const selectGroup = (
-    value: ProductGroup,
-  ) => {
-    setGroup(value);
-    setSelectedFeatures([]);
-  };
+  const [texture, setTexture] =
+    useState("");
 
-  const toggleFeature = (
-    value: string,
-  ) => {
-    setSelectedFeatures((current) =>
+  const [color, setColor] =
+    useState("Natural / 1B");
+
+  const [selectedLengths, setSelectedLengths] =
+    useState<string[]>([]);
+
+  const [price, setPrice] =
+    useState("");
+
+  const [inventory, setInventory] =
+    useState("");
+
+  const [sku, setSku] =
+    useState("");
+
+  const [density, setDensity] =
+    useState("");
+
+  const [laceSize, setLaceSize] =
+    useState("");
+
+  const [laceType, setLaceType] =
+    useState("");
+
+  const [capSize, setCapSize] =
+    useState("");
+
+  const [bundleWeight, setBundleWeight] =
+    useState("100g");
+
+  const [extensionPieces, setExtensionPieces] =
+    useState("");
+
+  const [braidingMaterial, setBraidingMaterial] =
+    useState("");
+
+  const toggleFeature = (value: string) => {
+    setFeatures((current) =>
       current.includes(value)
         ? current.filter(
             (item) => item !== value,
@@ -275,39 +224,70 @@ export default function SellerAddProductPage() {
     );
   };
 
-  const selectedGroup =
-    productGroups.find(
-      (item) => item.value === group,
+  const toggleLength = (value: string) => {
+    setSelectedLengths((current) =>
+      current.includes(value)
+        ? current.filter(
+            (item) => item !== value,
+          )
+        : [...current, value],
     );
+  };
+
+  const changeProductType = (
+    value: ProductType,
+  ) => {
+    setProductType(value);
+    setFeatures([]);
+  };
+
+  const typeLabel = useMemo(
+    () =>
+      productTypes.find(
+        (item) =>
+          item.value === productType,
+      )?.label || "",
+    [productType],
+  );
+
+  const requiresHairFields =
+    productType &&
+    productType !== "HAIR_ESSENTIAL";
+
+  const ready =
+    title.trim().length > 0 &&
+    description.trim().length > 0 &&
+    productType !== null &&
+    price.trim().length > 0;
 
   return (
     <div
       style={{
         minHeight: "100vh",
         background: "#faf8fc",
-        padding: "30px 18px 60px",
+        padding: "28px 18px 60px",
         fontFamily: "Arial, sans-serif",
         color: "#21152a",
       }}
     >
       <div
         style={{
-          maxWidth: "900px",
+          maxWidth: "880px",
           margin: "0 auto",
         }}
       >
         <div
           style={{
             textAlign: "center",
-            marginBottom: "24px",
+            marginBottom: "20px",
           }}
         >
           <img
             src="/hairgrab-logo.png"
             alt="HairGrab"
             style={{
-              width: "250px",
-              maxWidth: "75%",
+              width: "235px",
+              maxWidth: "70%",
               height: "auto",
             }}
           />
@@ -320,305 +300,1105 @@ export default function SellerAddProductPage() {
             borderRadius: "18px",
             padding: "26px",
             boxShadow:
-              "0 4px 18px rgba(75, 22, 120, 0.07)",
+              "0 4px 18px rgba(75,22,120,.07)",
           }}
         >
           <div
             style={{
-              color: "#7b3fa0",
-              fontSize: "12px",
-              fontWeight: "800",
-              textTransform: "uppercase",
-              letterSpacing: "1.2px",
-            }}
-          >
-            Add Product
-          </div>
-
-          <h1
-            style={{
-              margin: "7px 0 8px",
-              color: "#4B1678",
-              fontSize: "30px",
-            }}
-          >
-            What are you selling?
-          </h1>
-
-          <p
-            style={{
-              margin: "0 0 24px",
-              color: "#706776",
-              fontSize: "14px",
-              lineHeight: "1.6",
-            }}
-          >
-            Choose the main category first.
-            Then select every feature that
-            applies to this product.
-          </p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(230px, 1fr))",
+              display: "flex",
+              justifyContent:
+                "space-between",
               gap: "14px",
+              flexWrap: "wrap",
+              alignItems: "center",
             }}
           >
-            {productGroups.map((item) => {
-              const selected =
-                group === item.value;
-
-              return (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() =>
-                    selectGroup(item.value)
-                  }
-                  style={{
-                    textAlign: "left",
-                    padding: "18px",
-                    borderRadius: "14px",
-                    border: selected
-                      ? "2px solid #4B1678"
-                      : "1px solid #ded3e5",
-                    background: selected
-                      ? "#f7f0fb"
-                      : "#ffffff",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "22px",
-                      color: "#4B1678",
-                      marginBottom: "9px",
-                    }}
-                  >
-                    {item.icon}
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#4B1678",
-                      fontSize: "16px",
-                      fontWeight: "800",
-                    }}
-                  >
-                    {item.label}
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#776e7b",
-                      fontSize: "12px",
-                      lineHeight: "1.5",
-                      marginTop: "5px",
-                    }}
-                  >
-                    {item.description}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {group && (
-            <div
-              style={{
-                marginTop: "28px",
-                paddingTop: "25px",
-                borderTop:
-                  "1px solid #eee7f2",
-              }}
-            >
-              <h2
+            <div>
+              <div
                 style={{
-                  margin: "0 0 6px",
-                  color: "#4B1678",
-                  fontSize: "21px",
+                  color: "#7b3fa0",
+                  fontSize: "11px",
+                  fontWeight: "800",
+                  letterSpacing: "1.2px",
+                  textTransform:
+                    "uppercase",
                 }}
               >
-                Select all that apply
+                HairGrab Quick Add
+              </div>
+
+              <h1
+                style={{
+                  margin: "5px 0 5px",
+                  color: "#4B1678",
+                  fontSize: "29px",
+                }}
+              >
+                Add a Product
+              </h1>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: "#766d7a",
+                  fontSize: "13px",
+                }}
+              >
+                Add the basics first.
+                HairGrab only asks for
+                details that apply to
+                this product.
+              </p>
+            </div>
+
+            <div
+              style={{
+                background: "#eef8f0",
+                color: "#347143",
+                border:
+                  "1px solid #cbe3d0",
+                padding: "8px 12px",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: "800",
+              }}
+            >
+              Goal: under 2 minutes
+            </div>
+          </div>
+
+          {/* BASIC INFORMATION */}
+
+          <div style={sectionStyle}>
+            <h2
+              style={{
+                margin: "0 0 16px",
+                color: "#4B1678",
+                fontSize: "19px",
+              }}
+            >
+              Product information
+            </h2>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "17px",
+              }}
+            >
+              <div>
+                <label style={labelStyle}>
+                  Product Name *
+                </label>
+
+                <input
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Paste or type the product name"
+                  style={fieldStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>
+                  Description *
+                </label>
+
+                <textarea
+                  value={description}
+                  onChange={(event) =>
+                    setDescription(
+                      event.target.value,
+                    )
+                  }
+                  rows={4}
+                  placeholder="Paste your existing product description"
+                  style={{
+                    ...fieldStyle,
+                    resize: "vertical",
+                    fontFamily:
+                      "Arial, sans-serif",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* PRODUCT TYPE */}
+
+          <div style={sectionStyle}>
+            <h2
+              style={{
+                margin: "0 0 5px",
+                color: "#4B1678",
+                fontSize: "19px",
+              }}
+            >
+              What type of product is this?
+            </h2>
+
+            <p
+              style={{
+                margin: "0 0 15px",
+                color: "#817787",
+                fontSize: "12px",
+              }}
+            >
+              Choose one. HairGrab will
+              open the correct product
+              template automatically.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(210px, 1fr))",
+                gap: "10px",
+              }}
+            >
+              {productTypes.map(
+                (item) => {
+                  const selected =
+                    item.value ===
+                    productType;
+
+                  return (
+                    <button
+                      type="button"
+                      key={item.value}
+                      onClick={() =>
+                        changeProductType(
+                          item.value,
+                        )
+                      }
+                      style={{
+                        textAlign: "left",
+                        border: selected
+                          ? "2px solid #4B1678"
+                          : "1px solid #ded3e5",
+                        background:
+                          selected
+                            ? "#f7f0fb"
+                            : "#ffffff",
+                        borderRadius:
+                          "11px",
+                        padding: "14px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color:
+                            "#4B1678",
+                          fontWeight:
+                            "800",
+                          fontSize:
+                            "14px",
+                        }}
+                      >
+                        {item.label}
+                      </div>
+
+                      <div
+                        style={{
+                          color:
+                            "#7d7480",
+                          fontSize:
+                            "10px",
+                          lineHeight:
+                            "1.4",
+                          marginTop:
+                            "4px",
+                        }}
+                      >
+                        {
+                          item.description
+                        }
+                      </div>
+                    </button>
+                  );
+                },
+              )}
+            </div>
+          </div>
+
+          {/* WIG TEMPLATE */}
+
+          {productType === "WIG" && (
+            <div style={sectionStyle}>
+              <h2
+                style={{
+                  margin: "0 0 5px",
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Wig details
               </h2>
 
               <p
                 style={{
-                  margin: "0 0 16px",
+                  margin: "0 0 15px",
                   color: "#817787",
                   fontSize: "12px",
                 }}
               >
-                This product is in{" "}
-                <strong>
-                  {selectedGroup?.label}
-                </strong>
-                . Choose as many features
-                as needed.
+                Select everything that
+                applies.
               </p>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                  marginBottom: "18px",
+                }}
+              >
+                {[
+                  ["GLUELESS", "Glueless"],
+                  [
+                    "CLOSURE_WIG",
+                    "Closure Wig",
+                  ],
+                  [
+                    "FRONTAL_WIG",
+                    "Frontal Wig",
+                  ],
+                  [
+                    "FULL_LACE",
+                    "Full Lace",
+                  ],
+                  [
+                    "HEADBAND",
+                    "Headband Wig",
+                  ],
+                ].map(
+                  ([value, label]) => (
+                    <MultiChoice
+                      key={value}
+                      value={value}
+                      label={label}
+                      selected={features.includes(
+                        value,
+                      )}
+                      onClick={() =>
+                        toggleFeature(
+                          value,
+                        )
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* BUNDLE TEMPLATE */}
+
+          {productType ===
+            "BUNDLE" && (
+            <div style={sectionStyle}>
+              <h2
+                style={{
+                  margin: "0 0 15px",
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Bundle details
+              </h2>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                }}
+              >
+                {[
+                  [
+                    "SINGLE_BUNDLE",
+                    "Single Bundle",
+                  ],
+                  [
+                    "BUNDLE_DEAL",
+                    "Bundle Deal",
+                  ],
+                  [
+                    "WITH_CLOSURE",
+                    "Includes Closure",
+                  ],
+                  [
+                    "WITH_FRONTAL",
+                    "Includes Frontal",
+                  ],
+                ].map(
+                  ([value, label]) => (
+                    <MultiChoice
+                      key={value}
+                      value={value}
+                      label={label}
+                      selected={features.includes(
+                        value,
+                      )}
+                      onClick={() =>
+                        toggleFeature(
+                          value,
+                        )
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* CLOSURE / FRONTAL */}
+
+          {productType ===
+            "CLOSURE_FRONTAL" && (
+            <div style={sectionStyle}>
+              <h2
+                style={{
+                  margin: "0 0 15px",
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Closure / frontal
+                details
+              </h2>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                }}
+              >
+                {[
+                  [
+                    "CLOSURE",
+                    "Closure",
+                  ],
+                  [
+                    "FRONTAL",
+                    "Frontal",
+                  ],
+                  [
+                    "360_FRONTAL",
+                    "360 Frontal",
+                  ],
+                ].map(
+                  ([value, label]) => (
+                    <MultiChoice
+                      key={value}
+                      value={value}
+                      label={label}
+                      selected={features.includes(
+                        value,
+                      )}
+                      onClick={() =>
+                        toggleFeature(
+                          value,
+                        )
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* EXTENSION TEMPLATE */}
+
+          {productType ===
+            "EXTENSION" && (
+            <div style={sectionStyle}>
+              <h2
+                style={{
+                  margin: "0 0 15px",
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Extension type
+              </h2>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                }}
+              >
+                {[
+                  [
+                    "CLIP_IN",
+                    "Clip-Ins",
+                  ],
+                  [
+                    "TAPE_IN",
+                    "Tape-Ins",
+                  ],
+                  [
+                    "I_TIP",
+                    "I-Tips / Microlinks",
+                  ],
+                  [
+                    "PONYTAIL",
+                    "Ponytail",
+                  ],
+                  ["HALO", "Halo"],
+                ].map(
+                  ([value, label]) => (
+                    <MultiChoice
+                      key={value}
+                      value={value}
+                      label={label}
+                      selected={features.includes(
+                        value,
+                      )}
+                      onClick={() =>
+                        toggleFeature(
+                          value,
+                        )
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* BRAIDING */}
+
+          {productType ===
+            "BRAIDING_HAIR" && (
+            <div style={sectionStyle}>
+              <h2
+                style={{
+                  margin: "0 0 15px",
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Braiding hair details
+              </h2>
+
+              <div>
+                <label style={labelStyle}>
+                  Hair Material
+                </label>
+
+                <select
+                  value={
+                    braidingMaterial
+                  }
+                  onChange={(event) =>
+                    setBraidingMaterial(
+                      event.target.value,
+                    )
+                  }
+                  style={fieldStyle}
+                >
+                  <option value="">
+                    Select
+                  </option>
+                  <option>
+                    Human Hair
+                  </option>
+                  <option>
+                    Synthetic
+                  </option>
+                  <option>
+                    Human / Synthetic Blend
+                  </option>
+                </select>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                  marginTop: "14px",
+                }}
+              >
+                {[
+                  [
+                    "PRE_STRETCHED",
+                    "Pre-Stretched",
+                  ],
+                  [
+                    "BOHO",
+                    "Boho / Loose Curl",
+                  ],
+                ].map(
+                  ([value, label]) => (
+                    <MultiChoice
+                      key={value}
+                      value={value}
+                      label={label}
+                      selected={features.includes(
+                        value,
+                      )}
+                      onClick={() =>
+                        toggleFeature(
+                          value,
+                        )
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* COMMON HAIR FIELDS */}
+
+          {requiresHairFields && (
+            <div style={sectionStyle}>
+              <h2
+                style={{
+                  margin: "0 0 15px",
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Hair details
+              </h2>
 
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns:
                     "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: "12px",
+                  gap: "16px",
                 }}
               >
-                {features[group].map(
-                  (item) => {
-                    const selected =
-                      selectedFeatures.includes(
-                        item.value,
-                      );
+                <div>
+                  <label style={labelStyle}>
+                    Texture
+                  </label>
 
-                    return (
-                      <button
-                        key={item.value}
-                        type="button"
-                        onClick={() =>
-                          toggleFeature(
-                            item.value,
-                          )
-                        }
-                        style={{
-                          textAlign: "left",
-                          padding: "15px",
-                          borderRadius: "12px",
-                          border: selected
-                            ? "2px solid #4B1678"
-                            : "1px solid #ded3e5",
-                          background: selected
-                            ? "#f7f0fb"
-                            : "#ffffff",
-                          cursor: "pointer",
-                          position: "relative",
-                        }}
-                      >
-                        <div
+                  <select
+                    value={texture}
+                    onChange={(event) =>
+                      setTexture(
+                        event.target.value,
+                      )
+                    }
+                    style={fieldStyle}
+                  >
+                    <option value="">
+                      Select texture
+                    </option>
+
+                    {textures.map(
+                      (item) => (
+                        <option
+                          key={item}
+                          value={item}
+                        >
+                          {item}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Color
+                  </label>
+
+                  <input
+                    value={color}
+                    onChange={(event) =>
+                      setColor(
+                        event.target.value,
+                      )
+                    }
+                    style={fieldStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: "18px",
+                }}
+              >
+                <label style={labelStyle}>
+                  Available Lengths
+                </label>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "7px",
+                  }}
+                >
+                  {lengths.map(
+                    (length) => {
+                      const selected =
+                        selectedLengths.includes(
+                          length,
+                        );
+
+                      return (
+                        <button
+                          type="button"
+                          key={length}
+                          onClick={() =>
+                            toggleLength(
+                              length,
+                            )
+                          }
                           style={{
-                            display: "flex",
-                            gap: "10px",
-                            alignItems:
-                              "flex-start",
+                            border:
+                              selected
+                                ? "2px solid #4B1678"
+                                : "1px solid #d8cce0",
+                            background:
+                              selected
+                                ? "#f7f0fb"
+                                : "#ffffff",
+                            color:
+                              "#4B1678",
+                            borderRadius:
+                              "8px",
+                            padding:
+                              "8px 11px",
+                            fontWeight:
+                              "800",
+                            fontSize:
+                              "12px",
+                            cursor:
+                              "pointer",
                           }}
                         >
-                          <div
-                            style={{
-                              width: "19px",
-                              height: "19px",
-                              minWidth: "19px",
-                              borderRadius: "5px",
-                              border: selected
-                                ? "2px solid #4B1678"
-                                : "1px solid #bcaec6",
-                              background: selected
-                                ? "#4B1678"
-                                : "#ffffff",
-                              color: "#ffffff",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent:
-                                "center",
-                              fontSize: "12px",
-                              fontWeight: "800",
-                            }}
-                          >
-                            {selected
-                              ? "✓"
-                              : ""}
-                          </div>
-
-                          <div>
-                            <div
-                              style={{
-                                color:
-                                  "#4B1678",
-                                fontSize:
-                                  "14px",
-                                fontWeight:
-                                  "800",
-                              }}
-                            >
-                              {item.label}
-                            </div>
-
-                            <div
-                              style={{
-                                color:
-                                  "#776e7b",
-                                fontSize:
-                                  "11px",
-                                lineHeight:
-                                  "1.45",
-                                marginTop:
-                                  "4px",
-                              }}
-                            >
-                              {
-                                item.description
-                              }
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  },
-                )}
+                          {length}"
+                        </button>
+                      );
+                    },
+                  )}
+                </div>
               </div>
             </div>
           )}
 
-          <div
-            style={{
-              marginTop: "28px",
-              paddingTop: "22px",
-              borderTop:
-                "1px solid #eee7f2",
-            }}
-          >
+          {/* OPTIONAL PRODUCT DETAILS */}
+
+          {productType && (
+            <details
+              style={{
+                ...sectionStyle,
+                cursor: "pointer",
+              }}
+            >
+              <summary
+                style={{
+                  color: "#4B1678",
+                  fontWeight: "800",
+                  fontSize: "15px",
+                }}
+              >
+                Optional product details
+              </summary>
+
+              <div
+                style={{
+                  marginTop: "18px",
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "16px",
+                }}
+              >
+                {productType ===
+                  "WIG" && (
+                  <>
+                    <div>
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        Density
+                      </label>
+
+                      <select
+                        value={density}
+                        onChange={(
+                          event,
+                        ) =>
+                          setDensity(
+                            event.target
+                              .value,
+                          )
+                        }
+                        style={
+                          fieldStyle
+                        }
+                      >
+                        <option value="">
+                          Select
+                        </option>
+                        <option>
+                          130%
+                        </option>
+                        <option>
+                          150%
+                        </option>
+                        <option>
+                          180%
+                        </option>
+                        <option>
+                          200%
+                        </option>
+                        <option>
+                          250%
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        Lace Size
+                      </label>
+
+                      <select
+                        value={
+                          laceSize
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setLaceSize(
+                            event.target
+                              .value,
+                          )
+                        }
+                        style={
+                          fieldStyle
+                        }
+                      >
+                        <option value="">
+                          Select
+                        </option>
+                        <option>
+                          4x4
+                        </option>
+                        <option>
+                          5x5
+                        </option>
+                        <option>
+                          6x6
+                        </option>
+                        <option>
+                          7x7
+                        </option>
+                        <option>
+                          13x4
+                        </option>
+                        <option>
+                          13x6
+                        </option>
+                        <option>
+                          360
+                        </option>
+                        <option>
+                          Full Lace
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        Lace Type
+                      </label>
+
+                      <select
+                        value={
+                          laceType
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setLaceType(
+                            event.target
+                              .value,
+                          )
+                        }
+                        style={
+                          fieldStyle
+                        }
+                      >
+                        <option value="">
+                          Select
+                        </option>
+                        <option>
+                          HD Lace
+                        </option>
+                        <option>
+                          Transparent Lace
+                        </option>
+                        <option>
+                          Swiss Lace
+                        </option>
+                        <option>
+                          Regular Lace
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        Cap Size
+                      </label>
+
+                      <select
+                        value={
+                          capSize
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setCapSize(
+                            event.target
+                              .value,
+                          )
+                        }
+                        style={
+                          fieldStyle
+                        }
+                      >
+                        <option value="">
+                          Select
+                        </option>
+                        <option>
+                          Small
+                        </option>
+                        <option>
+                          Medium
+                        </option>
+                        <option>
+                          Large
+                        </option>
+                        <option>
+                          Adjustable
+                        </option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                {productType ===
+                  "BUNDLE" && (
+                  <div>
+                    <label
+                      style={labelStyle}
+                    >
+                      Bundle Weight
+                    </label>
+
+                    <select
+                      value={
+                        bundleWeight
+                      }
+                      onChange={(event) =>
+                        setBundleWeight(
+                          event.target
+                            .value,
+                        )
+                      }
+                      style={fieldStyle}
+                    >
+                      <option>
+                        50g
+                      </option>
+                      <option>
+                        100g
+                      </option>
+                      <option>
+                        120g
+                      </option>
+                      <option>
+                        150g
+                      </option>
+                      <option>
+                        200g+
+                      </option>
+                    </select>
+                  </div>
+                )}
+
+                {productType ===
+                  "EXTENSION" && (
+                  <div>
+                    <label
+                      style={labelStyle}
+                    >
+                      Number of Pieces
+                    </label>
+
+                    <input
+                      type="number"
+                      value={
+                        extensionPieces
+                      }
+                      onChange={(event) =>
+                        setExtensionPieces(
+                          event.target
+                            .value,
+                        )
+                      }
+                      placeholder="Example: 7"
+                      style={fieldStyle}
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label style={labelStyle}>
+                    SKU
+                  </label>
+
+                  <input
+                    value={sku}
+                    onChange={(event) =>
+                      setSku(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Optional"
+                    style={fieldStyle}
+                  />
+                </div>
+              </div>
+            </details>
+          )}
+
+          {/* PRICE */}
+
+          {productType && (
+            <div style={sectionStyle}>
+              <h2
+                style={{
+                  margin: "0 0 15px",
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Price & inventory
+              </h2>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "16px",
+                }}
+              >
+                <div>
+                  <label style={labelStyle}>
+                    Starting Price *
+                  </label>
+
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={price}
+                    onChange={(event) =>
+                      setPrice(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="0.00"
+                    style={fieldStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Inventory
+                  </label>
+
+                  <input
+                    type="number"
+                    value={inventory}
+                    onChange={(event) =>
+                      setInventory(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Optional"
+                    style={fieldStyle}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* READY */}
+
+          <div style={sectionStyle}>
             <button
               type="button"
-              disabled={!group}
+              disabled={!ready}
               style={{
                 width: "100%",
                 border: "none",
                 borderRadius: "10px",
-                padding: "14px 18px",
-                fontSize: "14px",
-                fontWeight: "800",
-                background: group
+                padding: "15px 18px",
+                background: ready
                   ? "#4B1678"
                   : "#c9bdcf",
                 color: "#ffffff",
-                cursor: group
+                fontSize: "14px",
+                fontWeight: "800",
+                cursor: ready
                   ? "pointer"
                   : "not-allowed",
               }}
             >
-              Continue to Product Details
+              Continue to Photos & Variants
             </button>
 
-            {group && (
-              <div
-                style={{
-                  textAlign: "center",
-                  marginTop: "10px",
-                  color: "#817787",
-                  fontSize: "11px",
-                }}
-              >
-                {selectedFeatures.length}{" "}
-                feature
-                {selectedFeatures.length ===
-                1
-                  ? ""
-                  : "s"}{" "}
-                selected
-              </div>
-            )}
+            <div
+              style={{
+                marginTop: "9px",
+                textAlign: "center",
+                color: "#817787",
+                fontSize: "11px",
+              }}
+            >
+              {productType
+                ? `${typeLabel} template active`
+                : "Choose a product type to continue"}
+            </div>
           </div>
         </div>
       </div>
