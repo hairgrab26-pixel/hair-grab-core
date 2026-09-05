@@ -1,6 +1,7 @@
 import {
   useMemo,
   useState,
+  type ChangeEvent,
 } from "react";
 
 type ProductType =
@@ -65,136 +66,77 @@ const productTypes: Array<{
   },
 ];
 
-const productOptions: Record<
-  ProductType,
-  Choice[]
-> = {
+const productOptions: Record<ProductType, Choice[]> = {
   WIG: [
-    {
-      value: "GLUELESS",
-      label: "Glueless",
-    },
-    {
-      value: "LACE",
-      label: "Lace",
-    },
-    {
-      value: "CLOSURE_WIG",
-      label: "Closure Wig",
-    },
-    {
-      value: "FRONTAL_WIG",
-      label: "Frontal Wig",
-    },
-    {
-      value: "FULL_LACE",
-      label: "Full Lace",
-    },
-    {
-      value: "HEADBAND",
-      label: "Headband Wig",
-    },
+    { value: "GLUELESS", label: "Glueless" },
+    { value: "LACE", label: "Lace" },
+    { value: "CLOSURE_WIG", label: "Closure Wig" },
+    { value: "FRONTAL_WIG", label: "Frontal Wig" },
+    { value: "FULL_LACE", label: "Full Lace" },
+    { value: "HEADBAND", label: "Headband Wig" },
   ],
 
   BUNDLE: [
-    {
-      value: "SINGLE_BUNDLE",
-      label: "Single Bundle",
-    },
-    {
-      value: "BUNDLE_DEAL",
-      label: "Bundle Deal",
-    },
-    {
-      value: "WEFT",
-      label: "Weft",
-    },
-    {
-      value: "NO_WEFT",
-      label: "No Weft",
-    },
-    {
-      value: "WITH_CLOSURE",
-      label: "Includes Closure",
-    },
-    {
-      value: "WITH_FRONTAL",
-      label: "Includes Frontal",
-    },
+    { value: "SINGLE_BUNDLE", label: "Single Bundle" },
+    { value: "BUNDLE_DEAL", label: "Bundle Deal" },
+    { value: "WEFT", label: "Weft" },
+    { value: "NO_WEFT", label: "No Weft" },
+    { value: "WITH_CLOSURE", label: "Includes Closure" },
+    { value: "WITH_FRONTAL", label: "Includes Frontal" },
   ],
 
   CLOSURE_FRONTAL: [
-    {
-      value: "CLOSURE",
-      label: "Closure",
-    },
-    {
-      value: "FRONTAL",
-      label: "Frontal",
-    },
-    {
-      value: "360_FRONTAL",
-      label: "360 Frontal",
-    },
+    { value: "CLOSURE", label: "Closure" },
+    { value: "FRONTAL", label: "Frontal" },
+    { value: "360_FRONTAL", label: "360 Frontal" },
   ],
 
   EXTENSION: [
-    {
-      value: "CLIP_IN",
-      label: "Clip-Ins",
-    },
-    {
-      value: "TAPE_IN",
-      label: "Tape-Ins",
-    },
-    {
-      value: "I_TIP",
-      label: "I-Tips / Microlinks",
-    },
-    {
-      value: "PONYTAIL",
-      label: "Ponytail",
-    },
-    {
-      value: "HALO",
-      label: "Halo",
-    },
+    { value: "CLIP_IN", label: "Clip-Ins" },
+    { value: "TAPE_IN", label: "Tape-Ins" },
+    { value: "I_TIP", label: "I-Tips / Microlinks" },
+    { value: "PONYTAIL", label: "Ponytail" },
+    { value: "HALO", label: "Halo" },
   ],
 
   BRAIDING_HAIR: [
-    {
-      value: "HUMAN_HAIR",
-      label: "Human Hair",
-    },
-    {
-      value: "SYNTHETIC",
-      label: "Synthetic",
-    },
-    {
-      value: "PRE_STRETCHED",
-      label: "Pre-Stretched",
-    },
-    {
-      value: "BOHO",
-      label: "Boho / Loose Curl",
-    },
+    { value: "PRE_STRETCHED", label: "Pre-Stretched" },
+    { value: "BOHO", label: "Boho / Loose Curl" },
   ],
 
   HAIR_ESSENTIAL: [
-    {
-      value: "HAIR_CARE",
-      label: "Hair Care",
-    },
-    {
-      value: "TOOLS",
-      label: "Tools",
-    },
-    {
-      value: "ACCESSORIES",
-      label: "Accessories",
-    },
+    { value: "HAIR_CARE", label: "Hair Care" },
+    { value: "TOOLS", label: "Tools" },
+    { value: "ACCESSORIES", label: "Accessories" },
   ],
 };
+
+const materials = [
+  "Human Hair",
+  "Synthetic Hair",
+  "Human / Synthetic Blend",
+  "Other",
+  "Not Applicable",
+];
+
+const colors = [
+  "Natural / 1B",
+  "1 - Jet Black",
+  "2 - Dark Brown",
+  "4 - Medium Brown",
+  "27 - Honey Blonde",
+  "30 - Auburn",
+  "613 - Blonde",
+  "99J - Burgundy",
+  "Red",
+  "Copper",
+  "Pink",
+  "Blue",
+  "Purple",
+  "Gray / Silver",
+  "Mixed / Highlighted",
+  "Other / Custom",
+];
 
 const textures = [
   "Straight",
@@ -258,54 +200,35 @@ const densities = [
 
 const fieldStyle = {
   width: "100%",
-  boxSizing:
-    "border-box" as const,
-  border:
-    "1px solid #d8cce0",
-  borderRadius:
-    "10px",
-  padding:
-    "11px 12px",
-  background:
-    "#ffffff",
-  color:
-    "#21152a",
-  fontSize:
-    "14px",
+  boxSizing: "border-box" as const,
+  border: "1px solid #d8cce0",
+  borderRadius: "10px",
+  padding: "11px 12px",
+  background: "#ffffff",
+  color: "#21152a",
+  fontSize: "14px",
 };
 
 const labelStyle = {
   display: "block",
-  marginBottom:
-    "6px",
-  color:
-    "#4B1678",
-  fontSize:
-    "13px",
-  fontWeight:
-    "800",
+  marginBottom: "6px",
+  color: "#4B1678",
+  fontSize: "13px",
+  fontWeight: "800",
 };
 
 const sectionStyle = {
-  marginTop:
-    "25px",
-  paddingTop:
-    "23px",
-  borderTop:
-    "1px solid #eee7f2",
+  marginTop: "25px",
+  paddingTop: "23px",
+  borderTop: "1px solid #eee7f2",
 };
 
 function toggleValue(
   current: string[],
   value: string,
 ) {
-  return current.includes(
-    value,
-  )
-    ? current.filter(
-        (item) =>
-          item !== value,
-      )
+  return current.includes(value)
+    ? current.filter((item) => item !== value)
     : [...current, value];
 }
 
@@ -323,67 +246,43 @@ function ChoiceButton({
       type="button"
       onClick={onClick}
       style={{
-        border:
-          selected
-            ? "2px solid #4B1678"
-            : "1px solid #d8cce0",
-        background:
-          selected
-            ? "#f7f0fb"
-            : "#ffffff",
-        color:
-          "#4B1678",
-        borderRadius:
-          "9px",
-        padding:
-          "9px 12px",
-        fontWeight:
-          "800",
-        fontSize:
-          "12px",
-        cursor:
-          "pointer",
-        display:
-          "flex",
-        alignItems:
-          "center",
-        gap:
-          "7px",
+        border: selected
+          ? "2px solid #4B1678"
+          : "1px solid #d8cce0",
+        background: selected
+          ? "#f7f0fb"
+          : "#ffffff",
+        color: "#4B1678",
+        borderRadius: "9px",
+        padding: "9px 12px",
+        fontWeight: "800",
+        fontSize: "12px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "7px",
       }}
     >
       <span
         style={{
-          width:
-            "16px",
-          height:
-            "16px",
-          minWidth:
-            "16px",
-          borderRadius:
-            "4px",
-          background:
-            selected
-              ? "#4B1678"
-              : "#ffffff",
-          border:
-            selected
-              ? "1px solid #4B1678"
-              : "1px solid #b8acbf",
-          color:
-            "#ffffff",
-          display:
-            "inline-flex",
-          alignItems:
-            "center",
-          justifyContent:
-            "center",
-          fontSize:
-            "10px",
+          width: "16px",
+          height: "16px",
+          minWidth: "16px",
+          borderRadius: "4px",
+          background: selected
+            ? "#4B1678"
+            : "#ffffff",
+          border: selected
+            ? "1px solid #4B1678"
+            : "1px solid #b8acbf",
+          color: "#ffffff",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "10px",
         }}
       >
-        {selected
-          ? "✓"
-          : ""}
+        {selected ? "✓" : ""}
       </span>
 
       {label}
@@ -392,160 +291,90 @@ function ChoiceButton({
 }
 
 export default function SellerAddProductPage() {
-  const [
-    title,
-    setTitle,
-  ] =
+  const [title, setTitle] =
     useState("");
 
-  const [
-    description,
-    setDescription,
-  ] =
+  const [description, setDescription] =
     useState("");
 
-  const [
-    productType,
-    setProductType,
-  ] =
-    useState<ProductType | null>(
-      null,
-    );
+  const [productType, setProductType] =
+    useState<ProductType | null>(null);
 
-  const [
-    selectedOptions,
-    setSelectedOptions,
-  ] =
+  const [selectedOptions, setSelectedOptions] =
     useState<string[]>([]);
 
-  const [
-    optionsAreVariants,
-    setOptionsAreVariants,
-  ] =
+  const [optionsAreVariants, setOptionsAreVariants] =
     useState(false);
 
-  const [
-    texture,
-    setTexture,
-  ] =
+  const [material, setMaterial] =
     useState("");
 
-  const [
-    color,
-    setColor,
-  ] =
-    useState(
-      "Natural / 1B",
-    );
+  const [customMaterial, setCustomMaterial] =
+    useState("");
 
-  const [
-    selectedLengths,
-    setSelectedLengths,
-  ] =
+  const [texture, setTexture] =
+    useState("");
+
+  const [color, setColor] =
+    useState("Natural / 1B");
+
+  const [customColor, setCustomColor] =
+    useState("");
+
+  const [selectedLengths, setSelectedLengths] =
     useState<string[]>([]);
 
-  const [
-    customLength,
-    setCustomLength,
-  ] =
+  const [customLength, setCustomLength] =
     useState("");
 
-  const [
-    customLengths,
-    setCustomLengths,
-  ] =
+  const [customLengths, setCustomLengths] =
     useState<string[]>([]);
 
-  const [
-    density,
-    setDensity,
-  ] =
+  const [density, setDensity] =
     useState("");
 
-  const [
-    laceSize,
-    setLaceSize,
-  ] =
+  const [laceSize, setLaceSize] =
     useState("");
 
-  const [
-    laceType,
-    setLaceType,
-  ] =
+  const [laceType, setLaceType] =
     useState("");
 
-  const [
-    capSize,
-    setCapSize,
-  ] =
+  const [capSize, setCapSize] =
     useState("");
 
-  const [
-    bundleWeight,
-    setBundleWeight,
-  ] =
+  const [bundleWeight, setBundleWeight] =
     useState("100g");
 
-  const [
-    quickPrice,
-    setQuickPrice,
-  ] =
+  const [quickPrice, setQuickPrice] =
     useState("");
 
-  const [
-    quickInventory,
-    setQuickInventory,
-  ] =
+  const [quickInventory, setQuickInventory] =
     useState("");
 
-  const [
-    variantValues,
-    setVariantValues,
-  ] =
-    useState<
-      Record<
-        string,
-        VariantData
-      >
-    >({});
+  const [variantValues, setVariantValues] =
+    useState<Record<string, VariantData>>({});
 
-  const [
-    images,
-    setImages,
-  ] =
+  const [images, setImages] =
     useState<File[]>([]);
 
-  const [
-    videos,
-    setVideos,
-  ] =
+  const [videos, setVideos] =
     useState<File[]>([]);
 
-  const [
-    mediaMessage,
-    setMediaMessage,
-  ] =
+  const [mediaMessage, setMediaMessage] =
     useState("");
 
   const isHair =
     productType !== null &&
-    productType !==
-      "HAIR_ESSENTIAL";
+    productType !== "HAIR_ESSENTIAL";
 
   const currentOptions =
     productType
-      ? productOptions[
-          productType
-        ]
+      ? productOptions[productType]
       : [];
 
-  const optionLabel = (
-    value: string,
-  ) =>
+  const optionLabel = (value: string) =>
     currentOptions.find(
-      (item) =>
-        item.value ===
-        value,
+      (item) => item.value === value,
     )?.label || value;
 
   const allLengths =
@@ -564,80 +393,53 @@ export default function SellerAddProductPage() {
       }
 
       if (
-        productType ===
-        "HAIR_ESSENTIAL"
+        productType === "HAIR_ESSENTIAL"
       ) {
         return [
           {
             key: "DEFAULT",
-            length: "",
-            option: "",
-            label:
-              "Standard",
+            label: "Standard",
           },
         ];
       }
 
-      const lengths =
-        selectedLengths.length >
-        0
+      const rowLengths =
+        selectedLengths.length > 0
           ? selectedLengths
           : [""];
 
       const sellableOptions =
         optionsAreVariants &&
-        selectedOptions.length >
-          0
+        selectedOptions.length > 0
           ? selectedOptions
           : [""];
 
       const rows: Array<{
         key: string;
-        length: string;
-        option: string;
         label: string;
       }> = [];
 
-      for (
-        const length of
-        lengths
-      ) {
-        for (
-          const option of
-          sellableOptions
-        ) {
+      for (const length of rowLengths) {
+        for (const option of sellableOptions) {
           const key = [
-            length ||
-              "NO_LENGTH",
-            option ||
-              "NO_OPTION",
+            length || "NO_LENGTH",
+            option || "NO_OPTION",
           ].join("__");
 
-          const labels: string[] =
-            [];
+          const labels: string[] = [];
 
           if (length) {
-            labels.push(
-              `${length}"`,
-            );
+            labels.push(`${length}"`);
           }
 
           if (option) {
-            labels.push(
-              optionLabel(
-                option,
-              ),
-            );
+            labels.push(optionLabel(option));
           }
 
           rows.push({
             key,
-            length,
-            option,
             label:
-              labels.join(
-                " / ",
-              ) ||
+              labels.join(" / ") ||
               "Standard",
           });
         }
@@ -654,200 +456,136 @@ export default function SellerAddProductPage() {
 
   const setVariantField = (
     key: string,
-    field:
-      | "price"
-      | "inventory"
-      | "sku",
+    field: "price" | "inventory" | "sku",
     value: string,
   ) => {
-    setVariantValues(
-      (current) => ({
-        ...current,
+    setVariantValues((current) => ({
+      ...current,
 
-        [key]: {
-          price:
-            current[key]
-              ?.price || "",
+      [key]: {
+        price:
+          current[key]?.price || "",
+        inventory:
+          current[key]?.inventory || "",
+        sku:
+          current[key]?.sku || "",
+
+        [field]: value,
+      },
+    }));
+  };
+
+  const fillAllPrices = () => {
+    if (!quickPrice) return;
+
+    setVariantValues((current) => {
+      const next = { ...current };
+
+      for (const row of variantRows) {
+        next[row.key] = {
+          price: quickPrice,
           inventory:
-            current[key]
-              ?.inventory || "",
+            next[row.key]?.inventory || "",
           sku:
-            current[key]
-              ?.sku || "",
+            next[row.key]?.sku || "",
+        };
+      }
 
-          [field]:
-            value,
-        },
-      }),
+      return next;
+    });
+  };
+
+  const fillAllInventory = () => {
+    if (!quickInventory) return;
+
+    setVariantValues((current) => {
+      const next = { ...current };
+
+      for (const row of variantRows) {
+        next[row.key] = {
+          price:
+            next[row.key]?.price || "",
+          inventory: quickInventory,
+          sku:
+            next[row.key]?.sku || "",
+        };
+      }
+
+      return next;
+    });
+  };
+
+  const changeProductType = (
+    type: ProductType,
+  ) => {
+    setProductType(type);
+    setSelectedOptions([]);
+    setOptionsAreVariants(false);
+  };
+
+  const addCustomLength = () => {
+    const clean =
+      customLength
+        .replace(/[^0-9.]/g, "")
+        .trim();
+
+    if (!clean) return;
+
+    if (
+      !customLengths.includes(clean)
+    ) {
+      setCustomLengths(
+        (current) => [
+          ...current,
+          clean,
+        ],
+      );
+    }
+
+    if (
+      !selectedLengths.includes(clean)
+    ) {
+      setSelectedLengths(
+        (current) => [
+          ...current,
+          clean,
+        ],
+      );
+    }
+
+    setCustomLength("");
+  };
+
+  const removeCustomLength = (
+    value: string,
+  ) => {
+    setCustomLengths(
+      (current) =>
+        current.filter(
+          (item) => item !== value,
+        ),
+    );
+
+    setSelectedLengths(
+      (current) =>
+        current.filter(
+          (item) => item !== value,
+        ),
     );
   };
 
-  const fillAllPrices =
-    () => {
-      if (!quickPrice) {
-        return;
-      }
-
-      setVariantValues(
-        (current) => {
-          const next = {
-            ...current,
-          };
-
-          for (
-            const row of
-            variantRows
-          ) {
-            next[row.key] = {
-              price:
-                quickPrice,
-              inventory:
-                next[row.key]
-                  ?.inventory ||
-                "",
-              sku:
-                next[row.key]
-                  ?.sku || "",
-            };
-          }
-
-          return next;
-        },
-      );
-    };
-
-  const fillAllInventory =
-    () => {
-      if (!quickInventory) {
-        return;
-      }
-
-      setVariantValues(
-        (current) => {
-          const next = {
-            ...current,
-          };
-
-          for (
-            const row of
-            variantRows
-          ) {
-            next[row.key] = {
-              price:
-                next[row.key]
-                  ?.price || "",
-              inventory:
-                quickInventory,
-              sku:
-                next[row.key]
-                  ?.sku || "",
-            };
-          }
-
-          return next;
-        },
-      );
-    };
-
-  const changeProductType =
-    (
-      type: ProductType,
-    ) => {
-      setProductType(
-        type,
-      );
-
-      setSelectedOptions(
-        [],
-      );
-
-      setOptionsAreVariants(
-        false,
-      );
-    };
-
-  const addCustomLength =
-    () => {
-      const clean =
-        customLength
-          .replace(
-            /[^0-9.]/g,
-            "",
-          )
-          .trim();
-
-      if (!clean) {
-        return;
-      }
-
-      if (
-        !customLengths.includes(
-          clean,
-        )
-      ) {
-        setCustomLengths(
-          (current) => [
-            ...current,
-            clean,
-          ],
-        );
-      }
-
-      if (
-        !selectedLengths.includes(
-          clean,
-        )
-      ) {
-        setSelectedLengths(
-          (current) => [
-            ...current,
-            clean,
-          ],
-        );
-      }
-
-      setCustomLength(
-        "",
-      );
-    };
-
-  const removeCustomLength =
-    (value: string) => {
-      setCustomLengths(
-        (current) =>
-          current.filter(
-            (item) =>
-              item !==
-              value,
-          ),
-      );
-
-      setSelectedLengths(
-        (current) =>
-          current.filter(
-            (item) =>
-              item !==
-              value,
-          ),
-      );
-    };
-
   const handleImages = (
-    event: React.ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
   ) => {
     const files =
       Array.from(
-        event.target
-          .files || [],
+        event.target.files || [],
       );
 
     const remaining =
-      10 -
-      images.length;
+      10 - images.length;
 
-    if (
-      remaining <= 0
-    ) {
+    if (remaining <= 0) {
       setMediaMessage(
         "This product already has 10 images.",
       );
@@ -855,51 +593,38 @@ export default function SellerAddProductPage() {
     }
 
     const accepted =
-      files.slice(
-        0,
-        remaining,
-      );
+      files.slice(0, remaining);
 
-    setImages(
-      (current) => [
-        ...current,
-        ...accepted,
-      ],
-    );
+    setImages((current) => [
+      ...current,
+      ...accepted,
+    ]);
 
     if (
-      files.length >
-      remaining
+      files.length > remaining
     ) {
       setMediaMessage(
         `HairGrab allows up to 10 images. ${accepted.length} image(s) were added.`,
       );
     } else {
-      setMediaMessage(
-        "",
-      );
+      setMediaMessage("");
     }
 
-    event.target.value =
-      "";
+    event.target.value = "";
   };
 
   const handleVideos = (
-    event: React.ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
   ) => {
     const files =
       Array.from(
-        event.target
-          .files || [],
+        event.target.files || [],
       );
 
     const remaining =
-      3 -
-      videos.length;
+      3 - videos.length;
 
-    if (
-      remaining <= 0
-    ) {
+    if (remaining <= 0) {
       setMediaMessage(
         "This product already has 3 videos.",
       );
@@ -907,142 +632,113 @@ export default function SellerAddProductPage() {
     }
 
     const accepted =
-      files.slice(
-        0,
-        remaining,
-      );
+      files.slice(0, remaining);
 
-    setVideos(
-      (current) => [
-        ...current,
-        ...accepted,
-      ],
-    );
+    setVideos((current) => [
+      ...current,
+      ...accepted,
+    ]);
 
     if (
-      files.length >
-      remaining
+      files.length > remaining
     ) {
       setMediaMessage(
         `HairGrab allows up to 3 videos. ${accepted.length} video(s) were added.`,
       );
     } else {
-      setMediaMessage(
-        "",
-      );
+      setMediaMessage("");
     }
 
-    event.target.value =
-      "";
+    event.target.value = "";
   };
 
   const hasPrices =
-    variantRows.length >
-      0 &&
+    variantRows.length > 0 &&
     variantRows.every(
       (row) =>
         Boolean(
-          variantValues[
-            row.key
-          ]?.price,
+          variantValues[row.key]?.price,
         ),
     );
 
+  const resolvedMaterial =
+    material === "Other"
+      ? customMaterial.trim()
+      : material;
+
+  const resolvedColor =
+    color === "Other / Custom"
+      ? customColor.trim()
+      : color;
+
   const ready =
-    title.trim()
-      .length > 0 &&
-    description.trim()
-      .length > 0 &&
-    productType !==
-      null &&
+    title.trim().length > 0 &&
+    description.trim().length > 0 &&
+    productType !== null &&
+    resolvedMaterial.length > 0 &&
+    resolvedColor.length > 0 &&
     hasPrices;
 
   return (
     <div
       style={{
-        minHeight:
-          "100vh",
-        background:
-          "#faf8fc",
-        padding:
-          "28px 18px 70px",
-        fontFamily:
-          "Arial, sans-serif",
-        color:
-          "#21152a",
+        minHeight: "100vh",
+        background: "#faf8fc",
+        padding: "28px 18px 70px",
+        fontFamily: "Arial, sans-serif",
+        color: "#21152a",
       }}
     >
       <div
         style={{
-          maxWidth:
-            "920px",
-          margin:
-            "0 auto",
+          maxWidth: "920px",
+          margin: "0 auto",
         }}
       >
         <div
           style={{
-            textAlign:
-              "center",
-            marginBottom:
-              "20px",
+            textAlign: "center",
+            marginBottom: "20px",
           }}
         >
           <img
             src="/hairgrab-logo.png"
             alt="HairGrab"
             style={{
-              width:
-                "235px",
-              maxWidth:
-                "70%",
-              height:
-                "auto",
+              width: "235px",
+              maxWidth: "70%",
+              height: "auto",
             }}
           />
         </div>
 
         <div
           style={{
-            background:
-              "#ffffff",
-            border:
-              "1px solid #e6d9ef",
-            borderRadius:
-              "18px",
-            padding:
-              "26px",
+            background: "#ffffff",
+            border: "1px solid #e6d9ef",
+            borderRadius: "18px",
+            padding: "26px",
             boxShadow:
               "0 4px 18px rgba(75,22,120,.07)",
           }}
         >
           <div
             style={{
-              display:
-                "flex",
-              justifyContent:
-                "space-between",
-              alignItems:
-                "center",
-              gap:
-                "12px",
-              flexWrap:
-                "wrap",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "12px",
+              flexWrap: "wrap",
             }}
           >
             <div>
               <div
                 style={{
-                  color:
-                    "#7b3fa0",
-                  fontSize:
-                    "11px",
-                  fontWeight:
-                    "800",
-                  letterSpacing:
-                    "1.2px",
-                  textTransform:
-                    "uppercase",
+                  color: "#7b3fa0",
+                  fontSize: "11px",
+                  fontWeight: "800",
+                  letterSpacing: "1.2px",
+                  textTransform: "uppercase",
                 }}
               >
                 HairGrab Quick Add
@@ -1050,12 +746,9 @@ export default function SellerAddProductPage() {
 
               <h1
                 style={{
-                  margin:
-                    "5px 0 4px",
-                  color:
-                    "#4B1678",
-                  fontSize:
-                    "29px",
+                  margin: "5px 0 4px",
+                  color: "#4B1678",
+                  fontSize: "29px",
                 }}
               >
                 Add a Product
@@ -1063,119 +756,75 @@ export default function SellerAddProductPage() {
 
               <div
                 style={{
-                  color:
-                    "#776e7b",
-                  fontSize:
-                    "12px",
+                  color: "#776e7b",
+                  fontSize: "12px",
                 }}
               >
-                Paste the basics.
-                HairGrab handles
-                the repetitive
-                parts.
+                Paste the basics. HairGrab handles the repetitive parts.
               </div>
             </div>
 
             <div
               style={{
-                background:
-                  "#eef8f0",
-                color:
-                  "#347143",
-                border:
-                  "1px solid #cbe3d0",
-                padding:
-                  "8px 12px",
-                borderRadius:
-                  "20px",
-                fontWeight:
-                  "800",
-                fontSize:
-                  "11px",
+                background: "#eef8f0",
+                color: "#347143",
+                border: "1px solid #cbe3d0",
+                padding: "8px 12px",
+                borderRadius: "20px",
+                fontWeight: "800",
+                fontSize: "11px",
               }}
             >
-              Goal: under 2
-              minutes
+              Goal: under 2 minutes
             </div>
           </div>
 
-          {/* BASIC INFO */}
+          {/* PRODUCT INFORMATION */}
 
-          <div
-            style={
-              sectionStyle
-            }
-          >
+          <div style={sectionStyle}>
             <h2
               style={{
-                margin:
-                  "0 0 15px",
-                color:
-                  "#4B1678",
-                fontSize:
-                  "19px",
+                margin: "0 0 15px",
+                color: "#4B1678",
+                fontSize: "19px",
               }}
             >
-              Product information
+              Product Information
             </h2>
 
             <div
               style={{
-                display:
-                  "grid",
-                gap:
-                  "16px",
+                display: "grid",
+                gap: "16px",
               }}
             >
               <div>
-                <label
-                  style={
-                    labelStyle
-                  }
-                >
+                <label style={labelStyle}>
                   Product Name *
                 </label>
 
                 <input
-                  value={
-                    title
-                  }
-                  onChange={(
-                    event,
-                  ) =>
+                  value={title}
+                  onChange={(event) =>
                     setTitle(
-                      event
-                        .target
-                        .value,
+                      event.target.value,
                     )
                   }
                   placeholder="Paste or type product name"
-                  style={
-                    fieldStyle
-                  }
+                  style={fieldStyle}
                 />
               </div>
 
               <div>
-                <label
-                  style={
-                    labelStyle
-                  }
-                >
+                <label style={labelStyle}>
                   Description *
                 </label>
 
                 <textarea
-                  value={
-                    description
-                  }
-                  onChange={(
-                    event,
-                  ) =>
+                  value={description}
+                  onChange={(event) =>
                     setDescription(
-                      event
-                        .target
-                        .value,
+                      event.target.value,
                     )
                   }
                   rows={4}
@@ -1184,8 +833,7 @@ export default function SellerAddProductPage() {
                     ...fieldStyle,
                     fontFamily:
                       "Arial, sans-serif",
-                    resize:
-                      "vertical",
+                    resize: "vertical",
                   }}
                 />
               </div>
@@ -1194,19 +842,12 @@ export default function SellerAddProductPage() {
 
           {/* PRODUCT TYPE */}
 
-          <div
-            style={
-              sectionStyle
-            }
-          >
+          <div style={sectionStyle}>
             <h2
               style={{
-                margin:
-                  "0 0 5px",
-                color:
-                  "#4B1678",
-                fontSize:
-                  "19px",
+                margin: "0 0 5px",
+                color: "#4B1678",
+                fontSize: "19px",
               }}
             >
               Product Type
@@ -1214,39 +855,30 @@ export default function SellerAddProductPage() {
 
             <div
               style={{
-                color:
-                  "#817787",
-                fontSize:
-                  "11px",
-                marginBottom:
-                  "13px",
+                color: "#817787",
+                fontSize: "11px",
+                marginBottom: "13px",
               }}
             >
-              Choose one main
-              product type.
+              Choose one main product type.
             </div>
 
             <div
               style={{
-                display:
-                  "grid",
+                display: "grid",
                 gridTemplateColumns:
                   "repeat(auto-fit, minmax(200px, 1fr))",
-                gap:
-                  "10px",
+                gap: "10px",
               }}
             >
               {productTypes.map(
                 (item) => {
                   const selected =
-                    productType ===
-                    item.value;
+                    productType === item.value;
 
                   return (
                     <button
-                      key={
-                        item.value
-                      }
+                      key={item.value}
                       type="button"
                       onClick={() =>
                         changeProductType(
@@ -1254,54 +886,37 @@ export default function SellerAddProductPage() {
                         )
                       }
                       style={{
-                        textAlign:
-                          "left",
-                        border:
-                          selected
-                            ? "2px solid #4B1678"
-                            : "1px solid #ded3e5",
-                        background:
-                          selected
-                            ? "#f7f0fb"
-                            : "#ffffff",
-                        borderRadius:
-                          "11px",
-                        padding:
-                          "13px",
-                        cursor:
-                          "pointer",
+                        textAlign: "left",
+                        border: selected
+                          ? "2px solid #4B1678"
+                          : "1px solid #ded3e5",
+                        background: selected
+                          ? "#f7f0fb"
+                          : "#ffffff",
+                        borderRadius: "11px",
+                        padding: "13px",
+                        cursor: "pointer",
                       }}
                     >
                       <div
                         style={{
-                          color:
-                            "#4B1678",
-                          fontWeight:
-                            "800",
-                          fontSize:
-                            "14px",
+                          color: "#4B1678",
+                          fontWeight: "800",
+                          fontSize: "14px",
                         }}
                       >
-                        {
-                          item.label
-                        }
+                        {item.label}
                       </div>
 
                       <div
                         style={{
-                          color:
-                            "#7d7480",
-                          fontSize:
-                            "10px",
-                          lineHeight:
-                            "1.4",
-                          marginTop:
-                            "4px",
+                          color: "#7d7480",
+                          fontSize: "10px",
+                          lineHeight: "1.4",
+                          marginTop: "4px",
                         }}
                       >
-                        {
-                          item.description
-                        }
+                        {item.description}
                       </div>
                     </button>
                   );
@@ -1310,22 +925,145 @@ export default function SellerAddProductPage() {
             </div>
           </div>
 
+          {/* UNIVERSAL MATERIAL + COLOR */}
+
+          {productType && (
+            <div style={sectionStyle}>
+              <h2
+                style={{
+                  margin: "0 0 15px",
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Material & Color
+              </h2>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(230px, 1fr))",
+                  gap: "15px",
+                }}
+              >
+                <div>
+                  <label style={labelStyle}>
+                    Material *
+                  </label>
+
+                  <select
+                    value={material}
+                    onChange={(event) => {
+                      setMaterial(
+                        event.target.value,
+                      );
+
+                      if (
+                        event.target.value !==
+                        "Other"
+                      ) {
+                        setCustomMaterial("");
+                      }
+                    }}
+                    style={fieldStyle}
+                  >
+                    <option value="">
+                      Select material
+                    </option>
+
+                    {materials.map(
+                      (item) => (
+                        <option
+                          key={item}
+                          value={item}
+                        >
+                          {item}
+                        </option>
+                      ),
+                    )}
+                  </select>
+
+                  {material === "Other" && (
+                    <input
+                      value={customMaterial}
+                      onChange={(event) =>
+                        setCustomMaterial(
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Type material"
+                      style={{
+                        ...fieldStyle,
+                        marginTop: "8px",
+                      }}
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Color *
+                  </label>
+
+                  <select
+                    value={color}
+                    onChange={(event) => {
+                      setColor(
+                        event.target.value,
+                      );
+
+                      if (
+                        event.target.value !==
+                        "Other / Custom"
+                      ) {
+                        setCustomColor("");
+                      }
+                    }}
+                    style={fieldStyle}
+                  >
+                    {colors.map(
+                      (item) => (
+                        <option
+                          key={item}
+                          value={item}
+                        >
+                          {item}
+                        </option>
+                      ),
+                    )}
+                  </select>
+
+                  {color ===
+                    "Other / Custom" && (
+                    <input
+                      value={customColor}
+                      onChange={(event) =>
+                        setCustomColor(
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Example: Champagne Blonde"
+                      style={{
+                        ...fieldStyle,
+                        marginTop: "8px",
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* PRODUCT OPTIONS */}
 
           {productType && (
-            <div
-              style={
-                sectionStyle
-              }
-            >
+            <div style={sectionStyle}>
               <h2
                 style={{
-                  margin:
-                    "0 0 5px",
-                  color:
-                    "#4B1678",
-                  fontSize:
-                    "19px",
+                  margin: "0 0 5px",
+                  color: "#4B1678",
+                  fontSize: "19px",
                 }}
               >
                 Product Options
@@ -1333,45 +1071,32 @@ export default function SellerAddProductPage() {
 
               <div
                 style={{
-                  color:
-                    "#817787",
-                  fontSize:
-                    "11px",
-                  marginBottom:
-                    "13px",
+                  color: "#817787",
+                  fontSize: "11px",
+                  marginBottom: "13px",
                 }}
               >
-                Select everything
-                that applies.
+                Select everything that applies.
               </div>
 
               <div
                 style={{
-                  display:
-                    "flex",
-                  flexWrap:
-                    "wrap",
-                  gap:
-                    "8px",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
                 }}
               >
                 {currentOptions.map(
                   (item) => (
                     <ChoiceButton
-                      key={
-                        item.value
-                      }
-                      label={
-                        item.label
-                      }
+                      key={item.value}
+                      label={item.label}
                       selected={selectedOptions.includes(
                         item.value,
                       )}
                       onClick={() =>
                         setSelectedOptions(
-                          (
-                            current,
-                          ) =>
+                          (current) =>
                             toggleValue(
                               current,
                               item.value,
@@ -1387,28 +1112,20 @@ export default function SellerAddProductPage() {
                 1 && (
                 <div
                   style={{
-                    marginTop:
-                      "15px",
-                    padding:
-                      "13px",
+                    marginTop: "15px",
+                    padding: "13px",
                     border:
                       "1px solid #dfd2e7",
-                    borderRadius:
-                      "10px",
-                    background:
-                      "#faf7fc",
+                    borderRadius: "10px",
+                    background: "#faf7fc",
                   }}
                 >
                   <label
                     style={{
-                      display:
-                        "flex",
-                      alignItems:
-                        "center",
-                      gap:
-                        "9px",
-                      cursor:
-                        "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "9px",
+                      cursor: "pointer",
                     }}
                   >
                     <input
@@ -1416,13 +1133,9 @@ export default function SellerAddProductPage() {
                       checked={
                         optionsAreVariants
                       }
-                      onChange={(
-                        event,
-                      ) =>
+                      onChange={(event) =>
                         setOptionsAreVariants(
-                          event
-                            .target
-                            .checked,
+                          event.target.checked,
                         )
                       }
                     />
@@ -1430,36 +1143,22 @@ export default function SellerAddProductPage() {
                     <div>
                       <div
                         style={{
-                          color:
-                            "#4B1678",
-                          fontWeight:
-                            "800",
-                          fontSize:
-                            "12px",
+                          color: "#4B1678",
+                          fontWeight: "800",
+                          fontSize: "12px",
                         }}
                       >
-                        Price these
-                        options
-                        separately
+                        Price these options separately
                       </div>
 
                       <div
                         style={{
-                          color:
-                            "#817787",
-                          fontSize:
-                            "10px",
-                          marginTop:
-                            "2px",
+                          color: "#817787",
+                          fontSize: "10px",
+                          marginTop: "2px",
                         }}
                       >
-                        Turn this on
-                        only if the
-                        customer chooses
-                        between these
-                        options and they
-                        may have
-                        different prices.
+                        Use this only when the customer chooses between these options.
                       </div>
                     </div>
                   </label>
@@ -1471,19 +1170,12 @@ export default function SellerAddProductPage() {
           {/* HAIR DETAILS */}
 
           {isHair && (
-            <div
-              style={
-                sectionStyle
-              }
-            >
+            <div style={sectionStyle}>
               <h2
                 style={{
-                  margin:
-                    "0 0 15px",
-                  color:
-                    "#4B1678",
-                  fontSize:
-                    "19px",
+                  margin: "0 0 15px",
+                  color: "#4B1678",
+                  fontSize: "19px",
                 }}
               >
                 Hair Details
@@ -1491,39 +1183,25 @@ export default function SellerAddProductPage() {
 
               <div
                 style={{
-                  display:
-                    "grid",
+                  display: "grid",
                   gridTemplateColumns:
                     "repeat(auto-fit, minmax(210px, 1fr))",
-                  gap:
-                    "15px",
+                  gap: "15px",
                 }}
               >
                 <div>
-                  <label
-                    style={
-                      labelStyle
-                    }
-                  >
+                  <label style={labelStyle}>
                     Texture
                   </label>
 
                   <select
-                    value={
-                      texture
-                    }
-                    onChange={(
-                      event,
-                    ) =>
+                    value={texture}
+                    onChange={(event) =>
                       setTexture(
-                        event
-                          .target
-                          .value,
+                        event.target.value,
                       )
                     }
-                    style={
-                      fieldStyle
-                    }
+                    style={fieldStyle}
                   >
                     <option value="">
                       Select texture
@@ -1532,12 +1210,8 @@ export default function SellerAddProductPage() {
                     {textures.map(
                       (item) => (
                         <option
-                          key={
-                            item
-                          }
-                          value={
-                            item
-                          }
+                          key={item}
+                          value={item}
                         >
                           {item}
                         </option>
@@ -1545,60 +1219,22 @@ export default function SellerAddProductPage() {
                     )}
                   </select>
                 </div>
-
-                <div>
-                  <label
-                    style={
-                      labelStyle
-                    }
-                  >
-                    Color
-                  </label>
-
-                  <input
-                    value={
-                      color
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setColor(
-                        event
-                          .target
-                          .value,
-                      )
-                    }
-                    style={
-                      fieldStyle
-                    }
-                  />
-                </div>
               </div>
-
-              {/* LENGTHS */}
 
               <div
                 style={{
-                  marginTop:
-                    "18px",
+                  marginTop: "18px",
                 }}
               >
-                <label
-                  style={
-                    labelStyle
-                  }
-                >
+                <label style={labelStyle}>
                   Available Lengths
                 </label>
 
                 <div
                   style={{
-                    display:
-                      "flex",
-                    flexWrap:
-                      "wrap",
-                    gap:
-                      "7px",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "7px",
                   }}
                 >
                   {allLengths.map(
@@ -1610,25 +1246,18 @@ export default function SellerAddProductPage() {
 
                       return (
                         <div
-                          key={
-                            length
-                          }
+                          key={length}
                           style={{
-                            display:
-                              "flex",
-                            alignItems:
-                              "center",
-                            gap:
-                              "3px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "3px",
                           }}
                         >
                           <button
                             type="button"
                             onClick={() =>
                               setSelectedLengths(
-                                (
-                                  current,
-                                ) =>
+                                (current) =>
                                   toggleValue(
                                     current,
                                     length,
@@ -1636,26 +1265,18 @@ export default function SellerAddProductPage() {
                               )
                             }
                             style={{
-                              border:
-                                selected
-                                  ? "2px solid #4B1678"
-                                  : "1px solid #d8cce0",
-                              background:
-                                selected
-                                  ? "#f7f0fb"
-                                  : "#ffffff",
-                              color:
-                                "#4B1678",
-                              borderRadius:
-                                "8px",
-                              padding:
-                                "8px 10px",
-                              fontWeight:
-                                "800",
-                              fontSize:
-                                "12px",
-                              cursor:
-                                "pointer",
+                              border: selected
+                                ? "2px solid #4B1678"
+                                : "1px solid #d8cce0",
+                              background: selected
+                                ? "#f7f0fb"
+                                : "#ffffff",
+                              color: "#4B1678",
+                              borderRadius: "8px",
+                              padding: "8px 10px",
+                              fontWeight: "800",
+                              fontSize: "12px",
+                              cursor: "pointer",
                             }}
                           >
                             {length}"
@@ -1671,18 +1292,12 @@ export default function SellerAddProductPage() {
                                   length,
                                 )
                               }
-                              title="Remove custom length"
                               style={{
-                                border:
-                                  "none",
+                                border: "none",
                                 background:
                                   "transparent",
-                                color:
-                                  "#9a849f",
-                                cursor:
-                                  "pointer",
-                                padding:
-                                  "3px",
+                                color: "#9a849f",
+                                cursor: "pointer",
                               }}
                             >
                               ×
@@ -1696,162 +1311,106 @@ export default function SellerAddProductPage() {
 
                 <div
                   style={{
-                    display:
-                      "flex",
-                    gap:
-                      "8px",
-                    marginTop:
-                      "11px",
-                    flexWrap:
-                      "wrap",
+                    display: "flex",
+                    gap: "8px",
+                    marginTop: "11px",
+                    flexWrap: "wrap",
                   }}
                 >
                   <input
-                    value={
-                      customLength
-                    }
-                    onChange={(
-                      event,
-                    ) =>
+                    value={customLength}
+                    onChange={(event) =>
                       setCustomLength(
-                        event
-                          .target
-                          .value,
+                        event.target.value,
                       )
                     }
-                    onKeyDown={(
-                      event,
-                    ) => {
+                    onKeyDown={(event) => {
                       if (
-                        event.key ===
-                        "Enter"
+                        event.key === "Enter"
                       ) {
                         event.preventDefault();
                         addCustomLength();
                       }
                     }}
-                    placeholder='Other length, e.g. 42'
+                    placeholder="Other length, e.g. 42"
                     style={{
                       ...fieldStyle,
-                      maxWidth:
-                        "220px",
+                      maxWidth: "220px",
                     }}
                   />
 
                   <button
                     type="button"
-                    onClick={
-                      addCustomLength
-                    }
+                    onClick={addCustomLength}
                     style={{
                       border:
                         "1px solid #4B1678",
-                      background:
-                        "#ffffff",
-                      color:
-                        "#4B1678",
-                      borderRadius:
-                        "9px",
-                      padding:
-                        "9px 14px",
-                      fontWeight:
-                        "800",
-                      cursor:
-                        "pointer",
+                      background: "#ffffff",
+                      color: "#4B1678",
+                      borderRadius: "9px",
+                      padding: "9px 14px",
+                      fontWeight: "800",
+                      cursor: "pointer",
                     }}
                   >
-                    + Add Other
-                    Length
+                    + Add Other Length
                   </button>
                 </div>
               </div>
 
-              {/* OPTIONAL DETAILS */}
-
               <details
                 style={{
-                  marginTop:
-                    "18px",
-                  padding:
-                    "12px 0",
+                  marginTop: "18px",
+                  padding: "12px 0",
                 }}
               >
                 <summary
                   style={{
-                    color:
-                      "#4B1678",
-                    fontWeight:
-                      "800",
-                    fontSize:
-                      "12px",
-                    cursor:
-                      "pointer",
+                    color: "#4B1678",
+                    fontWeight: "800",
+                    fontSize: "12px",
+                    cursor: "pointer",
                   }}
                 >
-                  Optional hair
-                  details
+                  Optional hair details
                 </summary>
 
                 <div
                   style={{
-                    display:
-                      "grid",
+                    display: "grid",
                     gridTemplateColumns:
                       "repeat(auto-fit, minmax(200px, 1fr))",
-                    gap:
-                      "14px",
-                    marginTop:
-                      "14px",
+                    gap: "14px",
+                    marginTop: "14px",
                   }}
                 >
-                  {productType ===
-                    "WIG" && (
+                  {productType === "WIG" && (
                     <>
                       <div>
-                        <label
-                          style={
-                            labelStyle
-                          }
-                        >
+                        <label style={labelStyle}>
                           Density
                         </label>
 
                         <select
-                          value={
-                            density
-                          }
-                          onChange={(
-                            event,
-                          ) =>
+                          value={density}
+                          onChange={(event) =>
                             setDensity(
-                              event
-                                .target
-                                .value,
+                              event.target.value,
                             )
                           }
-                          style={
-                            fieldStyle
-                          }
+                          style={fieldStyle}
                         >
                           <option value="">
                             Select
                           </option>
 
                           {densities.map(
-                            (
-                              item,
-                            ) => (
+                            (item) => (
                               <option
-                                key={
-                                  item
-                                }
-                                value={
-                                  item
-                                }
+                                key={item}
+                                value={item}
                               >
-                                {
-                                  item
-                                }
+                                {item}
                               </option>
                             ),
                           )}
@@ -1859,50 +1418,30 @@ export default function SellerAddProductPage() {
                       </div>
 
                       <div>
-                        <label
-                          style={
-                            labelStyle
-                          }
-                        >
+                        <label style={labelStyle}>
                           Lace Size
                         </label>
 
                         <select
-                          value={
-                            laceSize
-                          }
-                          onChange={(
-                            event,
-                          ) =>
+                          value={laceSize}
+                          onChange={(event) =>
                             setLaceSize(
-                              event
-                                .target
-                                .value,
+                              event.target.value,
                             )
                           }
-                          style={
-                            fieldStyle
-                          }
+                          style={fieldStyle}
                         >
                           <option value="">
                             Select
                           </option>
 
                           {laceSizes.map(
-                            (
-                              item,
-                            ) => (
+                            (item) => (
                               <option
-                                key={
-                                  item
-                                }
-                                value={
-                                  item
-                                }
+                                key={item}
+                                value={item}
                               >
-                                {
-                                  item
-                                }
+                                {item}
                               </option>
                             ),
                           )}
@@ -1910,50 +1449,30 @@ export default function SellerAddProductPage() {
                       </div>
 
                       <div>
-                        <label
-                          style={
-                            labelStyle
-                          }
-                        >
+                        <label style={labelStyle}>
                           Lace Type
                         </label>
 
                         <select
-                          value={
-                            laceType
-                          }
-                          onChange={(
-                            event,
-                          ) =>
+                          value={laceType}
+                          onChange={(event) =>
                             setLaceType(
-                              event
-                                .target
-                                .value,
+                              event.target.value,
                             )
                           }
-                          style={
-                            fieldStyle
-                          }
+                          style={fieldStyle}
                         >
                           <option value="">
                             Select
                           </option>
 
                           {laceTypes.map(
-                            (
-                              item,
-                            ) => (
+                            (item) => (
                               <option
-                                key={
-                                  item
-                                }
-                                value={
-                                  item
-                                }
+                                key={item}
+                                value={item}
                               >
-                                {
-                                  item
-                                }
+                                {item}
                               </option>
                             ),
                           )}
@@ -1961,46 +1480,26 @@ export default function SellerAddProductPage() {
                       </div>
 
                       <div>
-                        <label
-                          style={
-                            labelStyle
-                          }
-                        >
+                        <label style={labelStyle}>
                           Cap Size
                         </label>
 
                         <select
-                          value={
-                            capSize
-                          }
-                          onChange={(
-                            event,
-                          ) =>
+                          value={capSize}
+                          onChange={(event) =>
                             setCapSize(
-                              event
-                                .target
-                                .value,
+                              event.target.value,
                             )
                           }
-                          style={
-                            fieldStyle
-                          }
+                          style={fieldStyle}
                         >
                           <option value="">
                             Select
                           </option>
-                          <option>
-                            Small
-                          </option>
-                          <option>
-                            Medium
-                          </option>
-                          <option>
-                            Large
-                          </option>
-                          <option>
-                            Adjustable
-                          </option>
+                          <option>Small</option>
+                          <option>Medium</option>
+                          <option>Large</option>
+                          <option>Adjustable</option>
                         </select>
                       </div>
                     </>
@@ -2009,46 +1508,24 @@ export default function SellerAddProductPage() {
                   {productType ===
                     "BUNDLE" && (
                     <div>
-                      <label
-                        style={
-                          labelStyle
-                        }
-                      >
+                      <label style={labelStyle}>
                         Bundle Weight
                       </label>
 
                       <select
-                        value={
-                          bundleWeight
-                        }
-                        onChange={(
-                          event,
-                        ) =>
+                        value={bundleWeight}
+                        onChange={(event) =>
                           setBundleWeight(
-                            event
-                              .target
-                              .value,
+                            event.target.value,
                           )
                         }
-                        style={
-                          fieldStyle
-                        }
+                        style={fieldStyle}
                       >
-                        <option>
-                          50g
-                        </option>
-                        <option>
-                          100g
-                        </option>
-                        <option>
-                          120g
-                        </option>
-                        <option>
-                          150g
-                        </option>
-                        <option>
-                          200g+
-                        </option>
+                        <option>50g</option>
+                        <option>100g</option>
+                        <option>120g</option>
+                        <option>150g</option>
+                        <option>200g+</option>
                       </select>
                     </div>
                   )}
@@ -2060,19 +1537,12 @@ export default function SellerAddProductPage() {
           {/* VARIANT PRICING */}
 
           {productType && (
-            <div
-              style={
-                sectionStyle
-              }
-            >
+            <div style={sectionStyle}>
               <h2
                 style={{
-                  margin:
-                    "0 0 5px",
-                  color:
-                    "#4B1678",
-                  fontSize:
-                    "19px",
+                  margin: "0 0 5px",
+                  color: "#4B1678",
+                  fontSize: "19px",
                 }}
               >
                 Variant Pricing
@@ -2080,19 +1550,12 @@ export default function SellerAddProductPage() {
 
               <div
                 style={{
-                  color:
-                    "#817787",
-                  fontSize:
-                    "11px",
-                  marginBottom:
-                    "15px",
+                  color: "#817787",
+                  fontSize: "11px",
+                  marginBottom: "15px",
                 }}
               >
-                HairGrab creates
-                the combinations
-                for you. Enter the
-                price for each
-                sellable option.
+                HairGrab builds the combinations. You only enter the selling price.
               </div>
 
               {isHair &&
@@ -2100,118 +1563,75 @@ export default function SellerAddProductPage() {
                   0 && (
                   <div
                     style={{
-                      background:
-                        "#fff9e9",
+                      background: "#fff9e9",
                       border:
                         "1px solid #eadcae",
-                      color:
-                        "#755f1d",
-                      borderRadius:
-                        "9px",
-                      padding:
-                        "11px",
-                      fontSize:
-                        "11px",
-                      marginBottom:
-                        "14px",
+                      color: "#755f1d",
+                      borderRadius: "9px",
+                      padding: "11px",
+                      fontSize: "11px",
+                      marginBottom: "14px",
                     }}
                   >
-                    Select at least
-                    one length above
-                    to build the
-                    pricing rows.
+                    Select at least one length above to build the pricing rows.
                   </div>
                 )}
 
-              {variantRows.length >
-                0 &&
+              {variantRows.length > 0 &&
                 (!isHair ||
                   selectedLengths.length >
                     0) && (
                   <>
-                    {/* QUICK FILL */}
-
                     <div
                       style={{
-                        display:
-                          "grid",
+                        display: "grid",
                         gridTemplateColumns:
                           "repeat(auto-fit, minmax(220px, 1fr))",
-                        gap:
-                          "10px",
-                        marginBottom:
-                          "15px",
-                        padding:
-                          "13px",
-                        background:
-                          "#faf7fc",
+                        gap: "10px",
+                        marginBottom: "15px",
+                        padding: "13px",
+                        background: "#faf7fc",
                         border:
                           "1px solid #e5daec",
-                        borderRadius:
-                          "10px",
+                        borderRadius: "10px",
                       }}
                     >
                       <div>
-                        <label
-                          style={
-                            labelStyle
-                          }
-                        >
-                          Quick Fill
-                          Price
+                        <label style={labelStyle}>
+                          Quick Fill Price
                         </label>
 
                         <div
                           style={{
-                            display:
-                              "flex",
-                            gap:
-                              "6px",
+                            display: "flex",
+                            gap: "6px",
                           }}
                         >
                           <input
                             type="number"
                             step="0.01"
-                            value={
-                              quickPrice
-                            }
-                            onChange={(
-                              event,
-                            ) =>
+                            value={quickPrice}
+                            onChange={(event) =>
                               setQuickPrice(
-                                event
-                                  .target
-                                  .value,
+                                event.target.value,
                               )
                             }
                             placeholder="99.00"
-                            style={
-                              fieldStyle
-                            }
+                            style={fieldStyle}
                           />
 
                           <button
                             type="button"
-                            onClick={
-                              fillAllPrices
-                            }
+                            onClick={fillAllPrices}
                             style={{
-                              border:
-                                "none",
-                              background:
-                                "#4B1678",
-                              color:
-                                "#ffffff",
-                              borderRadius:
-                                "8px",
-                              padding:
-                                "8px 11px",
-                              fontWeight:
-                                "800",
-                              cursor:
-                                "pointer",
-                              whiteSpace:
-                                "nowrap",
+                              border: "none",
+                              background: "#4B1678",
+                              color: "#ffffff",
+                              borderRadius: "8px",
+                              padding: "8px 11px",
+                              fontWeight: "800",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
                             }}
                           >
                             Fill All
@@ -2220,65 +1640,41 @@ export default function SellerAddProductPage() {
                       </div>
 
                       <div>
-                        <label
-                          style={
-                            labelStyle
-                          }
-                        >
-                          Quick Fill
-                          Inventory
+                        <label style={labelStyle}>
+                          Quick Fill Inventory
                         </label>
 
                         <div
                           style={{
-                            display:
-                              "flex",
-                            gap:
-                              "6px",
+                            display: "flex",
+                            gap: "6px",
                           }}
                         >
                           <input
                             type="number"
-                            value={
-                              quickInventory
-                            }
-                            onChange={(
-                              event,
-                            ) =>
+                            value={quickInventory}
+                            onChange={(event) =>
                               setQuickInventory(
-                                event
-                                  .target
-                                  .value,
+                                event.target.value,
                               )
                             }
                             placeholder="5"
-                            style={
-                              fieldStyle
-                            }
+                            style={fieldStyle}
                           />
 
                           <button
                             type="button"
-                            onClick={
-                              fillAllInventory
-                            }
+                            onClick={fillAllInventory}
                             style={{
                               border:
                                 "1px solid #4B1678",
-                              background:
-                                "#ffffff",
-                              color:
-                                "#4B1678",
-                              borderRadius:
-                                "8px",
-                              padding:
-                                "8px 11px",
-                              fontWeight:
-                                "800",
-                              cursor:
-                                "pointer",
-                              whiteSpace:
-                                "nowrap",
+                              background: "#ffffff",
+                              color: "#4B1678",
+                              borderRadius: "8px",
+                              padding: "8px 11px",
+                              fontWeight: "800",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
                             }}
                           >
                             Fill All
@@ -2287,41 +1683,31 @@ export default function SellerAddProductPage() {
                       </div>
                     </div>
 
-                    {/* MATRIX */}
-
                     <div
                       style={{
-                        overflowX:
-                          "auto",
+                        overflowX: "auto",
                       }}
                     >
                       <table
                         style={{
-                          width:
-                            "100%",
+                          width: "100%",
                           borderCollapse:
                             "collapse",
-                          minWidth:
-                            "620px",
+                          minWidth: "620px",
                         }}
                       >
                         <thead>
                           <tr
                             style={{
-                              background:
-                                "#f7f0fb",
+                              background: "#f7f0fb",
                             }}
                           >
                             <th
                               style={{
-                                textAlign:
-                                  "left",
-                                padding:
-                                  "10px",
-                                color:
-                                  "#4B1678",
-                                fontSize:
-                                  "11px",
+                                textAlign: "left",
+                                padding: "10px",
+                                color: "#4B1678",
+                                fontSize: "11px",
                               }}
                             >
                               Variant
@@ -2329,14 +1715,10 @@ export default function SellerAddProductPage() {
 
                             <th
                               style={{
-                                textAlign:
-                                  "left",
-                                padding:
-                                  "10px",
-                                color:
-                                  "#4B1678",
-                                fontSize:
-                                  "11px",
+                                textAlign: "left",
+                                padding: "10px",
+                                color: "#4B1678",
+                                fontSize: "11px",
                               }}
                             >
                               Price *
@@ -2344,14 +1726,10 @@ export default function SellerAddProductPage() {
 
                             <th
                               style={{
-                                textAlign:
-                                  "left",
-                                padding:
-                                  "10px",
-                                color:
-                                  "#4B1678",
-                                fontSize:
-                                  "11px",
+                                textAlign: "left",
+                                padding: "10px",
+                                color: "#4B1678",
+                                fontSize: "11px",
                               }}
                             >
                               Inventory
@@ -2359,14 +1737,10 @@ export default function SellerAddProductPage() {
 
                             <th
                               style={{
-                                textAlign:
-                                  "left",
-                                padding:
-                                  "10px",
-                                color:
-                                  "#4B1678",
-                                fontSize:
-                                  "11px",
+                                textAlign: "left",
+                                padding: "10px",
+                                color: "#4B1678",
+                                fontSize: "11px",
                               }}
                             >
                               SKU
@@ -2379,22 +1753,16 @@ export default function SellerAddProductPage() {
                             (row) => {
                               const data =
                                 variantValues[
-                                  row
-                                    .key
+                                  row.key
                                 ] || {
-                                  price:
-                                    "",
-                                  inventory:
-                                    "",
-                                  sku:
-                                    "",
+                                  price: "",
+                                  inventory: "",
+                                  sku: "",
                                 };
 
                               return (
                                 <tr
-                                  key={
-                                    row.key
-                                  }
+                                  key={row.key}
                                   style={{
                                     borderBottom:
                                       "1px solid #eee7f2",
@@ -2402,110 +1770,80 @@ export default function SellerAddProductPage() {
                                 >
                                   <td
                                     style={{
-                                      padding:
-                                        "10px",
-                                      color:
-                                        "#35263e",
-                                      fontWeight:
-                                        "800",
-                                      fontSize:
-                                        "12px",
+                                      padding: "10px",
+                                      color: "#35263e",
+                                      fontWeight: "800",
+                                      fontSize: "12px",
                                     }}
                                   >
-                                    {
-                                      row.label
-                                    }
+                                    {row.label}
                                   </td>
 
                                   <td
                                     style={{
-                                      padding:
-                                        "8px",
+                                      padding: "8px",
                                     }}
                                   >
                                     <input
                                       type="number"
                                       step="0.01"
-                                      value={
-                                        data.price
-                                      }
-                                      onChange={(
-                                        event,
-                                      ) =>
+                                      value={data.price}
+                                      onChange={(event) =>
                                         setVariantField(
                                           row.key,
                                           "price",
-                                          event
-                                            .target
-                                            .value,
+                                          event.target.value,
                                         )
                                       }
                                       placeholder="$"
                                       style={{
                                         ...fieldStyle,
-                                        minWidth:
-                                          "110px",
+                                        minWidth: "110px",
                                       }}
                                     />
                                   </td>
 
                                   <td
                                     style={{
-                                      padding:
-                                        "8px",
+                                      padding: "8px",
                                     }}
                                   >
                                     <input
                                       type="number"
-                                      value={
-                                        data.inventory
-                                      }
-                                      onChange={(
-                                        event,
-                                      ) =>
+                                      value={data.inventory}
+                                      onChange={(event) =>
                                         setVariantField(
                                           row.key,
                                           "inventory",
-                                          event
-                                            .target
-                                            .value,
+                                          event.target.value,
                                         )
                                       }
                                       placeholder="Qty"
                                       style={{
                                         ...fieldStyle,
-                                        minWidth:
-                                          "95px",
+                                        minWidth: "95px",
                                       }}
                                     />
                                   </td>
 
                                   <td
                                     style={{
-                                      padding:
-                                        "8px",
+                                      padding: "8px",
                                     }}
                                   >
                                     <input
-                                      value={
-                                        data.sku
-                                      }
-                                      onChange={(
-                                        event,
-                                      ) =>
+                                      value={data.sku}
+                                      onChange={(event) =>
                                         setVariantField(
                                           row.key,
                                           "sku",
-                                          event
-                                            .target
-                                            .value,
+                                          event.target.value,
                                         )
                                       }
                                       placeholder="Optional"
                                       style={{
                                         ...fieldStyle,
-                                        minWidth:
-                                          "130px",
+                                        minWidth: "130px",
                                       }}
                                     />
                                   </td>
@@ -2516,28 +1854,6 @@ export default function SellerAddProductPage() {
                         </tbody>
                       </table>
                     </div>
-
-                    <div
-                      style={{
-                        marginTop:
-                          "8px",
-                        color:
-                          "#817787",
-                        fontSize:
-                          "10px",
-                      }}
-                    >
-                      {
-                        variantRows.length
-                      }{" "}
-                      variant
-                      {variantRows.length ===
-                      1
-                        ? ""
-                        : "s"}{" "}
-                      generated
-                      automatically.
-                    </div>
                   </>
                 )}
             </div>
@@ -2546,19 +1862,12 @@ export default function SellerAddProductPage() {
           {/* MEDIA */}
 
           {productType && (
-            <div
-              style={
-                sectionStyle
-              }
-            >
+            <div style={sectionStyle}>
               <h2
                 style={{
-                  margin:
-                    "0 0 5px",
-                  color:
-                    "#4B1678",
-                  fontSize:
-                    "19px",
+                  margin: "0 0 5px",
+                  color: "#4B1678",
+                  fontSize: "19px",
                 }}
               >
                 Photos & Videos
@@ -2566,101 +1875,69 @@ export default function SellerAddProductPage() {
 
               <div
                 style={{
-                  color:
-                    "#817787",
-                  fontSize:
-                    "11px",
-                  marginBottom:
-                    "15px",
+                  color: "#817787",
+                  fontSize: "11px",
+                  marginBottom: "15px",
                 }}
               >
-                Up to 10 images
-                and 3 videos per
-                product.
+                Add up to 10 images and 3 videos.
               </div>
 
               <div
                 style={{
-                  display:
-                    "grid",
+                  display: "grid",
                   gridTemplateColumns:
                     "repeat(auto-fit, minmax(250px, 1fr))",
-                  gap:
-                    "14px",
+                  gap: "14px",
                 }}
               >
-                {/* IMAGES */}
-
                 <div
                   style={{
                     border:
                       "1px solid #ded3e5",
-                    borderRadius:
-                      "12px",
-                    padding:
-                      "15px",
+                    borderRadius: "12px",
+                    padding: "15px",
                   }}
                 >
                   <div
                     style={{
-                      display:
-                        "flex",
+                      display: "flex",
                       justifyContent:
                         "space-between",
-                      gap:
-                        "10px",
-                      marginBottom:
-                        "10px",
+                      marginBottom: "10px",
                     }}
                   >
-                    <div
+                    <strong
                       style={{
-                        color:
-                          "#4B1678",
-                        fontWeight:
-                          "800",
-                        fontSize:
-                          "13px",
+                        color: "#4B1678",
+                        fontSize: "13px",
                       }}
                     >
                       Product Photos
-                    </div>
+                    </strong>
 
-                    <div
+                    <span
                       style={{
-                        color:
-                          "#817787",
-                        fontSize:
-                          "10px",
+                        fontSize: "10px",
+                        color: "#817787",
                       }}
                     >
-                      {
-                        images.length
-                      }
-                      /10
-                    </div>
+                      {images.length}/10
+                    </span>
                   </div>
 
                   <label
                     style={{
-                      display:
-                        "block",
+                      display: "block",
                       border:
                         "1px dashed #bdaac9",
-                      borderRadius:
-                        "9px",
-                      padding:
-                        "13px",
-                      textAlign:
-                        "center",
-                      color:
-                        "#4B1678",
-                      fontWeight:
-                        "800",
-                      fontSize:
-                        "11px",
-                      cursor:
-                        "pointer",
+                      borderRadius: "9px",
+                      padding: "13px",
+                      textAlign: "center",
+                      color: "#4B1678",
+                      fontWeight: "800",
+                      fontSize: "11px",
+                      cursor: "pointer",
                     }}
                   >
                     + Add Photos
@@ -2669,186 +1946,61 @@ export default function SellerAddProductPage() {
                       type="file"
                       accept="image/*"
                       multiple
-                      onChange={
-                        handleImages
-                      }
+                      onChange={handleImages}
                       style={{
-                        display:
-                          "none",
+                        display: "none",
                       }}
                     />
                   </label>
-
-                  {images.length >
-                    0 && (
-                    <div
-                      style={{
-                        display:
-                          "grid",
-                        gap:
-                          "6px",
-                        marginTop:
-                          "10px",
-                      }}
-                    >
-                      {images.map(
-                        (
-                          file,
-                          index,
-                        ) => (
-                          <div
-                            key={`${file.name}-${index}`}
-                            style={{
-                              display:
-                                "flex",
-                              justifyContent:
-                                "space-between",
-                              gap:
-                                "8px",
-                              alignItems:
-                                "center",
-                              background:
-                                "#faf7fc",
-                              borderRadius:
-                                "7px",
-                              padding:
-                                "7px 8px",
-                              fontSize:
-                                "10px",
-                            }}
-                          >
-                            <div
-                              style={{
-                                overflow:
-                                  "hidden",
-                                textOverflow:
-                                  "ellipsis",
-                                whiteSpace:
-                                  "nowrap",
-                              }}
-                            >
-                              {index ===
-                                0 && (
-                                <strong>
-                                  Primary
-                                  ·{" "}
-                                </strong>
-                              )}
-
-                              {
-                                file.name
-                              }
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setImages(
-                                  (
-                                    current,
-                                  ) =>
-                                    current.filter(
-                                      (
-                                        _,
-                                        itemIndex,
-                                      ) =>
-                                        itemIndex !==
-                                        index,
-                                    ),
-                                )
-                              }
-                              style={{
-                                border:
-                                  "none",
-                                background:
-                                  "transparent",
-                                color:
-                                  "#8c738f",
-                                cursor:
-                                  "pointer",
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  )}
                 </div>
-
-                {/* VIDEOS */}
 
                 <div
                   style={{
                     border:
                       "1px solid #ded3e5",
-                    borderRadius:
-                      "12px",
-                    padding:
-                      "15px",
+                    borderRadius: "12px",
+                    padding: "15px",
                   }}
                 >
                   <div
                     style={{
-                      display:
-                        "flex",
+                      display: "flex",
                       justifyContent:
                         "space-between",
-                      gap:
-                        "10px",
-                      marginBottom:
-                        "10px",
+                      marginBottom: "10px",
                     }}
                   >
-                    <div
+                    <strong
                       style={{
-                        color:
-                          "#4B1678",
-                        fontWeight:
-                          "800",
-                        fontSize:
-                          "13px",
+                        color: "#4B1678",
+                        fontSize: "13px",
                       }}
                     >
                       Product Videos
-                    </div>
+                    </strong>
 
-                    <div
+                    <span
                       style={{
-                        color:
-                          "#817787",
-                        fontSize:
-                          "10px",
+                        fontSize: "10px",
+                        color: "#817787",
                       }}
                     >
-                      {
-                        videos.length
-                      }
-                      /3
-                    </div>
+                      {videos.length}/3
+                    </span>
                   </div>
 
                   <label
                     style={{
-                      display:
-                        "block",
+                      display: "block",
                       border:
                         "1px dashed #bdaac9",
-                      borderRadius:
-                        "9px",
-                      padding:
-                        "13px",
-                      textAlign:
-                        "center",
-                      color:
-                        "#4B1678",
-                      fontWeight:
-                        "800",
-                      fontSize:
-                        "11px",
-                      cursor:
-                        "pointer",
+                      borderRadius: "9px",
+                      padding: "13px",
+                      textAlign: "center",
+                      color: "#4B1678",
+                      fontWeight: "800",
+                      fontSize: "11px",
+                      cursor: "pointer",
                     }}
                   >
                     + Add Videos
@@ -2857,167 +2009,52 @@ export default function SellerAddProductPage() {
                       type="file"
                       accept="video/*"
                       multiple
-                      onChange={
-                        handleVideos
-                      }
+                      onChange={handleVideos}
                       style={{
-                        display:
-                          "none",
+                        display: "none",
                       }}
                     />
                   </label>
-
-                  {videos.length >
-                    0 && (
-                    <div
-                      style={{
-                        display:
-                          "grid",
-                        gap:
-                          "6px",
-                        marginTop:
-                          "10px",
-                      }}
-                    >
-                      {videos.map(
-                        (
-                          file,
-                          index,
-                        ) => (
-                          <div
-                            key={`${file.name}-${index}`}
-                            style={{
-                              display:
-                                "flex",
-                              justifyContent:
-                                "space-between",
-                              gap:
-                                "8px",
-                              alignItems:
-                                "center",
-                              background:
-                                "#faf7fc",
-                              borderRadius:
-                                "7px",
-                              padding:
-                                "7px 8px",
-                              fontSize:
-                                "10px",
-                            }}
-                          >
-                            <div
-                              style={{
-                                overflow:
-                                  "hidden",
-                                textOverflow:
-                                  "ellipsis",
-                                whiteSpace:
-                                  "nowrap",
-                              }}
-                            >
-                              {
-                                file.name
-                              }
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setVideos(
-                                  (
-                                    current,
-                                  ) =>
-                                    current.filter(
-                                      (
-                                        _,
-                                        itemIndex,
-                                      ) =>
-                                        itemIndex !==
-                                        index,
-                                    ),
-                                )
-                              }
-                              style={{
-                                border:
-                                  "none",
-                                background:
-                                  "transparent",
-                                color:
-                                  "#8c738f",
-                                cursor:
-                                  "pointer",
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
 
               {mediaMessage && (
                 <div
                   style={{
-                    marginTop:
-                      "10px",
-                    color:
-                      "#755f1d",
-                    background:
-                      "#fff9e9",
+                    marginTop: "10px",
+                    color: "#755f1d",
+                    background: "#fff9e9",
                     border:
                       "1px solid #eadcae",
-                    padding:
-                      "9px",
-                    borderRadius:
-                      "8px",
-                    fontSize:
-                      "10px",
+                    padding: "9px",
+                    borderRadius: "8px",
+                    fontSize: "10px",
                   }}
                 >
-                  {
-                    mediaMessage
-                  }
+                  {mediaMessage}
                 </div>
               )}
             </div>
           )}
 
-          {/* FINAL */}
-
-          <div
-            style={
-              sectionStyle
-            }
-          >
+          <div style={sectionStyle}>
             <button
               type="button"
               disabled={!ready}
               style={{
-                width:
-                  "100%",
-                border:
-                  "none",
-                borderRadius:
-                  "10px",
-                padding:
-                  "15px 18px",
-                background:
-                  ready
-                    ? "#4B1678"
-                    : "#c9bdcf",
-                color:
-                  "#ffffff",
-                fontSize:
-                  "14px",
-                fontWeight:
-                  "800",
-                cursor:
-                  ready
-                    ? "pointer"
-                    : "not-allowed",
+                width: "100%",
+                border: "none",
+                borderRadius: "10px",
+                padding: "15px 18px",
+                background: ready
+                  ? "#4B1678"
+                  : "#c9bdcf",
+                color: "#ffffff",
+                fontSize: "14px",
+                fontWeight: "800",
+                cursor: ready
+                  ? "pointer"
+                  : "not-allowed",
               }}
             >
               Review Product
@@ -3025,21 +2062,13 @@ export default function SellerAddProductPage() {
 
             <div
               style={{
-                textAlign:
-                  "center",
-                marginTop:
-                  "8px",
-                color:
-                  "#817787",
-                fontSize:
-                  "10px",
+                textAlign: "center",
+                marginTop: "8px",
+                color: "#817787",
+                fontSize: "10px",
               }}
             >
-              This version builds
-              the product and
-              variants on-screen.
-              Saving to Shopify is
-              the next connection.
+              Next we connect this product structure to Shopify.
             </div>
           </div>
         </div>
