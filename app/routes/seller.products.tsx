@@ -725,7 +725,7 @@ function ProductTile({
       }}
     >
       <Link
-        to={`/seller/products/${product.coreId}/edit`}
+        to={`/seller/edit-product/${product.coreId}`}
         style={{
           color:
             "inherit",
