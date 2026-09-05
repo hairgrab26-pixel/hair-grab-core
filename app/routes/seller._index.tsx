@@ -1,3 +1,4 @@
+
 import type { LoaderFunctionArgs } from "react-router";
 import {
   Link,
@@ -444,13 +445,6 @@ export default function SellerDashboard() {
             />
 
             <StoreTile
-              title="Storefront"
-              value="Store View"
-              text="Manage the information shoppers see about your HairGrab store."
-              to="/seller/store"
-            />
-
-            <StoreTile
               title="Messages"
               value="HairGrab Support"
               text="Communication between your store and HairGrab."
@@ -466,8 +460,8 @@ export default function SellerDashboard() {
 
             <StoreTile
               title="Store Settings"
-              value="Business & Fulfillment"
-              text="Manage store contact information and selling preferences."
+              value="Storefront & Fulfillment"
+              text="Edit your storefront, business details, shipping and selling preferences."
               to="/seller/settings"
             />
           </div>

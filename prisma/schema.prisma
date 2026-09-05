@@ -119,6 +119,7 @@ model Seller {
   storeSlug           String?  @unique
   storeDescription    String?
   logoUrl             String?
+  bannerUrl           String?
 
   address1            String?
   address2            String?
