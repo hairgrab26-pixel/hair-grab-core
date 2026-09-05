@@ -29,13 +29,7 @@ export const loader = async ({
     await db.sellerProduct.count({
       where: {
         sellerId: seller.id,
-
-        status: {
-          in: [
-            "ACTIVE",
-            "APPROVED",
-          ],
-        },
+        status: "ACTIVE",
       },
     });
 
@@ -43,9 +37,10 @@ export const loader = async ({
   // --------------------------------------------------------
   // SELLER LEDGER
   //
-  // One Shopify order can contain multiple seller ledger
-  // entries, so we calculate money from ledger entries but
-  // count unique Shopify order IDs for the order total.
+  // Money is stored in Prisma as cents.
+  // One Shopify order can have multiple ledger entries, so
+  // financial totals come from the ledger while order count
+  // uses unique Shopify order IDs.
   // --------------------------------------------------------
 
   const ledgerEntries =
@@ -56,9 +51,10 @@ export const loader = async ({
 
       select: {
         shopifyOrderId: true,
-        grossAmount: true,
-        sellerEarnings: true,
-        commissionAmount: true,
+        grossAmountCents: true,
+        sellerEarningsCents: true,
+        commissionAmountCents: true,
+        status: true,
       },
     });
 
@@ -66,6 +62,7 @@ export const loader = async ({
   let grossSales = 0;
   let sellerEarnings = 0;
   let commission = 0;
+  let payoutReady = 0;
 
   const orderIds =
     new Set<string>();
@@ -74,13 +71,18 @@ export const loader = async ({
   for (const entry of ledgerEntries) {
 
     grossSales +=
-      Number(entry.grossAmount || 0);
+      Number(entry.grossAmountCents || 0) / 100;
 
     sellerEarnings +=
-      Number(entry.sellerEarnings || 0);
+      Number(entry.sellerEarningsCents || 0) / 100;
 
     commission +=
-      Number(entry.commissionAmount || 0);
+      Number(entry.commissionAmountCents || 0) / 100;
+
+    if (entry.status === "ELIGIBLE") {
+      payoutReady +=
+        Number(entry.sellerEarningsCents || 0) / 100;
+    }
 
 
     if (entry.shopifyOrderId) {
@@ -104,12 +106,13 @@ export const loader = async ({
     },
 
     stats: {
-  grossSales,
-  sellerEarnings,
-  commission,
-  payoutReady,
-  totalOrders:
-    orderIds.size,
+      grossSales,
+      sellerEarnings,
+      commission,
+      payoutReady,
+
+      totalOrders:
+        orderIds.size,
 
       activeProducts,
 
