@@ -8,6 +8,7 @@ import {
 } from "react-router";
 
 import db from "../db.server";
+import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
 
 
@@ -19,7 +20,7 @@ export const loader = async ({
       request,
     );
 
-  const products =
+  const ownedProducts =
     await db.sellerProduct.findMany({
       where: {
         sellerId:
@@ -33,6 +34,8 @@ export const loader = async ({
           true,
         title:
           true,
+        shopifyProductId:
+          true,
         shopifyHandle:
           true,
       },
@@ -45,6 +48,244 @@ export const loader = async ({
       take:
         8,
     });
+
+  const shopifyIds =
+    ownedProducts
+      .map(
+        (product) =>
+          product.shopifyProductId,
+      )
+      .filter(
+        (
+          id,
+        ): id is string =>
+          Boolean(id),
+      );
+
+  const shopifyById =
+    new Map<
+      string,
+      {
+        title: string;
+        handle: string;
+        imageUrl: string | null;
+        imageAlt: string;
+        price: string;
+      }
+    >();
+
+  if (
+    shopifyIds.length >
+    0
+  ) {
+    const offlineSession =
+      await db.session.findFirst({
+        where: {
+          isOnline:
+            false,
+        },
+      });
+
+    if (
+      offlineSession
+    ) {
+      const {
+        admin,
+      } =
+        await unauthenticated.admin(
+          offlineSession.shop,
+        );
+
+      const response =
+        await admin.graphql(
+          `#graphql
+          query HairGrabStorePreviewProducts(
+            $ids: [ID!]!
+          ) {
+            nodes(ids: $ids) {
+              ... on Product {
+                id
+                title
+                handle
+
+                featuredImage {
+                  url
+                  altText
+                }
+
+                variants(first: 100) {
+                  nodes {
+                    price
+                  }
+                }
+              }
+            }
+          }
+          `,
+          {
+            variables: {
+              ids:
+                shopifyIds,
+            },
+          },
+        );
+
+      const json =
+        await response.json();
+
+      for (
+        const node of
+        json?.data?.nodes ||
+        []
+      ) {
+        if (!node?.id) {
+          continue;
+        }
+
+        const prices =
+          (
+            node?.variants
+              ?.nodes ||
+            []
+          )
+            .map(
+              (
+                variant:
+                  any,
+              ) =>
+                Number(
+                  variant
+                    ?.price ||
+                  0,
+                ),
+            )
+            .filter(
+              (
+                price:
+                  number,
+              ) =>
+                Number.isFinite(
+                  price,
+                ),
+            );
+
+        let price =
+          "";
+
+        if (
+          prices.length >
+          0
+        ) {
+          const min =
+            Math.min(
+              ...prices,
+            );
+
+          const max =
+            Math.max(
+              ...prices,
+            );
+
+          const formatted =
+            new Intl.NumberFormat(
+              "en-US",
+              {
+                style:
+                  "currency",
+                currency:
+                  "USD",
+              },
+            );
+
+          price =
+            min === max
+              ? formatted.format(
+                  min,
+                )
+              : `From ${formatted.format(
+                  min,
+                )}`;
+        }
+
+        shopifyById.set(
+          String(
+            node.id,
+          ),
+          {
+            title:
+              String(
+                node.title ||
+                "",
+              ),
+
+            handle:
+              String(
+                node.handle ||
+                "",
+              ),
+
+            imageUrl:
+              node
+                .featuredImage
+                ?.url ||
+              null,
+
+            imageAlt:
+              node
+                .featuredImage
+                ?.altText ||
+              node.title ||
+              "HairGrab product",
+
+            price,
+          },
+        );
+      }
+    }
+  }
+
+  const products =
+    ownedProducts.map(
+      (product) => {
+        const shopifyProduct =
+          product.shopifyProductId
+            ? shopifyById.get(
+                product.shopifyProductId,
+              )
+            : undefined;
+
+        return {
+          id:
+            product.id,
+
+          title:
+            shopifyProduct
+              ?.title ||
+            product.title,
+
+          shopifyHandle:
+            shopifyProduct
+              ?.handle ||
+            product.shopifyHandle ||
+            "",
+
+          imageUrl:
+            shopifyProduct
+              ?.imageUrl ||
+            null,
+
+          imageAlt:
+            shopifyProduct
+              ?.imageAlt ||
+            product.title,
+
+          price:
+            shopifyProduct
+              ?.price ||
+            "",
+        };
+      },
+    );
 
   return {
     seller: {
@@ -698,20 +939,48 @@ export default function SellerStorePreviewPage() {
                         justifyContent:
                           "center",
 
-                        color:
-                          "#8a7b91",
-
-                        fontSize:
-                          "11px",
-
-                        textAlign:
-                          "center",
-
-                        padding:
-                          "10px",
+                        overflow:
+                          "hidden",
                       }}
                     >
-                      Product image
+                      {product.imageUrl ? (
+                        <img
+                          src={
+                            product.imageUrl
+                          }
+                          alt={
+                            product.imageAlt
+                          }
+                          style={{
+                            width:
+                              "100%",
+
+                            height:
+                              "100%",
+
+                            objectFit:
+                              "cover",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            color:
+                              "#8a7b91",
+
+                            fontSize:
+                              "11px",
+
+                            textAlign:
+                              "center",
+
+                            padding:
+                              "10px",
+                          }}
+                        >
+                          No product image
+                        </div>
+                      )}
                     </div>
 
                     <div
@@ -728,6 +997,26 @@ export default function SellerStorePreviewPage() {
                     >
                       {product.title}
                     </div>
+
+                    {product.price && (
+                      <div
+                        style={{
+                          marginTop:
+                            "6px",
+
+                          color:
+                            "#4B1678",
+
+                          fontWeight:
+                            "800",
+
+                          fontSize:
+                            "12px",
+                        }}
+                      >
+                        {product.price}
+                      </div>
+                    )}
 
                     {product.shopifyHandle && (
                       <a
