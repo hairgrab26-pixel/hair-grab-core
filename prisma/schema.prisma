@@ -492,3 +492,42 @@ model PayoutBatchItem {
 
   @@index([payoutBatchId])
 }
+// ==========================================================
+// HAIRGRAB MARKETPLACE SETTINGS
+// ==========================================================
+//
+// One shared settings record for HairGrab Core.
+// These are marketplace defaults and global controls.
+// Individual seller overrides remain on the Seller record.
+// ==========================================================
+
+model MarketplaceSettings {
+  id                           String   @id @default("hairgrab")
+
+  // Seller defaults
+  standardCommissionRate       Float    @default(7)
+  foundingSellerCommissionRate Float    @default(5)
+  defaultActiveProductLimit    Int      @default(50)
+
+  // Marketplace access
+  sellerApplicationsOpen       Boolean  @default(true)
+  requireSellerApproval        Boolean  @default(true)
+
+  // Product controls
+  requireProductApproval       Boolean  @default(true)
+  productPublishingPaused      Boolean  @default(false)
+
+  // Fulfillment defaults
+  defaultShippingSlaHours      Int      @default(48)
+  defaultReturnPolicy          String   @default("14_DAY_RETURNS")
+
+  // Feature availability
+  localPickupEnabled           Boolean  @default(true)
+  localDeliveryEnabled         Boolean  @default(true)
+
+  // Support
+  supportEmail                 String?
+
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+}
