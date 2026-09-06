@@ -135,7 +135,8 @@ model Seller {
   offersLocalPickup   Boolean @default(false)
   offersLocalDelivery Boolean @default(false)
 
-  returnPolicy  String @default("14_DAY_RETURNS")
+  returnPolicy String @default("14_DAY_RETURNS")
+
   // Shopify mapping
   shopifyVendor String @unique
 
@@ -171,11 +172,12 @@ model Seller {
   suspendedAt   DateTime?
   deactivatedAt DateTime?
 
-  portalAccounts  SellerPortalAccount[]
-  products        SellerProduct[]
-  ledgerEntries   SellerLedgerEntry[]
-  payoutBatches   PayoutBatch[]
-  deliveredOrders SellerDeliveredOrder[]
+  portalAccounts    SellerPortalAccount[]
+  products          SellerProduct[]
+  ledgerEntries     SellerLedgerEntry[]
+  payoutBatches     PayoutBatch[]
+  deliveredOrders   SellerDeliveredOrder[]
+  orderFulfillments SellerOrderFulfillment[]
 
   onboarding SellerOnboarding?
 
@@ -526,4 +528,59 @@ model MarketplaceSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ==========================================================
+// SELLER ORDER FULFILLMENT
+//
+// One record per SELLER + SHOPIFY ORDER.
+// Records how this seller's portion of the order is fulfilled.
+// ==========================================================
+
+model SellerOrderFulfillment {
+  id String @id @default(cuid())
+
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  shopifyOrderId   String
+  shopifyOrderName String?
+
+  // SELLER_MANAGED / HAIRGRAB_SHIPPING /
+  // LOCAL_PICKUP / HAIRGRAB_SAME_DAY
+  fulfillmentMethod String
+
+  // READY / LABEL_READY / READY_FOR_PICKUP /
+  // COURIER_REQUESTED / SHIPPED / DELIVERED / CANCELED
+  status String @default("READY")
+
+  // Parcel shipping
+  carrier        String?
+  trackingNumber String?
+  trackingUrl    String?
+
+  // HairGrab Shipping
+  shippingLabelUrl  String?
+  shippingRateId    String?
+  shippingCostCents Int?
+
+  // Same-day courier
+  courierProvider   String?
+  courierDeliveryId String?
+  courierStatus     String?
+  courierFeeCents   Int?
+
+  readyForPickupAt DateTime?
+  shippedAt        DateTime?
+  deliveredAt      DateTime?
+  canceledAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sellerId, shopifyOrderId])
+  @@index([sellerId])
+  @@index([shopifyOrderId])
+  @@index([fulfillmentMethod])
+  @@index([status])
 }
