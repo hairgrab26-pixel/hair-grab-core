@@ -1,3 +1,4 @@
+
 import type {
   ActionFunctionArgs,
   LoaderFunctionArgs,
@@ -48,6 +49,11 @@ export const loader = async ({
 
     agreementsComplete:
       onboarding.agreementsComplete,
+
+    agreementsCompletedAt:
+      onboarding.agreementsCompletedAt
+        ? onboarding.agreementsCompletedAt.toISOString()
+        : null,
   };
 };
 
@@ -69,8 +75,24 @@ export const action = async ({
       success: false,
 
       message:
-        "You must accept the HairGrab seller agreement before continuing.",
+        "You must read and accept the HairGrab Seller Agreement before continuing.",
     };
+  }
+
+  const onboarding =
+    await db.sellerOnboarding.findUnique({
+      where: {
+        sellerId: seller.id,
+      },
+    });
+
+  if (!onboarding) {
+    throw new Response(
+      "Seller onboarding record was not found.",
+      {
+        status: 404,
+      },
+    );
   }
 
   const now =
@@ -82,9 +104,11 @@ export const action = async ({
     },
 
     data: {
-      agreementsComplete: true,
+      agreementsComplete:
+        true,
 
       agreementsCompletedAt:
+        onboarding.agreementsCompletedAt ||
         now,
 
       currentStep:
@@ -108,6 +132,7 @@ export default function SellerAgreementsOnboardingPage() {
   const {
     seller,
     agreementsComplete,
+    agreementsCompletedAt,
   } =
     useLoaderData<typeof loader>();
 
@@ -181,7 +206,7 @@ export default function SellerAgreementsOnboardingPage() {
               margin: "0 0 18px",
             }}
           >
-            Review and accept HairGrab's marketplace seller requirements before listing products.
+            Review HairGrab's marketplace seller terms before listing products.
           </p>
 
           {agreementsComplete && (
@@ -196,7 +221,12 @@ export default function SellerAgreementsOnboardingPage() {
                 marginBottom: "16px",
               }}
             >
-              Your seller agreement has already been accepted.
+              ✓ Seller Agreement accepted
+              {agreementsCompletedAt
+                ? ` on ${new Date(
+                    agreementsCompletedAt,
+                  ).toLocaleDateString()}`
+                : ""}
             </div>
           )}
 
@@ -222,7 +252,7 @@ export default function SellerAgreementsOnboardingPage() {
               border: "1px solid #e5dce9",
               borderRadius: "11px",
               padding: "16px",
-              marginBottom: "18px",
+              marginBottom: "14px",
             }}
           >
             <div
@@ -243,9 +273,36 @@ export default function SellerAgreementsOnboardingPage() {
                 lineHeight: 1.7,
               }}
             >
-              By selling on HairGrab, you agree to provide accurate product information, maintain current inventory and pricing, fulfill orders within HairGrab's required shipping timeframe, follow your stated return policy, communicate honestly with shoppers and HairGrab, and comply with HairGrab marketplace rules and applicable laws.
+              Sellers agree to provide accurate product information,
+              maintain current inventory and pricing, fulfill orders
+              within HairGrab's required timeframe, follow their
+              stated return policy, comply with payout requirements
+              and follow HairGrab marketplace rules.
             </div>
           </div>
+
+          <Link
+            to="/seller/agreement"
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              textAlign: "center",
+              border: "2px solid #4B1678",
+              color: "#4B1678",
+              background: "#ffffff",
+              borderRadius: "9px",
+              padding: "12px 17px",
+              textDecoration: "none",
+              fontWeight: "800",
+              fontSize: "13px",
+              marginBottom: "16px",
+            }}
+          >
+            View Full Seller Agreement ↗
+          </Link>
 
           <Form method="post">
             <label
@@ -277,7 +334,11 @@ export default function SellerAgreementsOnboardingPage() {
                   lineHeight: 1.55,
                 }}
               >
-                I have reviewed and agree to the HairGrab Seller Agreement and marketplace requirements for {seller.businessName} ({seller.sellerCode}).
+                I have read and agree to the HairGrab Seller Agreement and marketplace requirements for{" "}
+                <strong>
+                  {seller.businessName}
+                </strong>{" "}
+                ({seller.sellerCode}).
               </div>
             </label>
 
@@ -295,9 +356,23 @@ export default function SellerAgreementsOnboardingPage() {
                 cursor: "pointer",
               }}
             >
-              Accept & Continue
+              {agreementsComplete
+                ? "Continue Seller Setup"
+                : "Accept & Continue"}
             </button>
           </Form>
+
+          <div
+            style={{
+              marginTop: "12px",
+              color: "#817787",
+              fontSize: "10px",
+              lineHeight: 1.5,
+              textAlign: "center",
+            }}
+          >
+            HairGrab records the date and time this agreement is accepted.
+          </div>
         </div>
       </div>
     </div>
