@@ -560,7 +560,18 @@ model SellerOrderFulfillment {
   trackingUrl    String?
 
   // HairGrab Shipping
-  shippingLabelUrl         String?`r`n  shippingRateId           String?`r`n  shippingCostCents        Int?`r`n  shippingPurchaseId       String?`r`n  shippingPurchaseStatus   String?`r`n  shippingPurchaseError    String?`r`n  packageType              String?`r`n  packageLengthInches      Float?`r`n  packageWidthInches       Float?`r`n  packageHeightInches      Float?`r`n  packageWeightOunces      Float?`r`n  shippingLabelPurchasedAt DateTime?
+  shippingLabelUrl         String?
+  shippingRateId           String?
+  shippingCostCents        Int?
+  shippingPurchaseId       String?
+  shippingPurchaseStatus   String?
+  shippingPurchaseError    String?
+  packageType              String?
+  packageLengthInches      Float?
+  packageWidthInches       Float?
+  packageHeightInches      Float?
+  packageWeightOunces      Float?
+  shippingLabelPurchasedAt DateTime?
 
   // Same-day courier
   courierProvider   String?
@@ -582,4 +593,3 @@ model SellerOrderFulfillment {
   @@index([fulfillmentMethod])
   @@index([status])
 }
-
