@@ -19,8 +19,38 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app">Home</s-link>
-        <s-link href="/app/applications">Seller Applications</s-link>
-        <s-link href="/app/sellers">Sellers</s-link>
+
+        <s-link href="/app/applications">
+          Seller Applications
+        </s-link>
+
+        <s-link href="/app/sellers">
+          Sellers
+        </s-link>
+
+        <s-link href="/app/products">
+          Products
+        </s-link>
+
+        <s-link href="/app/orders">
+          Orders
+        </s-link>
+
+        <s-link href="/app/ledger">
+          Ledger
+        </s-link>
+
+        <s-link href="/app/payouts">
+          Payouts
+        </s-link>
+
+        <s-link href="/app/settings">
+          Settings
+        </s-link>
+
+        <s-link href="/app/guide">
+          Admin Guide
+        </s-link>
       </s-app-nav>
 
       <Outlet />
