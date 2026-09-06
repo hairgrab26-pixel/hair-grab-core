@@ -12,7 +12,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 // ==========================================================
 // SHOPIFY SESSION
 // ==========================================================
@@ -37,61 +36,59 @@ model Session {
   refreshTokenExpires DateTime?
 }
 
-
 // ==========================================================
 // SELLER APPLICATION
 // ==========================================================
 
 model SellerApplication {
-  id                  String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // PENDING / APPROVED / DECLINED / WITHDRAWN
-  status              String   @default("PENDING")
+  status String @default("PENDING")
 
-  businessName        String
-  contactFirstName    String
-  contactLastName     String
-  email               String
-  phone               String?
+  businessName     String
+  contactFirstName String
+  contactLastName  String
+  email            String
+  phone            String?
 
-  website             String?
-  instagram           String?
-  tiktok              String?
+  website   String?
+  instagram String?
+  tiktok    String?
 
-  address1            String?
-  address2            String?
-  city                String?
-  state               String?
-  postalCode          String?
-  country             String   @default("US")
+  address1   String?
+  address2   String?
+  city       String?
+  state      String?
+  postalCode String?
+  country    String  @default("US")
 
-  yearsInBusiness     String?
-  productCountRange   String?
-  canImportCsv        Boolean?
+  yearsInBusiness   String?
+  productCountRange String?
+  canImportCsv      Boolean?
 
-  sellsNationwide     Boolean  @default(true)
-  offersLocalPickup   Boolean  @default(false)
-  offersLocalDelivery Boolean  @default(false)
+  sellsNationwide     Boolean @default(true)
+  offersLocalPickup   Boolean @default(false)
+  offersLocalDelivery Boolean @default(false)
 
-  notes               String?
-  adminReviewNotes    String?
+  notes            String?
+  adminReviewNotes String?
 
-  submittedAt         DateTime @default(now())
-  reviewedAt          DateTime?
-  approvedAt          DateTime?
-  declinedAt          DateTime?
+  submittedAt DateTime  @default(now())
+  reviewedAt  DateTime?
+  approvedAt  DateTime?
+  declinedAt  DateTime?
 
-  approvedSellerId    String?  @unique
-  approvedSeller      Seller?  @relation("ApprovedSellerApplication", fields: [approvedSellerId], references: [id])
+  approvedSellerId String? @unique
+  approvedSeller   Seller? @relation("ApprovedSellerApplication", fields: [approvedSellerId], references: [id])
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([email])
   @@index([businessName])
 }
-
 
 // ==========================================================
 // SELLER
@@ -100,62 +97,69 @@ model SellerApplication {
 // ==========================================================
 
 model Seller {
-  id                  String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  sellerCode          String   @unique
+  sellerCode String @unique
 
-  businessName        String
-  legalBusinessName   String?
+  businessName      String
+  legalBusinessName String?
 
-  contactFirstName    String?
-  contactLastName     String?
-  email               String?
-  phone               String?
+  contactFirstName String?
+  contactLastName  String?
+  email            String?
+  phone            String?
 
-  website             String?
-  instagram           String?
-  tiktok              String?
+  website   String?
+  instagram String?
+  tiktok    String?
 
-  storeSlug           String?  @unique
-  storeDescription    String?
-  logoUrl             String?
-  bannerUrl           String?
+  storeSlug        String? @unique
+  storeDescription String?
+  logoUrl          String?
+  bannerUrl        String?
 
-  address1            String?
-  address2            String?
-  city                String?
-  state               String?
-  postalCode          String?
-  country             String   @default("US")
+  address1   String?
+  address2   String?
+  city       String?
+  state      String?
+  postalCode String?
+  country    String  @default("US")
 
-  sellsNationwide     Boolean  @default(true)
-  offersLocalPickup   Boolean  @default(false)
-  offersLocalDelivery Boolean  @default(false)
-  returnPolicy        String   @default("14_DAY_RETURNS")
+  // Nationwide fulfillment
+  sellsNationwide Boolean @default(true)
+
+  // SELLER_MANAGED / HAIRGRAB_SHIPPING
+  nationwideShippingMethod String @default("SELLER_MANAGED")
+
+  // Additional fulfillment options
+  offersLocalPickup   Boolean @default(false)
+  offersLocalDelivery Boolean @default(false)
+
+  returnPolicy  String @default("14_DAY_RETURNS")
   // Shopify mapping
-  shopifyVendor       String   @unique
+  shopifyVendor String @unique
 
   // Temporary legacy reference while Nexus is removed
-  nexusSellerId       String?  @unique
+  nexusSellerId String? @unique
 
   // ACTIVE / SUSPENDED / INACTIVE / CLOSED
-  status              String   @default("ACTIVE")
+  status String @default("ACTIVE")
 
   // HairGrab Core is the financial authority
-  commissionRate      Float    @default(7)
+  commissionRate Float @default(7)
 
-  activeProductLimit  Int      @default(50)
+  activeProductLimit Int @default(50)
 
   // NOT_CONNECTED / PENDING / CONNECTED / RESTRICTED
-  payoutStatus        String   @default("NOT_CONNECTED")
+  payoutStatus String @default("NOT_CONNECTED")
 
-  stripeAccountId     String?  @unique
+  stripeAccountId String? @unique
 
   // STANDARD / FAST / TRUSTED
-  payoutTier                 String   @default("STANDARD")
+  payoutTier String @default("STANDARD")
 
   // Fast Payout qualification
-  successfulDeliveredOrders Int      @default(0)
+  successfulDeliveredOrders Int       @default(0)
   fastPayoutEligibleAt      DateTime?
   fastPayoutUnlockedAt      DateTime?
 
@@ -163,29 +167,28 @@ model Seller {
   fastPayoutSuspendedAt      DateTime?
   fastPayoutSuspensionReason String?
 
-  approvedAt          DateTime?
-  suspendedAt         DateTime?
-  deactivatedAt       DateTime?
+  approvedAt    DateTime?
+  suspendedAt   DateTime?
+  deactivatedAt DateTime?
 
-  portalAccounts      SellerPortalAccount[]
-  products            SellerProduct[]
-  ledgerEntries       SellerLedgerEntry[]
-  payoutBatches       PayoutBatch[]
-  deliveredOrders     SellerDeliveredOrder[]
+  portalAccounts  SellerPortalAccount[]
+  products        SellerProduct[]
+  ledgerEntries   SellerLedgerEntry[]
+  payoutBatches   PayoutBatch[]
+  deliveredOrders SellerDeliveredOrder[]
 
-  onboarding          SellerOnboarding?
+  onboarding SellerOnboarding?
 
   approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([email])
   @@index([businessName])
   @@index([payoutTier])
 }
-
 
 // ==========================================================
 // SELLER ONBOARDING
@@ -199,27 +202,27 @@ model Seller {
 // ==========================================================
 
 model SellerOnboarding {
-  id                  String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  sellerId            String   @unique
-  seller              Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId String @unique
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   // BUSINESS / STOREFRONT / FULFILLMENT / RETURNS /
   // PAYOUTS / AGREEMENTS / PRODUCTS / COMPLETE
-  currentStep         String   @default("BUSINESS")
+  currentStep String @default("BUSINESS")
 
   // Overall onboarding state:
   // NOT_STARTED / IN_PROGRESS / COMPLETE
-  status              String   @default("NOT_STARTED")
+  status String @default("NOT_STARTED")
 
   // Individual step completion
-  businessComplete    Boolean  @default(false)
-  storefrontComplete  Boolean  @default(false)
-  fulfillmentComplete Boolean  @default(false)
-  returnsComplete     Boolean  @default(false)
-  payoutsComplete     Boolean  @default(false)
-  agreementsComplete  Boolean  @default(false)
-  productsComplete    Boolean  @default(false)
+  businessComplete    Boolean @default(false)
+  storefrontComplete  Boolean @default(false)
+  fulfillmentComplete Boolean @default(false)
+  returnsComplete     Boolean @default(false)
+  payoutsComplete     Boolean @default(false)
+  agreementsComplete  Boolean @default(false)
+  productsComplete    Boolean @default(false)
 
   // Optional timestamps make the history auditable and let
   // HairGrab show exactly when each section was completed.
@@ -231,160 +234,156 @@ model SellerOnboarding {
   agreementsCompletedAt  DateTime?
   productsCompletedAt    DateTime?
 
-  startedAt           DateTime?
-  lastSavedAt         DateTime?
-  completedAt         DateTime?
+  startedAt   DateTime?
+  lastSavedAt DateTime?
+  completedAt DateTime?
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([currentStep])
 }
-
 
 // ==========================================================
 // SELLER PORTAL ACCOUNT
 // ==========================================================
 
 model SellerPortalAccount {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  sellerId        String
-  seller          Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
-  email           String   @unique
-  firstName       String?
-  lastName        String?
+  email     String  @unique
+  firstName String?
+  lastName  String?
 
   // OWNER / ADMIN / STAFF
-  role            String   @default("OWNER")
+  role String @default("OWNER")
 
   // INVITED / ACTIVE / DISABLED
-  status          String   @default("INVITED")
+  status String @default("INVITED")
 
   emailVerifiedAt DateTime?
   lastLoginAt     DateTime?
-  invitedAt       DateTime @default(now())
+  invitedAt       DateTime  @default(now())
 
-  loginTokens     SellerLoginToken[]
+  loginTokens SellerLoginToken[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([sellerId])
   @@index([status])
 }
-
 
 // ==========================================================
 // PASSWORDLESS SELLER LOGIN
 // ==========================================================
 
 model SellerLoginToken {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
   portalAccountId String
   portalAccount   SellerPortalAccount @relation(fields: [portalAccountId], references: [id], onDelete: Cascade)
 
-  tokenHash       String   @unique
+  tokenHash String @unique
 
-  expiresAt       DateTime
-  usedAt          DateTime?
+  expiresAt DateTime
+  usedAt    DateTime?
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([portalAccountId])
   @@index([expiresAt])
 }
-
 
 // ==========================================================
 // SELLER PRODUCT OWNERSHIP
 // ==========================================================
 
 model SellerProduct {
-  id                 String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  sellerId           String
-  seller             Seller   @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Restrict)
 
-  shopifyProductId   String?  @unique
-  shopifyHandle      String?
+  shopifyProductId String? @unique
+  shopifyHandle    String?
 
-  title              String
+  title String
 
   // DRAFT / PENDING_APPROVAL / ACTIVE / ARCHIVED / REJECTED
-  status             String   @default("DRAFT")
+  status String @default("DRAFT")
 
-  sellerSku          String?
+  sellerSku String?
 
-  publishedToShopify Boolean  @default(false)
+  publishedToShopify Boolean   @default(false)
   publishedAt        DateTime?
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([sellerId])
   @@index([status])
 }
-
 
 // ==========================================================
 // SELLER LEDGER
 // ==========================================================
 
 model SellerLedgerEntry {
-  id                     String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  sellerId               String
-  seller                 Seller   @relation(fields: [sellerId], references: [id])
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id])
 
-  shopifyOrderId         String
-  shopifyOrderName       String?
-  shopifyLineItemId      String?
+  shopifyOrderId    String
+  shopifyOrderName  String?
+  shopifyLineItemId String?
 
-  idempotencyKey         String   @unique
+  idempotencyKey String @unique
 
   // SALE / REFUND / ADJUSTMENT / PAYOUT
-  entryType              String   @default("SALE")
+  entryType String @default("SALE")
 
   // PENDING / ELIGIBLE / PAID / REVERSED
-  status                 String   @default("PENDING")
+  status String @default("PENDING")
 
-  currency               String   @default("USD")
+  currency String @default("USD")
 
   // Snapshot of commission at transaction time
-  commissionRate         Float
+  commissionRate Float
 
-  grossAmountCents       Int      @default(0)
-  commissionAmountCents  Int      @default(0)
-  sellerEarningsCents    Int      @default(0)
-  refundAmountCents      Int      @default(0)
-  payoutAmountCents      Int      @default(0)
+  grossAmountCents      Int @default(0)
+  commissionAmountCents Int @default(0)
+  sellerEarningsCents   Int @default(0)
+  refundAmountCents     Int @default(0)
+  payoutAmountCents     Int @default(0)
 
-  description            String?
+  description String?
 
   // AWAITING_CLEARANCE / CLEARED / FAILED
-  fundsStatus            String   @default("AWAITING_CLEARANCE")
+  fundsStatus String @default("AWAITING_CLEARANCE")
 
-  fundsClearedAt         DateTime?
+  fundsClearedAt DateTime?
 
   // Delivery information used for payout timing
-  shopifyFulfillmentId   String?
-  deliveredAt            DateTime?
+  shopifyFulfillmentId String?
+  deliveredAt          DateTime?
 
   // When this SALE may become eligible for seller payout
-  availableOn            DateTime?
-  eligibilityCheckedAt   DateTime?
+  availableOn          DateTime?
+  eligibilityCheckedAt DateTime?
 
-  paidAt                 DateTime?
-  shopifyCreatedAt       DateTime?
+  paidAt           DateTime?
+  shopifyCreatedAt DateTime?
 
-  payoutBatchItem        PayoutBatchItem?
+  payoutBatchItem PayoutBatchItem?
 
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([sellerId])
   @@index([shopifyOrderId])
@@ -395,7 +394,6 @@ model SellerLedgerEntry {
   @@index([deliveredAt])
   @@index([shopifyFulfillmentId])
 }
-
 
 // ==========================================================
 // SUCCESSFULLY DELIVERED SELLER ORDERS
@@ -408,90 +406,88 @@ model SellerLedgerEntry {
 // ==========================================================
 
 model SellerDeliveredOrder {
-  id                   String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  sellerId             String
-  seller               Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
-  shopifyOrderId       String
-  shopifyOrderName     String?
+  shopifyOrderId   String
+  shopifyOrderName String?
 
   shopifyFulfillmentId String?
 
-  deliveredAt          DateTime
+  deliveredAt DateTime
 
   // Set when this delivery has been counted toward
   // successfulDeliveredOrders.
   qualificationCountedAt DateTime?
 
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sellerId, shopifyOrderId])
-
   @@index([sellerId])
   @@index([shopifyOrderId])
   @@index([deliveredAt])
   @@index([qualificationCountedAt])
 }
 
-
 // ==========================================================
 // PAYOUT BATCH
 // ==========================================================
 
 model PayoutBatch {
-  id                String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  batchCode         String   @unique
+  batchCode String @unique
 
-  sellerId          String
-  seller            Seller   @relation(fields: [sellerId], references: [id])
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id])
 
   // DRAFT / READY / PROCESSING / PAID / FAILED / CANCELED
-  status            String   @default("DRAFT")
+  status String @default("DRAFT")
 
-  currency          String   @default("USD")
+  currency String @default("USD")
 
-  totalAmountCents  Int      @default(0)
+  totalAmountCents Int @default(0)
 
-  externalPayoutId  String?
-  failureReason     String?
+  externalPayoutId String?
+  failureReason    String?
 
-  scheduledFor      DateTime?
-  processedAt       DateTime?
-  paidAt            DateTime?
+  scheduledFor DateTime?
+  processedAt  DateTime?
+  paidAt       DateTime?
 
-  items             PayoutBatchItem[]
+  items PayoutBatchItem[]
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([sellerId])
   @@index([status])
 }
-
 
 // ==========================================================
 // PAYOUT BATCH ITEM
 // ==========================================================
 
 model PayoutBatchItem {
-  id            String   @id @default(cuid())
+  id String @id @default(cuid())
 
   payoutBatchId String
   payoutBatch   PayoutBatch @relation(fields: [payoutBatchId], references: [id])
 
-  ledgerEntryId String   @unique
+  ledgerEntryId String            @unique
   ledgerEntry   SellerLedgerEntry @relation(fields: [ledgerEntryId], references: [id])
 
-  amountCents   Int
-  currency      String   @default("USD")
+  amountCents Int
+  currency    String @default("USD")
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([payoutBatchId])
 }
+
 // ==========================================================
 // HAIRGRAB MARKETPLACE SETTINGS
 // ==========================================================
@@ -502,32 +498,32 @@ model PayoutBatchItem {
 // ==========================================================
 
 model MarketplaceSettings {
-  id                           String   @id @default("hairgrab")
+  id String @id @default("hairgrab")
 
   // Seller defaults
-  standardCommissionRate       Float    @default(7)
-  foundingSellerCommissionRate Float    @default(5)
-  defaultActiveProductLimit    Int      @default(50)
+  standardCommissionRate       Float @default(7)
+  foundingSellerCommissionRate Float @default(5)
+  defaultActiveProductLimit    Int   @default(50)
 
   // Marketplace access
-  sellerApplicationsOpen       Boolean  @default(true)
-  requireSellerApproval        Boolean  @default(true)
+  sellerApplicationsOpen Boolean @default(true)
+  requireSellerApproval  Boolean @default(true)
 
   // Product controls
-  requireProductApproval       Boolean  @default(true)
-  productPublishingPaused      Boolean  @default(false)
+  requireProductApproval  Boolean @default(true)
+  productPublishingPaused Boolean @default(false)
 
   // Fulfillment defaults
-  defaultShippingSlaHours      Int      @default(48)
-  defaultReturnPolicy          String   @default("14_DAY_RETURNS")
+  defaultShippingSlaHours Int    @default(48)
+  defaultReturnPolicy     String @default("14_DAY_RETURNS")
 
   // Feature availability
-  localPickupEnabled           Boolean  @default(true)
-  localDeliveryEnabled         Boolean  @default(true)
+  localPickupEnabled   Boolean @default(true)
+  localDeliveryEnabled Boolean @default(true)
 
   // Support
-  supportEmail                 String?
+  supportEmail String?
 
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

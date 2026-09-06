@@ -15,6 +15,10 @@ import db from "../db.server";
 import { requireSellerSession } from "../seller-session.server";
 
 
+// ==========================================================
+// LOADER
+// ==========================================================
+
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
@@ -35,8 +39,7 @@ export const loader = async ({
     throw new Response(
       "Seller onboarding record was not found.",
       {
-        status:
-          404,
+        status: 404,
       },
     );
   }
@@ -48,6 +51,9 @@ export const loader = async ({
 
       sellsNationwide:
         seller.sellsNationwide,
+
+      nationwideShippingMethod:
+        seller.nationwideShippingMethod,
 
       offersLocalPickup:
         seller.offersLocalPickup,
@@ -62,6 +68,10 @@ export const loader = async ({
 };
 
 
+// ==========================================================
+// ACTION
+// ==========================================================
+
 export const action = async ({
   request,
 }: ActionFunctionArgs) => {
@@ -74,40 +84,58 @@ export const action = async ({
     const formData =
       await request.formData();
 
-    const sellsNationwide =
-      formData.get(
-        "sellsNationwide",
-      ) ===
-      "on";
+
+    const nationwideShippingMethod =
+      String(
+        formData.get(
+          "nationwideShippingMethod",
+        ) ||
+          "",
+      )
+        .trim()
+        .toUpperCase();
+
 
     const offersLocalPickup =
       formData.get(
         "offersLocalPickup",
-      ) ===
-      "on";
+      ) === "on";
+
 
     const offersLocalDelivery =
       formData.get(
         "offersLocalDelivery",
-      ) ===
-      "on";
+      ) === "on";
+
+
+    const allowedShippingMethods =
+      [
+        "SELLER_MANAGED",
+        "HAIRGRAB_SHIPPING",
+      ];
+
 
     if (
-      !sellsNationwide &&
-      !offersLocalPickup &&
-      !offersLocalDelivery
+      !allowedShippingMethods.includes(
+        nationwideShippingMethod,
+      )
     ) {
       return {
-        success:
-          false,
+        success: false,
 
         message:
-          "Choose at least one fulfillment option.",
+          "Choose how you want to handle nationwide shipping.",
       };
     }
 
+
+    const sellsNationwide =
+      true;
+
+
     const now =
       new Date();
+
 
     await db.$transaction([
       db.seller.update({
@@ -118,7 +146,11 @@ export const action = async ({
 
         data: {
           sellsNationwide,
+
+          nationwideShippingMethod,
+
           offersLocalPickup,
+
           offersLocalDelivery,
         },
       }),
@@ -148,6 +180,7 @@ export const action = async ({
       }),
     ]);
 
+
     return redirect(
       "/seller/onboarding",
     );
@@ -158,15 +191,18 @@ export const action = async ({
     );
 
     return {
-      success:
-        false,
+      success: false,
 
       message:
-        "HairGrab could not save your fulfillment settings.",
+        "HairGrab could not save your shipping and fulfillment settings.",
     };
   }
 };
 
+
+// ==========================================================
+// PAGE
+// ==========================================================
 
 export default function SellerFulfillmentOnboardingPage() {
   const {
@@ -177,10 +213,17 @@ export default function SellerFulfillmentOnboardingPage() {
       typeof loader
     >();
 
+
   const actionData =
     useActionData<
       typeof action
     >();
+
+
+  const defaultShippingMethod =
+    seller.nationwideShippingMethod ||
+    "SELLER_MANAGED";
+
 
   return (
     <div
@@ -229,6 +272,7 @@ export default function SellerFulfillmentOnboardingPage() {
           ← Back to Seller Setup
         </Link>
 
+
         <div
           style={{
             background:
@@ -268,6 +312,7 @@ export default function SellerFulfillmentOnboardingPage() {
             HairGrab Seller Setup
           </div>
 
+
           <h1
             style={{
               color:
@@ -282,6 +327,7 @@ export default function SellerFulfillmentOnboardingPage() {
           >
             Shipping & Fulfillment
           </h1>
+
 
           <p
             style={{
@@ -298,8 +344,12 @@ export default function SellerFulfillmentOnboardingPage() {
                 "0 0 18px",
             }}
           >
-            Tell HairGrab how shoppers can receive your products. You can change these settings later.
+            Choose how you want to
+            fulfill HairGrab orders.
+            You can update these
+            settings later.
           </p>
+
 
           {fulfillmentComplete && (
             <div
@@ -326,9 +376,13 @@ export default function SellerFulfillmentOnboardingPage() {
                   "16px",
               }}
             >
-              Your fulfillment setup is already complete. You can update it here if needed.
+              Your shipping setup is
+              already complete. You
+              can update it here if
+              needed.
             </div>
           )}
+
 
           {actionData && (
             <div
@@ -359,33 +413,195 @@ export default function SellerFulfillmentOnboardingPage() {
             </div>
           )}
 
+
           <Form method="post">
-            <Choice
-              name="sellsNationwide"
-              title="Ships Nationwide"
-              description="Your products can be shipped to shoppers across the U.S."
-              defaultChecked={
-                seller.sellsNationwide
-              }
-            />
 
-            <Choice
-              name="offersLocalPickup"
-              title="Local Pickup"
-              description="Nearby shoppers may pick up eligible orders using the pickup instructions HairGrab provides."
-              defaultChecked={
-                seller.offersLocalPickup
-              }
-            />
+            {/* ================================================
+                NATIONWIDE SHIPPING
+            ================================================= */}
 
-            <Choice
-              name="offersLocalDelivery"
-              title="Local Delivery"
-              description="Eligible nearby orders may be offered for local delivery when this option is available."
-              defaultChecked={
-                seller.offersLocalDelivery
-              }
-            />
+            <div
+              style={{
+                marginBottom:
+                  "18px",
+              }}
+            >
+              <div
+                style={{
+                  color:
+                    "#4B1678",
+
+                  fontSize:
+                    "14px",
+
+                  fontWeight:
+                    "800",
+
+                  marginBottom:
+                    "5px",
+                }}
+              >
+                Nationwide Shipping
+              </div>
+
+              <div
+                style={{
+                  color:
+                    "#756b79",
+
+                  fontSize:
+                    "11px",
+
+                  lineHeight:
+                    1.55,
+
+                  marginBottom:
+                    "10px",
+                }}
+              >
+                Choose the default
+                way you want to ship
+                HairGrab orders
+                across the U.S.
+              </div>
+
+
+              <RadioChoice
+                name="nationwideShippingMethod"
+                value="SELLER_MANAGED"
+                title="I'll Handle My Own Shipping"
+                description="Use your own carrier, shipping account or label process. You remain responsible for shipping the order and providing tracking."
+                defaultChecked={
+                  defaultShippingMethod ===
+                  "SELLER_MANAGED"
+                }
+              />
+
+
+              <RadioChoice
+                name="nationwideShippingMethod"
+                value="HAIRGRAB_SHIPPING"
+                title="Use HairGrab Shipping"
+                description="HairGrab will provide an available shipping-label option through the seller portal. You still pack and hand the order to the carrier."
+                defaultChecked={
+                  defaultShippingMethod ===
+                  "HAIRGRAB_SHIPPING"
+                }
+              />
+
+
+              <div
+                style={{
+                  marginTop:
+                    "10px",
+
+                  background:
+                    "#f7f2fa",
+
+                  border:
+                    "1px solid #eadff0",
+
+                  borderRadius:
+                    "10px",
+
+                  padding:
+                    "11px",
+
+                  color:
+                    "#6f6675",
+
+                  fontSize:
+                    "10px",
+
+                  lineHeight:
+                    1.55,
+                }}
+              >
+                HairGrab does not
+                physically ship your
+                packages. HairGrab
+                Shipping is a label
+                and shipping-service
+                option for sellers who
+                want help with the
+                shipping process.
+              </div>
+            </div>
+
+
+            {/* ================================================
+                ADDITIONAL OPTIONS
+            ================================================= */}
+
+            <div
+              style={{
+                marginTop:
+                  "22px",
+
+                marginBottom:
+                  "10px",
+              }}
+            >
+              <div
+                style={{
+                  color:
+                    "#4B1678",
+
+                  fontSize:
+                    "14px",
+
+                  fontWeight:
+                    "800",
+
+                  marginBottom:
+                    "5px",
+                }}
+              >
+                Additional Fulfillment Options
+              </div>
+
+              <div
+                style={{
+                  color:
+                    "#756b79",
+
+                  fontSize:
+                    "11px",
+
+                  lineHeight:
+                    1.55,
+
+                  marginBottom:
+                    "10px",
+                }}
+              >
+                These are optional
+                and can be offered in
+                addition to nationwide
+                shipping.
+              </div>
+
+
+              <CheckboxChoice
+                name="offersLocalPickup"
+                title="Local Pickup"
+                description="Nearby shoppers may pick up eligible orders directly from your approved pickup location."
+                defaultChecked={
+                  seller.offersLocalPickup
+                }
+              />
+
+
+              <CheckboxChoice
+                name="offersLocalDelivery"
+                title="HairGrab Same-Day Delivery"
+                description="Eligible nearby orders may be delivered by a HairGrab courier partner. HairGrab will request the courier after you mark the order ready for pickup."
+                defaultChecked={
+                  seller.offersLocalDelivery
+                }
+              />
+            </div>
+
 
             <div
               style={{
@@ -414,12 +630,22 @@ export default function SellerFulfillmentOnboardingPage() {
                   1.55,
               }}
             >
-              Shipping speed, inventory and product-specific fulfillment details are handled with the product listing so sellers do not have to enter the same information twice.
+              Product-specific shipping
+              speed, inventory and
+              eligibility details are
+              handled with the product
+              listing so you do not
+              have to enter the same
+              information twice.
             </div>
+
 
             <button
               type="submit"
               style={{
+                width:
+                  "100%",
+
                 border:
                   0,
 
@@ -433,7 +659,7 @@ export default function SellerFulfillmentOnboardingPage() {
                   "9px",
 
                 padding:
-                  "12px 17px",
+                  "13px 17px",
 
                 fontWeight:
                   "800",
@@ -455,7 +681,107 @@ export default function SellerFulfillmentOnboardingPage() {
 }
 
 
-function Choice({
+// ==========================================================
+// COMPONENTS
+// ==========================================================
+
+function RadioChoice({
+  name,
+  value,
+  title,
+  description,
+  defaultChecked,
+}: {
+  name: string;
+  value: string;
+  title: string;
+  description: string;
+  defaultChecked: boolean;
+}) {
+  return (
+    <label
+      style={{
+        display:
+          "flex",
+
+        alignItems:
+          "flex-start",
+
+        gap:
+          "12px",
+
+        border:
+          "1px solid #e5dce9",
+
+        borderRadius:
+          "11px",
+
+        padding:
+          "14px",
+
+        marginTop:
+          "10px",
+
+        cursor:
+          "pointer",
+
+        background:
+          "#ffffff",
+      }}
+    >
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        defaultChecked={
+          defaultChecked
+        }
+        style={{
+          marginTop:
+            "3px",
+        }}
+      />
+
+      <div>
+        <div
+          style={{
+            color:
+              "#4B1678",
+
+            fontSize:
+              "13px",
+
+            fontWeight:
+              "800",
+          }}
+        >
+          {title}
+        </div>
+
+        <div
+          style={{
+            color:
+              "#756b79",
+
+            fontSize:
+              "11px",
+
+            lineHeight:
+              1.5,
+
+            marginTop:
+              "4px",
+          }}
+        >
+          {description}
+        </div>
+      </div>
+    </label>
+  );
+}
+
+
+function CheckboxChoice({
   name,
   title,
   description,
@@ -488,10 +814,13 @@ function Choice({
           "14px",
 
         marginTop:
-          "11px",
+          "10px",
 
         cursor:
           "pointer",
+
+        background:
+          "#ffffff",
       }}
     >
       <input
