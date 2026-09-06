@@ -1060,10 +1060,22 @@ export default function SellerOnboardingPage() {
           >
             <a
               href={
-                currentStep === "STOREFRONT"
-                  ? "/seller/onboarding/storefront"
-                  : "/seller/onboarding/business"
-              }
+  currentStep === "BUSINESS"
+    ? "/seller/onboarding/business"
+    : currentStep === "STOREFRONT"
+      ? "/seller/onboarding/storefront"
+      : currentStep === "FULFILLMENT"
+        ? "/seller/onboarding/fulfillment"
+        : currentStep === "RETURNS"
+          ? "/seller/onboarding/returns"
+          : currentStep === "PAYOUTS"
+            ? "/seller/onboarding/payouts"
+            : currentStep === "AGREEMENTS"
+              ? "/seller/onboarding/agreements"
+              : currentStep === "PRODUCTS"
+                ? "/seller/products"
+                : "/seller"
+}
               style={{
                 display:
                   "block",
