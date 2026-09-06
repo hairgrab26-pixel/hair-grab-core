@@ -350,7 +350,7 @@ export default function PublicSellerDirectoryPage() {
                   key={
                     seller.id
                   }
-                  to={`/sellers/${seller.storeSlug}`}
+                  to={`/seller-store/${seller.storeSlug}`}
                   style={{
                     color:
                       "inherit",
