@@ -49,7 +49,7 @@ api_version = "2026-07"
   compliance_topics = [ "shop/redact" ]
 
 [access_scopes]
-scopes = "read_orders,read_products,write_products,read_shopify_payments_payouts,read_fulfillments,read_locations,read_inventory,write_inventory,write_files"
+scopes = "read_orders,write_orders,read_products,write_products,read_shopify_payments_payouts,read_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_locations,read_inventory,write_inventory,write_files"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
