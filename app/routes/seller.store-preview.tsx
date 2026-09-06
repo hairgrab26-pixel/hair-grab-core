@@ -292,9 +292,6 @@ export const loader = async ({
       businessName:
         seller.businessName,
 
-      sellerCode:
-        seller.sellerCode,
-
       storeDescription:
         seller.storeDescription ||
         "",
@@ -305,26 +302,6 @@ export const loader = async ({
 
       bannerUrl:
         seller.bannerUrl ||
-        "",
-
-      website:
-        seller.website ||
-        "",
-
-      instagram:
-        seller.instagram ||
-        "",
-
-      tiktok:
-        seller.tiktok ||
-        "",
-
-      city:
-        seller.city ||
-        "",
-
-      state:
-        seller.state ||
         "",
 
       sellsNationwide:
@@ -351,13 +328,6 @@ export default function SellerStorePreviewPage() {
       typeof loader
     >();
 
-  const location =
-    [
-      seller.city,
-      seller.state,
-    ]
-      .filter(Boolean)
-      .join(", ");
 
   return (
     <div
@@ -628,20 +598,6 @@ export default function SellerStorePreviewPage() {
             </div>
 
             <div>
-              <div
-                style={{
-                  color:
-                    "#4B1678",
-
-                  fontSize:
-                    "11px",
-
-                  fontWeight:
-                    "800",
-                }}
-              >
-                {seller.sellerCode}
-              </div>
 
               <h1
                 style={{
@@ -657,23 +613,6 @@ export default function SellerStorePreviewPage() {
               >
                 {seller.businessName}
               </h1>
-
-              {location && (
-                <div
-                  style={{
-                    color:
-                      "#756b79",
-
-                    fontSize:
-                      "12px",
-
-                    marginBottom:
-                      "10px",
-                  }}
-                >
-                  {location}
-                </div>
-              )}
 
               <div
                 style={{
@@ -725,58 +664,6 @@ export default function SellerStorePreviewPage() {
                   <Badge>
                     Local Delivery
                   </Badge>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display:
-                    "flex",
-
-                  gap:
-                    "12px",
-
-                  flexWrap:
-                    "wrap",
-
-                  marginTop:
-                    "16px",
-                }}
-              >
-                {seller.website && (
-                  <ExternalLink
-                    href={
-                      seller.website
-                    }
-                  >
-                    Website
-                  </ExternalLink>
-                )}
-
-                {seller.instagram && (
-                  <ExternalLink
-                    href={
-                      normalizeSocialUrl(
-                        seller.instagram,
-                        "instagram",
-                      )
-                    }
-                  >
-                    Instagram
-                  </ExternalLink>
-                )}
-
-                {seller.tiktok && (
-                  <ExternalLink
-                    href={
-                      normalizeSocialUrl(
-                        seller.tiktok,
-                        "tiktok",
-                      )
-                    }
-                  >
-                    TikTok
-                  </ExternalLink>
                 )}
               </div>
             </div>
@@ -1091,65 +978,3 @@ function Badge({
   );
 }
 
-
-function ExternalLink({
-  href,
-  children,
-}: {
-  href: string;
-  children:
-    React.ReactNode;
-}) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      style={{
-        color:
-          "#4B1678",
-
-        textDecoration:
-          "none",
-
-        fontSize:
-          "11px",
-
-        fontWeight:
-          "800",
-      }}
-    >
-      {children} ↗
-    </a>
-  );
-}
-
-
-function normalizeSocialUrl(
-  value: string,
-  platform:
-    | "instagram"
-    | "tiktok",
-) {
-  const trimmed =
-    value.trim();
-
-  if (
-    /^https?:\/\//i.test(
-      trimmed,
-    )
-  ) {
-    return trimmed;
-  }
-
-  const username =
-    trimmed.replace(
-      /^@/,
-      "",
-    );
-
-  return platform ===
-    "instagram"
-    ? `https://instagram.com/${username}`
-    : `https://tiktok.com/@${username}`;
-}
