@@ -326,9 +326,64 @@ export const loader = async ({
   }
 
 
+  let resolvedOnboarding = onboarding;
+
+  const hasBusinessDetails = Boolean(
+    seller.businessName &&
+    seller.email &&
+    seller.postalCode,
+  );
+
+  // Existing approved sellers may already have all required
+  // business information carried forward from the application.
+  // Also migrate sellers who already accepted the agreement
+  // under the old flow so they are immediately marked complete.
+  if (
+    onboarding.agreementsComplete &&
+    (
+      onboarding.status !== "COMPLETE" ||
+      onboarding.currentStep !== "COMPLETE" ||
+      !onboarding.completedAt ||
+      (
+        hasBusinessDetails &&
+        !onboarding.businessComplete
+      )
+    )
+  ) {
+    const now = new Date();
+
+    resolvedOnboarding =
+      await db.sellerOnboarding.update({
+        where: {
+          sellerId: seller.id,
+        },
+
+        data: {
+          ...(
+            hasBusinessDetails &&
+            !onboarding.businessComplete
+              ? {
+                  businessComplete: true,
+                  businessCompletedAt:
+                    onboarding.businessCompletedAt ||
+                    now,
+                }
+              : {}
+          ),
+
+          currentStep: "COMPLETE",
+          status: "COMPLETE",
+          completedAt:
+            onboarding.completedAt ||
+            now,
+          lastSavedAt: now,
+        },
+      });
+  }
+
   return {
     seller,
-    onboarding,
+    onboarding: resolvedOnboarding,
 
     portalAccount: {
       firstName:
@@ -744,7 +799,9 @@ export default function SellerOnboardingPage() {
                     "20px",
                 }}
               >
-                Finish your seller setup
+                {onboarding.status === "COMPLETE"
+                ? "Seller setup complete"
+                : "Finish your seller setup"}
               </h2>
 
               <div
@@ -778,7 +835,9 @@ export default function SellerOnboardingPage() {
                   "800",
               }}
             >
-              Current step: {currentStep}
+              {onboarding.status === "COMPLETE"
+                ? "Setup Complete ✓"
+                : `Current step: ${currentStep}`}
             </div>
           </div>
 
@@ -861,17 +920,6 @@ export default function SellerOnboardingPage() {
           />
 
 
-          <ChecklistRow
-            title="Products"
-            description="Add products manually or import your hair catalog when you're ready."
-            complete={
-              onboarding.productsComplete
-            }
-            current={
-              currentStep ===
-              "PRODUCTS"
-            }
-          />
 
         </div>
 
@@ -1058,55 +1106,104 @@ export default function SellerOnboardingPage() {
                 "1px solid #eee7f2",
             }}
           >
-            <a
-              href={
-  currentStep === "BUSINESS"
-    ? "/seller/onboarding/business"
-    : currentStep === "STOREFRONT"
-      ? "/seller/onboarding/storefront"
-      : currentStep === "FULFILLMENT"
-        ? "/seller/onboarding/fulfillment"
-        : currentStep === "RETURNS"
-          ? "/seller/onboarding/returns"
-          : currentStep === "PAYOUTS"
-            ? "/seller/onboarding/payouts"
-            : currentStep === "AGREEMENTS"
-              ? "/seller/onboarding/agreements"
-              : currentStep === "PRODUCTS"
-                ? "/seller/products"
-                : "/seller"
-}
-              style={{
-                display:
-                  "block",
-                width:
-                  "100%",
-                boxSizing:
-                  "border-box",
-                textAlign:
-                  "center",
-                border:
-                  "none",
-                borderRadius:
-                  "10px",
-                background:
-                  "#4B1678",
-                color:
-                  "#ffffff",
-                padding:
-                  "14px 18px",
-                fontSize:
-                  "14px",
-                fontWeight:
-                  "800",
-                cursor:
-                  "pointer",
-                textDecoration:
-                  "none",
-              }}
-            >
-              Continue Seller Setup
-            </a>
+            {onboarding.status === "COMPLETE" ? (
+              <>
+                <div
+                  style={{
+                    background: "#edf8ef",
+                    border: "1px solid #cbe3d0",
+                    borderRadius: "10px",
+                    padding: "14px",
+                    color: "#28743b",
+                    fontSize: "13px",
+                    lineHeight: 1.6,
+                    marginBottom: "14px",
+                    fontWeight: "700",
+                  }}
+                >
+                  ✓ Your HairGrab seller setup is complete. You can add, edit and manage products whenever you're ready.
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "12px",
+                  }}
+                >
+                  <a
+                    href="/seller"
+                    style={{
+                      display: "block",
+                      textAlign: "center",
+                      borderRadius: "10px",
+                      background: "#4B1678",
+                      color: "#ffffff",
+                      padding: "14px 18px",
+                      fontSize: "14px",
+                      fontWeight: "800",
+                      textDecoration: "none",
+                    }}
+                  >
+                    Go to Seller Dashboard
+                  </a>
+
+                  <a
+                    href="/seller/products"
+                    style={{
+                      display: "block",
+                      textAlign: "center",
+                      border: "2px solid #4B1678",
+                      borderRadius: "10px",
+                      background: "#ffffff",
+                      color: "#4B1678",
+                      padding: "12px 18px",
+                      fontSize: "14px",
+                      fontWeight: "800",
+                      textDecoration: "none",
+                    }}
+                  >
+                    Add or Manage Products
+                  </a>
+                </div>
+              </>
+            ) : (
+              <a
+                href={
+                  currentStep === "BUSINESS"
+                    ? "/seller/onboarding/business"
+                    : currentStep === "STOREFRONT"
+                      ? "/seller/onboarding/storefront"
+                      : currentStep === "FULFILLMENT"
+                        ? "/seller/onboarding/fulfillment"
+                        : currentStep === "RETURNS"
+                          ? "/seller/onboarding/returns"
+                          : currentStep === "PAYOUTS"
+                            ? "/seller/onboarding/payouts"
+                            : currentStep === "AGREEMENTS"
+                              ? "/seller/onboarding/agreements"
+                              : "/seller"
+                }
+                style={{
+                  display: "block",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  textAlign: "center",
+                  border: "none",
+                  borderRadius: "10px",
+                  background: "#4B1678",
+                  color: "#ffffff",
+                  padding: "14px 18px",
+                  fontSize: "14px",
+                  fontWeight: "800",
+                  cursor: "pointer",
+                  textDecoration: "none",
+                }}
+              >
+                Continue Seller Setup
+              </a>
+            )}
           </div>
         </div>
       </div>

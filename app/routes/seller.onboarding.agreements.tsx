@@ -1,4 +1,3 @@
-
 import type {
   ActionFunctionArgs,
   LoaderFunctionArgs,
@@ -112,10 +111,14 @@ export const action = async ({
         now,
 
       currentStep:
-        "PRODUCTS",
+        "COMPLETE",
 
       status:
-        "IN_PROGRESS",
+        "COMPLETE",
+
+      completedAt:
+        onboarding.completedAt ||
+        now,
 
       lastSavedAt:
         now,
@@ -206,7 +209,7 @@ export default function SellerAgreementsOnboardingPage() {
               margin: "0 0 18px",
             }}
           >
-            Review HairGrab's marketplace seller terms before listing products.
+            Review HairGrab's marketplace seller terms before completing your seller setup.
           </p>
 
           {agreementsComplete && (
@@ -357,8 +360,8 @@ export default function SellerAgreementsOnboardingPage() {
               }}
             >
               {agreementsComplete
-                ? "Continue Seller Setup"
-                : "Accept & Continue"}
+                ? "Complete Seller Setup"
+                : "Accept & Complete Seller Setup"}
             </button>
           </Form>
 
