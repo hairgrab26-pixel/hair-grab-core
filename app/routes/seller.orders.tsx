@@ -15,6 +15,10 @@ import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
 
 
+// ==========================================================
+// SHOPIFY ADMIN
+// ==========================================================
+
 async function getShopifyAdmin() {
   const offlineSession =
     await db.session.findFirst({
@@ -35,6 +39,70 @@ async function getShopifyAdmin() {
 }
 
 
+// ==========================================================
+// HELPERS
+// ==========================================================
+
+function money(
+  cents: number,
+) {
+  return new Intl.NumberFormat(
+    "en-US",
+    {
+      style: "currency",
+      currency: "USD",
+    },
+  ).format(
+    cents / 100,
+  );
+}
+
+
+function formatStatus(
+  value:
+    | string
+    | null
+    | undefined,
+) {
+  if (!value) {
+    return "Not Set";
+  }
+
+  return value
+    .replace(
+      /_/g,
+      " ",
+    )
+    .toLowerCase()
+    .replace(
+      /\b\w/g,
+      (
+        letter,
+      ) =>
+        letter.toUpperCase(),
+    );
+}
+
+
+function normalizeShopifyOrderId(
+  value: string,
+) {
+  if (
+    value.startsWith(
+      "gid://shopify/Order/",
+    )
+  ) {
+    return value;
+  }
+
+  return `gid://shopify/Order/${value}`;
+}
+
+
+// ==========================================================
+// LOADER
+// ==========================================================
+
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
@@ -43,11 +111,13 @@ export const loader = async ({
       request,
     );
 
+
   const entries =
     await db.sellerLedgerEntry.findMany({
       where: {
         sellerId:
           seller.id,
+
         entryType:
           "SALE",
       },
@@ -55,16 +125,22 @@ export const loader = async ({
       select: {
         shopifyOrderId:
           true,
+
         shopifyOrderName:
           true,
+
         grossAmountCents:
           true,
+
         shopifyCreatedAt:
           true,
+
         shopifyFulfillmentId:
           true,
+
         deliveredAt:
           true,
+
         createdAt:
           true,
       },
@@ -75,24 +151,69 @@ export const loader = async ({
       },
     });
 
+
+  const fulfillmentRecords =
+    await db.sellerOrderFulfillment.findMany({
+      where: {
+        sellerId:
+          seller.id,
+      },
+    });
+
+
+  const fulfillmentByOrder =
+    new Map(
+      fulfillmentRecords.map(
+        (
+          fulfillment,
+        ) => [
+          fulfillment.shopifyOrderId,
+          fulfillment,
+        ],
+      ),
+    );
+
+
   const grouped =
     new Map<
       string,
       {
-        id:
-          string;
-        name:
-          string;
-        amountCents:
-          number;
-        createdAt:
-          string;
-        status:
-          "READY_TO_SHIP" |
-          "SHIPPED" |
-          "DELIVERED";
+        id: string;
+        name: string;
+        amountCents: number;
+        createdAt: string;
+
+        shopifyStatus:
+          | "READY_TO_SHIP"
+          | "SHIPPED"
+          | "DELIVERED";
+
+        fulfillmentMethod:
+          string | null;
+
+        fulfillmentStatus:
+          string | null;
+
+        carrier:
+          string | null;
+
+        trackingNumber:
+          string | null;
+
+        trackingUrl:
+          string | null;
+
+        shippingLabelUrl:
+          string | null;
+
+        courierProvider:
+          string | null;
+
+        courierStatus:
+          string | null;
       }
     >();
+
 
   for (
     const entry of
@@ -103,15 +224,20 @@ export const loader = async ({
         entry.shopifyOrderId,
       );
 
-    const existing =
-      grouped.get(id);
 
-    const status =
+    const existing =
+      grouped.get(
+        id,
+      );
+
+
+    const shopifyStatus =
       entry.deliveredAt
         ? "DELIVERED"
         : entry.shopifyFulfillmentId
           ? "SHIPPED"
           : "READY_TO_SHIP";
+
 
     if (existing) {
       existing.amountCents +=
@@ -120,29 +246,38 @@ export const loader = async ({
           0,
         );
 
+
       if (
-        status ===
+        shopifyStatus ===
         "DELIVERED"
       ) {
-        existing.status =
+        existing.shopifyStatus =
           "DELIVERED";
       } else if (
-        status ===
+        shopifyStatus ===
           "SHIPPED" &&
-        existing.status !==
+        existing.shopifyStatus !==
           "DELIVERED"
       ) {
-        existing.status =
+        existing.shopifyStatus =
           "SHIPPED";
       }
 
       continue;
     }
 
+
+    const fulfillment =
+      fulfillmentByOrder.get(
+        id,
+      );
+
+
     grouped.set(
       id,
       {
         id,
+
         name:
           entry.shopifyOrderName ||
           "HairGrab Order",
@@ -159,43 +294,105 @@ export const loader = async ({
             entry.createdAt
           ).toISOString(),
 
-        status,
+        shopifyStatus,
+
+        fulfillmentMethod:
+          fulfillment
+            ?.fulfillmentMethod ||
+          null,
+
+        fulfillmentStatus:
+          fulfillment
+            ?.status ||
+          null,
+
+        carrier:
+          fulfillment
+            ?.carrier ||
+          null,
+
+        trackingNumber:
+          fulfillment
+            ?.trackingNumber ||
+          null,
+
+        trackingUrl:
+          fulfillment
+            ?.trackingUrl ||
+          null,
+
+        shippingLabelUrl:
+          fulfillment
+            ?.shippingLabelUrl ||
+          null,
+
+        courierProvider:
+          fulfillment
+            ?.courierProvider ||
+          null,
+
+        courierStatus:
+          fulfillment
+            ?.courierStatus ||
+          null,
       },
     );
   }
+
 
   const orders =
     Array.from(
       grouped.values(),
     );
 
+
   return {
     seller: {
       businessName:
         seller.businessName,
+
       sellerCode:
         seller.sellerCode,
+
+      shopifyVendor:
+        seller.shopifyVendor,
+
+      nationwideShippingMethod:
+        seller.nationwideShippingMethod,
+
+      offersLocalPickup:
+        seller.offersLocalPickup,
+
+      offersLocalDelivery:
+        seller.offersLocalDelivery,
     },
+
 
     counts: {
       ready:
         orders.filter(
-          (order) =>
-            order.status ===
+          (
+            order,
+          ) =>
+            order.shopifyStatus ===
             "READY_TO_SHIP",
         ).length,
 
       shipped:
         orders.filter(
-          (order) =>
-            order.status ===
+          (
+            order,
+          ) =>
+            order.shopifyStatus ===
             "SHIPPED",
         ).length,
 
       delivered:
         orders.filter(
-          (order) =>
-            order.status ===
+          (
+            order,
+          ) =>
+            order.shopifyStatus ===
             "DELIVERED",
         ).length,
 
@@ -207,6 +404,10 @@ export const loader = async ({
   };
 };
 
+
+// ==========================================================
+// ACTION
+// ==========================================================
 
 export const action = async ({
   request,
@@ -220,352 +421,734 @@ export const action = async ({
     const formData =
       await request.formData();
 
+
+    const intent =
+      String(
+        formData.get(
+          "intent",
+        ) ||
+          "",
+      ).trim();
+
+
     const orderId =
       String(
         formData.get(
           "orderId",
-        ) || "",
+        ) ||
+          "",
       ).trim();
 
-    const carrier =
-      String(
-        formData.get(
-          "carrier",
-        ) || "",
-      ).trim();
 
-    const tracking =
-      String(
-        formData.get(
-          "tracking",
-        ) || "",
-      ).trim();
-
-    if (
-      !orderId ||
-      !tracking
-    ) {
+    if (!orderId) {
       return {
-        success:
-          false,
+        success: false,
+
         message:
-          "Order and tracking number are required.",
+          "Order was not provided.",
       };
     }
+
 
     const sellerOrder =
       await db.sellerLedgerEntry.findFirst({
         where: {
           sellerId:
             seller.id,
+
           shopifyOrderId:
             orderId,
+
           entryType:
             "SALE",
         },
       });
 
+
     if (!sellerOrder) {
       return {
-        success:
-          false,
+        success: false,
+
         message:
           "This order does not belong to your HairGrab store.",
       };
     }
 
-    const { admin } =
-      await getShopifyAdmin();
 
-    const response =
-      await admin.graphql(
-        `#graphql
-        query HairGrabSellerFulfillmentOrder(
-          $id: ID!
-        ) {
-          order(id: $id) {
-            id
+    // ========================================================
+    // CHOOSE FULFILLMENT METHOD
+    // ========================================================
 
-            fulfillmentOrders(
-              first: 20
-            ) {
-              nodes {
-                id
-                status
+    if (
+      intent ===
+      "set-fulfillment-method"
+    ) {
+      const fulfillmentMethod =
+        String(
+          formData.get(
+            "fulfillmentMethod",
+          ) ||
+            "",
+        )
+          .trim()
+          .toUpperCase();
 
-                lineItems(
-                  first: 100
-                ) {
-                  nodes {
-                    id
-                    remainingQuantity
 
-                    lineItem {
+      const allowedMethods =
+        [
+          "SELLER_MANAGED",
+          "HAIRGRAB_SHIPPING",
+          "LOCAL_PICKUP",
+          "HAIRGRAB_SAME_DAY",
+        ];
+
+
+      if (
+        !allowedMethods.includes(
+          fulfillmentMethod,
+        )
+      ) {
+        return {
+          success: false,
+
+          message:
+            "Choose a valid fulfillment method.",
+        };
+      }
+
+
+      if (
+        fulfillmentMethod ===
+          "LOCAL_PICKUP" &&
+        !seller.offersLocalPickup
+      ) {
+        return {
+          success: false,
+
+          message:
+            "Local Pickup is not enabled for your HairGrab store.",
+        };
+      }
+
+
+      if (
+        fulfillmentMethod ===
+          "HAIRGRAB_SAME_DAY" &&
+        !seller.offersLocalDelivery
+      ) {
+        return {
+          success: false,
+
+          message:
+            "HairGrab Same-Day Delivery is not enabled for your store.",
+        };
+      }
+
+
+      await db.sellerOrderFulfillment.upsert({
+        where: {
+          sellerId_shopifyOrderId: {
+            sellerId:
+              seller.id,
+
+            shopifyOrderId:
+              orderId,
+          },
+        },
+
+        update: {
+          fulfillmentMethod,
+
+          status:
+            "READY",
+        },
+
+        create: {
+          sellerId:
+            seller.id,
+
+          shopifyOrderId:
+            orderId,
+
+          shopifyOrderName:
+            sellerOrder.shopifyOrderName,
+
+          fulfillmentMethod,
+
+          status:
+            "READY",
+        },
+      });
+
+
+      return {
+        success: true,
+
+        message:
+          `Fulfillment method set to ${formatStatus(
+            fulfillmentMethod,
+          )}.`,
+      };
+    }
+
+
+    // ========================================================
+    // LOCAL PICKUP - MARK READY
+    // ========================================================
+
+    if (
+      intent ===
+      "ready-for-pickup"
+    ) {
+      const fulfillment =
+        await db.sellerOrderFulfillment.findUnique({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+        });
+
+
+      if (
+        !fulfillment ||
+        fulfillment.fulfillmentMethod !==
+          "LOCAL_PICKUP"
+      ) {
+        return {
+          success: false,
+
+          message:
+            "This order is not set for Local Pickup.",
+        };
+      }
+
+
+      await db.sellerOrderFulfillment.update({
+        where: {
+          sellerId_shopifyOrderId: {
+            sellerId:
+              seller.id,
+
+            shopifyOrderId:
+              orderId,
+          },
+        },
+
+        data: {
+          status:
+            "READY_FOR_PICKUP",
+
+          readyForPickupAt:
+            new Date(),
+        },
+      });
+
+
+      return {
+        success: true,
+
+        message:
+          "Order marked ready for customer pickup.",
+      };
+    }
+
+
+    // ========================================================
+    // SAME-DAY DELIVERY - SELLER MARKS PACKAGE READY
+    // ========================================================
+
+    if (
+      intent ===
+      "ready-for-same-day"
+    ) {
+      const fulfillment =
+        await db.sellerOrderFulfillment.findUnique({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+        });
+
+
+      if (
+        !fulfillment ||
+        fulfillment.fulfillmentMethod !==
+          "HAIRGRAB_SAME_DAY"
+      ) {
+        return {
+          success: false,
+
+          message:
+            "This order is not set for HairGrab Same-Day Delivery.",
+        };
+      }
+
+
+      await db.sellerOrderFulfillment.update({
+        where: {
+          sellerId_shopifyOrderId: {
+            sellerId:
+              seller.id,
+
+            shopifyOrderId:
+              orderId,
+          },
+        },
+
+        data: {
+          status:
+            "READY_FOR_PICKUP",
+
+          readyForPickupAt:
+            new Date(),
+
+          courierStatus:
+            "WAITING_FOR_DISPATCH",
+        },
+      });
+
+
+      return {
+        success: true,
+
+        message:
+          "Order is ready for HairGrab Same-Day Delivery. Courier dispatch will be connected in the next phase.",
+      };
+    }
+
+
+    // ========================================================
+    // SELLER-MANAGED SHIPPING
+    // Existing working Shopify fulfillment process
+    // ========================================================
+
+    if (
+      intent ===
+      "mark-shipped"
+    ) {
+      const fulfillmentRecord =
+        await db.sellerOrderFulfillment.findUnique({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+        });
+
+
+      if (
+        !fulfillmentRecord ||
+        fulfillmentRecord.fulfillmentMethod !==
+          "SELLER_MANAGED"
+      ) {
+        return {
+          success: false,
+
+          message:
+            "This order is not set for Seller Managed Shipping.",
+        };
+      }
+
+
+      const carrier =
+        String(
+          formData.get(
+            "carrier",
+          ) ||
+            "",
+        ).trim();
+
+
+      const tracking =
+        String(
+          formData.get(
+            "tracking",
+          ) ||
+            "",
+        ).trim();
+
+
+      if (!tracking) {
+        return {
+          success: false,
+
+          message:
+            "Tracking number is required.",
+        };
+      }
+
+
+      const {
+        admin,
+      } =
+        await getShopifyAdmin();
+
+
+      const response =
+        await admin.graphql(
+          `#graphql
+          query HairGrabSellerFulfillmentOrder(
+            $id: ID!
+          ) {
+            order(id: $id) {
+              id
+
+              fulfillmentOrders(
+                first: 20
+              ) {
+                nodes {
+                  id
+                  status
+
+                  lineItems(
+                    first: 100
+                  ) {
+                    nodes {
                       id
-                      vendor
+                      remainingQuantity
+
+                      lineItem {
+                        id
+                        vendor
+                      }
                     }
                   }
                 }
               }
             }
           }
-        }
-        `,
-        {
-          variables: {
-            id:
-              orderId,
+          `,
+          {
+            variables: {
+              id:
+                normalizeShopifyOrderId(
+                  orderId,
+                ),
+            },
           },
-        },
-      );
+        );
 
-    const json =
-      await response.json();
 
-    if (
-      json?.errors
-        ?.length
-    ) {
-      throw new Error(
-        json.errors
-          .map(
-            (error: {
-              message?: string;
-            }) =>
-              error.message ||
-              "Unable to load order fulfillment.",
-          )
-          .join(" | "),
-      );
-    }
+      const json =
+        await response.json();
 
-    const fulfillmentOrders =
-      json?.data
-        ?.order
-        ?.fulfillmentOrders
-        ?.nodes ||
-      [];
 
-    const lineItemsByFulfillmentOrder =
-      fulfillmentOrders
-        .map(
-          (
-            fulfillmentOrder:
-              any,
-          ) => {
-            const sellerLineItems =
+      if (
+        json?.errors?.length
+      ) {
+        throw new Error(
+          json.errors
+            .map(
               (
-                fulfillmentOrder
-                  ?.lineItems
-                  ?.nodes ||
-                []
-              )
-                .filter(
-                  (
-                    item:
-                      any,
-                  ) =>
-                    item
-                      ?.lineItem
-                      ?.vendor ===
-                      seller.shopifyVendor &&
-                    Number(
-                      item
-                        ?.remainingQuantity ||
-                      0,
-                    ) >
-                      0,
+                error: {
+                  message?: string;
+                },
+              ) =>
+                error.message ||
+                "Unable to load order fulfillment.",
+            )
+            .join(
+              " | ",
+            ),
+        );
+      }
+
+
+      const fulfillmentOrders =
+        json?.data?.order
+          ?.fulfillmentOrders
+          ?.nodes ||
+        [];
+
+
+      const lineItemsByFulfillmentOrder =
+        fulfillmentOrders
+          .map(
+            (
+              fulfillmentOrder:
+                any,
+            ) => {
+              const sellerLineItems =
+                (
+                  fulfillmentOrder
+                    ?.lineItems
+                    ?.nodes ||
+                  []
                 )
-                .map(
-                  (
-                    item:
-                      any,
-                  ) => ({
-                    id:
-                      item.id,
-                    quantity:
+                  .filter(
+                    (
+                      item:
+                        any,
+                    ) =>
+                      item
+                        ?.lineItem
+                        ?.vendor ===
+                        seller.shopifyVendor &&
                       Number(
                         item
-                          .remainingQuantity,
-                      ),
-                  }),
-                );
+                          ?.remainingQuantity ||
+                          0,
+                      ) >
+                        0,
+                  )
+                  .map(
+                    (
+                      item:
+                        any,
+                    ) => ({
+                      id:
+                        item.id,
 
-            if (
-              sellerLineItems.length ===
-              0
-            ) {
-              return null;
-            }
+                      quantity:
+                        Number(
+                          item.remainingQuantity,
+                        ),
+                    }),
+                  );
 
-            return {
-              fulfillmentOrderId:
-                fulfillmentOrder.id,
 
-              fulfillmentOrderLineItems:
-                sellerLineItems,
-            };
-          },
-        )
-        .filter(Boolean);
+              if (
+                sellerLineItems.length ===
+                0
+              ) {
+                return null;
+              }
 
-    if (
-      lineItemsByFulfillmentOrder.length ===
-      0
-    ) {
-      return {
-        success:
-          false,
-        message:
-          "There are no unfulfilled items for your store on this order.",
-      };
-    }
 
-    const fulfillmentResponse =
-      await admin.graphql(
-        `#graphql
-        mutation HairGrabShipSellerOrder(
-          $fulfillment: FulfillmentInput!
-        ) {
-          fulfillmentCreate(
-            fulfillment: $fulfillment
+              return {
+                fulfillmentOrderId:
+                  fulfillmentOrder.id,
+
+                fulfillmentOrderLineItems:
+                  sellerLineItems,
+              };
+            },
+          )
+          .filter(Boolean);
+
+
+      if (
+        lineItemsByFulfillmentOrder.length ===
+        0
+      ) {
+        return {
+          success: false,
+
+          message:
+            "There are no unfulfilled items for your store on this order.",
+        };
+      }
+
+
+      const fulfillmentResponse =
+        await admin.graphql(
+          `#graphql
+          mutation HairGrabShipSellerOrder(
+            $fulfillment: FulfillmentInput!
           ) {
-            fulfillment {
-              id
-              status
+            fulfillmentCreate(
+              fulfillment: $fulfillment
+            ) {
+              fulfillment {
+                id
+                status
 
-              trackingInfo {
-                company
-                number
-                url
+                trackingInfo {
+                  company
+                  number
+                  url
+                }
+              }
+
+              userErrors {
+                field
+                message
               }
             }
-
-            userErrors {
-              field
-              message
-            }
           }
-        }
-        `,
-        {
-          variables: {
-            fulfillment: {
-              lineItemsByFulfillmentOrder,
+          `,
+          {
+            variables: {
+              fulfillment: {
+                lineItemsByFulfillmentOrder,
 
-              notifyCustomer:
-                true,
+                notifyCustomer:
+                  true,
 
-              trackingInfo: {
-                company:
-                  carrier ||
-                  "Other",
+                trackingInfo: {
+                  company:
+                    carrier ||
+                    "Other",
 
-                number:
-                  tracking,
+                  number:
+                    tracking,
+                },
               },
             },
           },
-        },
-      );
+        );
 
-    const fulfillmentJson =
-      await fulfillmentResponse.json();
 
-    const result =
-      fulfillmentJson?.data
-        ?.fulfillmentCreate;
+      const fulfillmentJson =
+        await fulfillmentResponse.json();
 
-    const errors =
-      result?.userErrors ||
-      [];
 
-    if (
-      errors.length >
-      0
-    ) {
-      throw new Error(
-        errors
-          .map(
-            (error: {
-              message?: string;
-            }) =>
-              error.message ||
-              "Unable to create shipment.",
-          )
-          .join(" | "),
-      );
+      const result =
+        fulfillmentJson
+          ?.data
+          ?.fulfillmentCreate;
+
+
+      const errors =
+        result?.userErrors ||
+        [];
+
+
+      if (
+        errors.length >
+        0
+      ) {
+        throw new Error(
+          errors
+            .map(
+              (
+                error: {
+                  message?: string;
+                },
+              ) =>
+                error.message ||
+                "Unable to create shipment.",
+            )
+            .join(
+              " | ",
+            ),
+        );
+      }
+
+
+      const fulfillmentId =
+        result?.fulfillment
+          ?.id;
+
+
+      if (!fulfillmentId) {
+        throw new Error(
+          "Shopify did not return a fulfillment.",
+        );
+      }
+
+
+      const trackingUrl =
+        result?.fulfillment
+          ?.trackingInfo?.url ||
+        null;
+
+
+      await db.$transaction([
+        db.sellerLedgerEntry.updateMany({
+          where: {
+            sellerId:
+              seller.id,
+
+            shopifyOrderId:
+              orderId,
+
+            entryType:
+              "SALE",
+          },
+
+          data: {
+            shopifyFulfillmentId:
+              String(
+                fulfillmentId,
+              ),
+          },
+        }),
+
+
+        db.sellerOrderFulfillment.update({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+
+          data: {
+            status:
+              "SHIPPED",
+
+            carrier:
+              carrier ||
+              "Other",
+
+            trackingNumber:
+              tracking,
+
+            trackingUrl,
+
+            shippedAt:
+              new Date(),
+          },
+        }),
+      ]);
+
+
+      return {
+        success: true,
+
+        message:
+          `Shipment saved. Tracking: ${tracking}`,
+      };
     }
 
-    const fulfillmentId =
-      result?.fulfillment
-        ?.id;
-
-    if (!fulfillmentId) {
-      throw new Error(
-        "Shopify did not return a fulfillment.",
-      );
-    }
-
-    await db.sellerLedgerEntry.updateMany({
-      where: {
-        sellerId:
-          seller.id,
-        shopifyOrderId:
-          orderId,
-        entryType:
-          "SALE",
-      },
-      data: {
-        shopifyFulfillmentId:
-          String(
-            fulfillmentId,
-          ),
-      },
-    });
 
     return {
-      success:
-        true,
+      success: false,
+
       message:
-        `Shipment saved. Tracking: ${tracking}`,
+        "Unknown fulfillment action.",
     };
   } catch (error) {
     console.error(
-      "[HairGrab Core] Seller shipment error:",
+      "[HairGrab Core] Seller fulfillment error:",
       error,
     );
 
+
     return {
-      success:
-        false,
+      success: false,
+
       message:
         error instanceof
         Error
           ? error.message
-          : "HairGrab could not save the shipment.",
+          : "HairGrab could not update the order.",
     };
   }
 };
 
 
-function money(
-  cents: number,
-) {
-  return new Intl.NumberFormat(
-    "en-US",
-    {
-      style:
-        "currency",
-      currency:
-        "USD",
-    },
-  ).format(
-    cents /
-    100,
-  );
-}
-
+// ==========================================================
+// PAGE
+// ==========================================================
 
 export default function SellerOrdersPage() {
   const {
@@ -577,20 +1160,25 @@ export default function SellerOrdersPage() {
       typeof loader
     >();
 
+
   const actionData =
     useActionData<
       typeof action
     >();
+
 
   return (
     <div
       style={{
         minHeight:
           "100vh",
+
         background:
           "#faf8fc",
+
         fontFamily:
           "Arial, sans-serif",
+
         color:
           "#21152a",
       }}
@@ -599,8 +1187,10 @@ export default function SellerOrdersPage() {
         style={{
           background:
             "#4B1678",
+
           color:
             "white",
+
           padding:
             "18px 22px",
         }}
@@ -609,6 +1199,7 @@ export default function SellerOrdersPage() {
           style={{
             maxWidth:
               "1180px",
+
             margin:
               "0 auto",
           }}
@@ -617,10 +1208,13 @@ export default function SellerOrdersPage() {
             style={{
               fontSize:
                 "10px",
+
               fontWeight:
                 "800",
+
               letterSpacing:
                 "1px",
+
               opacity:
                 0.8,
             }}
@@ -632,21 +1226,25 @@ export default function SellerOrdersPage() {
             style={{
               fontSize:
                 "23px",
+
               fontWeight:
                 "800",
             }}
           >
-            Orders & Shipping
+            Orders & Fulfillment
           </div>
         </div>
       </header>
+
 
       <main
         style={{
           maxWidth:
             "1180px",
+
           margin:
             "0 auto",
+
           padding:
             "26px 20px 60px",
         }}
@@ -656,10 +1254,13 @@ export default function SellerOrdersPage() {
           style={{
             color:
               "#4B1678",
+
             textDecoration:
               "none",
+
             fontWeight:
               "800",
+
             fontSize:
               "12px",
           }}
@@ -667,47 +1268,92 @@ export default function SellerOrdersPage() {
           ← Back to Dashboard
         </Link>
 
+
         <h1
           style={{
             margin:
               "10px 0 4px",
+
             color:
               "#4B1678",
           }}
         >
-          Orders & Shipping
+          Orders & Fulfillment
         </h1>
+
 
         <div
           style={{
             color:
               "#756b79",
+
             fontSize:
               "12px",
           }}
         >
-          {seller.businessName} · Receive the order, ship it, add tracking, done.
+          {seller.businessName}
+          {" · "}
+          Process each HairGrab order using the fulfillment method that applies.
         </div>
+
+
+        <div
+          style={{
+            marginTop:
+              "14px",
+
+            background:
+              "#f7f2fa",
+
+            border:
+              "1px solid #eadff0",
+
+            borderRadius:
+              "10px",
+
+            padding:
+              "12px",
+
+            color:
+              "#6f6675",
+
+            fontSize:
+              "10px",
+
+            lineHeight:
+              1.55,
+          }}
+        >
+          Until HairGrab checkout automatically assigns the shopper's selected method,
+          choose the correct fulfillment method when you begin processing a new order.
+        </div>
+
 
         {actionData && (
           <div
             style={{
               marginTop:
                 "16px",
+
               padding:
                 "12px",
+
               borderRadius:
                 "10px",
+
               background:
                 actionData.success
                   ? "#edf8ef"
                   : "#fff1f1",
+
               color:
                 actionData.success
                   ? "#28743b"
                   : "#922f2f",
+
               fontSize:
                 "12px",
+
               fontWeight:
                 "700",
             }}
@@ -716,20 +1362,24 @@ export default function SellerOrdersPage() {
           </div>
         )}
 
+
         <div
           style={{
             display:
               "grid",
+
             gridTemplateColumns:
               "repeat(auto-fit, minmax(150px, 1fr))",
+
             gap:
               "12px",
+
             marginTop:
               "20px",
           }}
         >
           <CountCard
-            label="Ready to Ship"
+            label="Ready"
             value={
               counts.ready
             }
@@ -757,12 +1407,15 @@ export default function SellerOrdersPage() {
           />
         </div>
 
+
         <div
           style={{
             display:
               "grid",
+
             gap:
               "12px",
+
             marginTop:
               "22px",
           }}
@@ -773,16 +1426,22 @@ export default function SellerOrdersPage() {
               style={{
                 background:
                   "white",
+
                 border:
                   "1px solid #e5dce9",
+
                 borderRadius:
                   "14px",
+
                 padding:
                   "38px 20px",
+
                 textAlign:
                   "center",
+
                 color:
                   "#756b79",
+
                 fontSize:
                   "13px",
               }}
@@ -791,13 +1450,20 @@ export default function SellerOrdersPage() {
             </div>
           ) : (
             orders.map(
-              (order) => (
+              (
+                order,
+              ) => (
                 <OrderCard
                   key={
                     order.id
                   }
+
                   order={
                     order
+                  }
+
+                  seller={
+                    seller
                   }
                 />
               ),
@@ -809,6 +1475,10 @@ export default function SellerOrdersPage() {
   );
 }
 
+
+// ==========================================================
+// COUNT CARD
+// ==========================================================
 
 function CountCard({
   label,
@@ -822,10 +1492,13 @@ function CountCard({
       style={{
         background:
           "white",
+
         border:
           "1px solid #e5dce9",
+
         borderRadius:
           "12px",
+
         padding:
           "16px",
       }}
@@ -834,6 +1507,7 @@ function CountCard({
         style={{
           color:
             "#756b79",
+
           fontSize:
             "11px",
         }}
@@ -845,10 +1519,13 @@ function CountCard({
         style={{
           color:
             "#4B1678",
+
           fontWeight:
             "800",
+
           fontSize:
             "23px",
+
           marginTop:
             "4px",
         }}
@@ -860,33 +1537,78 @@ function CountCard({
 }
 
 
+// ==========================================================
+// ORDER CARD
+// ==========================================================
+
 function OrderCard({
   order,
+  seller,
 }: {
   order: {
     id: string;
     name: string;
     amountCents: number;
     createdAt: string;
-    status:
-      "READY_TO_SHIP" |
-      "SHIPPED" |
-      "DELIVERED";
+
+    shopifyStatus:
+      | "READY_TO_SHIP"
+      | "SHIPPED"
+      | "DELIVERED";
+
+    fulfillmentMethod:
+      string | null;
+
+    fulfillmentStatus:
+      string | null;
+
+    carrier:
+      string | null;
+
+    trackingNumber:
+      string | null;
+
+    trackingUrl:
+      string | null;
+
+    shippingLabelUrl:
+      string | null;
+
+    courierProvider:
+      string | null;
+
+    courierStatus:
+      string | null;
+  };
+
+  seller: {
+    nationwideShippingMethod:
+      string;
+
+    offersLocalPickup:
+      boolean;
+
+    offersLocalDelivery:
+      boolean;
   };
 }) {
   const ready =
-    order.status ===
+    order.shopifyStatus ===
     "READY_TO_SHIP";
+
 
   return (
     <div
       style={{
         background:
           "white",
+
         border:
           "1px solid #e5dce9",
+
         borderRadius:
           "14px",
+
         padding:
           "17px",
       }}
@@ -895,10 +1617,13 @@ function OrderCard({
         style={{
           display:
             "flex",
+
           justifyContent:
             "space-between",
+
           gap:
             "12px",
+
           flexWrap:
             "wrap",
         }}
@@ -908,8 +1633,10 @@ function OrderCard({
             style={{
               color:
                 "#4B1678",
+
               fontWeight:
                 "800",
+
               fontSize:
                 "15px",
             }}
@@ -921,8 +1648,10 @@ function OrderCard({
             style={{
               color:
                 "#756b79",
+
               fontSize:
                 "11px",
+
               marginTop:
                 "4px",
             }}
@@ -930,185 +1659,806 @@ function OrderCard({
             {new Date(
               order.createdAt,
             ).toLocaleDateString()}
+
             {" · "}
+
             {money(
               order.amountCents,
             )}
           </div>
         </div>
 
-        <span
-          style={{
-            height:
-              "fit-content",
-            background:
-              ready
-                ? "#fff4e8"
-                : order.status ===
-                    "DELIVERED"
-                  ? "#edf8ef"
-                  : "#f2eafa",
-            color:
-              ready
-                ? "#9a5c18"
-                : order.status ===
-                    "DELIVERED"
-                  ? "#28743b"
-                  : "#4B1678",
-            borderRadius:
-              "20px",
-            padding:
-              "6px 9px",
-            fontSize:
-              "10px",
-            fontWeight:
-              "800",
-          }}
-        >
-          {order.status
-            .replace(
-              /_/g,
-              " ",
-            )}
-        </span>
-      </div>
 
-      {ready && (
-        <Form
-          method="post"
+        <div
           style={{
-            marginTop:
-              "15px",
-            borderTop:
-              "1px solid #eee7f2",
-            paddingTop:
-              "15px",
+            display:
+              "flex",
+
+            gap:
+              "6px",
+
+            flexWrap:
+              "wrap",
           }}
         >
-          <input
-            type="hidden"
-            name="orderId"
-            value={
-              order.id
+          <StatusBadge
+            status={
+              order.shopifyStatus
             }
           />
 
-          <div
+          {order.fulfillmentMethod && (
+            <StatusBadge
+              status={
+                order.fulfillmentMethod
+              }
+              secondary
+            />
+          )}
+        </div>
+      </div>
+
+
+      {/* METHOD NOT CHOSEN */}
+
+      {ready &&
+        !order.fulfillmentMethod && (
+          <Form
+            method="post"
             style={{
-              display:
-                "grid",
-              gridTemplateColumns:
-                "minmax(130px, .5fr) minmax(180px, 1fr) auto",
-              gap:
-                "9px",
-              alignItems:
-                "end",
+              marginTop:
+                "15px",
+
+              borderTop:
+                "1px solid #eee7f2",
+
+              paddingTop:
+                "15px",
             }}
           >
-            <label>
-              <div
-                style={
-                  miniLabel
-                }
-              >
-                Carrier
-              </div>
+            <input
+              type="hidden"
+              name="intent"
+              value="set-fulfillment-method"
+            />
 
-              <select
-                name="carrier"
-                defaultValue="USPS"
-                style={
-                  field
-                }
-              >
-                <option>
-                  USPS
-                </option>
-                <option>
-                  UPS
-                </option>
-                <option>
-                  FedEx
-                </option>
-                <option>
-                  DHL
-                </option>
-                <option>
-                  Other
-                </option>
-              </select>
-            </label>
+            <input
+              type="hidden"
+              name="orderId"
+              value={
+                order.id
+              }
+            />
 
-            <label>
-              <div
-                style={
-                  miniLabel
-                }
-              >
-                Tracking Number
-              </div>
 
-              <input
-                name="tracking"
-                required
-                placeholder="Paste tracking number"
-                style={
-                  field
-                }
-              />
-            </label>
-
-            <button
-              type="submit"
+            <div
               style={{
-                border:
-                  0,
-                background:
-                  "#4B1678",
                 color:
-                  "white",
-                borderRadius:
-                  "9px",
-                padding:
-                  "11px 14px",
+                  "#4B1678",
+
+                fontSize:
+                  "12px",
+
                 fontWeight:
                   "800",
-                cursor:
-                  "pointer",
+
+                marginBottom:
+                  "7px",
               }}
             >
-              Mark Shipped
+              Choose fulfillment method
+            </div>
+
+
+            <div
+              style={{
+                color:
+                  "#756b79",
+
+                fontSize:
+                  "10px",
+
+                lineHeight:
+                  1.5,
+
+                marginBottom:
+                  "9px",
+              }}
+            >
+              Select how this particular order will reach the shopper.
+            </div>
+
+
+            <div
+              style={{
+                display:
+                  "grid",
+
+                gridTemplateColumns:
+                  "minmax(220px, 1fr) auto",
+
+                gap:
+                  "9px",
+
+                alignItems:
+                  "end",
+              }}
+            >
+              <label>
+                <div
+                  style={
+                    miniLabel
+                  }
+                >
+                  Fulfillment Method
+                </div>
+
+                <select
+                  name="fulfillmentMethod"
+                  defaultValue={
+                    seller.nationwideShippingMethod
+                  }
+                  style={
+                    field
+                  }
+                >
+                  <option value="SELLER_MANAGED">
+                    I Handle My Own Shipping
+                  </option>
+
+                  <option value="HAIRGRAB_SHIPPING">
+                    HairGrab Shipping
+                  </option>
+
+                  {seller.offersLocalPickup && (
+                    <option value="LOCAL_PICKUP">
+                      Local Pickup
+                    </option>
+                  )}
+
+                  {seller.offersLocalDelivery && (
+                    <option value="HAIRGRAB_SAME_DAY">
+                      HairGrab Same-Day Delivery
+                    </option>
+                  )}
+                </select>
+              </label>
+
+
+              <button
+                type="submit"
+                style={
+                  primaryButton
+                }
+              >
+                Continue
+              </button>
+            </div>
+          </Form>
+        )}
+
+
+      {/* SELLER MANAGED SHIPPING */}
+
+      {ready &&
+        order.fulfillmentMethod ===
+          "SELLER_MANAGED" && (
+          <Form
+            method="post"
+            style={
+              actionSection
+            }
+          >
+            <input
+              type="hidden"
+              name="intent"
+              value="mark-shipped"
+            />
+
+            <input
+              type="hidden"
+              name="orderId"
+              value={
+                order.id
+              }
+            />
+
+
+            <div
+              style={
+                sectionTitle
+              }
+            >
+              Seller Managed Shipping
+            </div>
+
+
+            <div
+              style={{
+                display:
+                  "grid",
+
+                gridTemplateColumns:
+                  "minmax(130px, .5fr) minmax(180px, 1fr) auto",
+
+                gap:
+                  "9px",
+
+                alignItems:
+                  "end",
+              }}
+            >
+              <label>
+                <div
+                  style={
+                    miniLabel
+                  }
+                >
+                  Carrier
+                </div>
+
+                <select
+                  name="carrier"
+                  defaultValue="USPS"
+                  style={
+                    field
+                  }
+                >
+                  <option>
+                    USPS
+                  </option>
+
+                  <option>
+                    UPS
+                  </option>
+
+                  <option>
+                    FedEx
+                  </option>
+
+                  <option>
+                    DHL
+                  </option>
+
+                  <option>
+                    Other
+                  </option>
+                </select>
+              </label>
+
+
+              <label>
+                <div
+                  style={
+                    miniLabel
+                  }
+                >
+                  Tracking Number
+                </div>
+
+                <input
+                  name="tracking"
+                  required
+                  placeholder="Paste tracking number"
+                  style={
+                    field
+                  }
+                />
+              </label>
+
+
+              <button
+                type="submit"
+                style={
+                  primaryButton
+                }
+              >
+                Mark Shipped
+              </button>
+            </div>
+          </Form>
+        )}
+
+
+      {/* HAIRGRAB SHIPPING */}
+
+      {ready &&
+        order.fulfillmentMethod ===
+          "HAIRGRAB_SHIPPING" && (
+          <div
+            style={
+              actionSection
+            }
+          >
+            <div
+              style={
+                sectionTitle
+              }
+            >
+              HairGrab Shipping
+            </div>
+
+            <div
+              style={
+                infoBox
+              }
+            >
+              HairGrab Shipping is selected for this order. The next phase will connect shipping rates and label purchasing so you can create and print the label here.
+            </div>
+
+            <button
+              type="button"
+              disabled
+              style={
+                disabledButton
+              }
+            >
+              Get HairGrab Shipping Label — API Setup Next
             </button>
           </div>
-        </Form>
+        )}
+
+
+      {/* LOCAL PICKUP */}
+
+      {ready &&
+        order.fulfillmentMethod ===
+          "LOCAL_PICKUP" && (
+          <div
+            style={
+              actionSection
+            }
+          >
+            <div
+              style={
+                sectionTitle
+              }
+            >
+              Local Pickup
+            </div>
+
+
+            {order.fulfillmentStatus ===
+            "READY_FOR_PICKUP" ? (
+              <div
+                style={
+                  successBox
+                }
+              >
+                ✓ This order is ready for customer pickup.
+              </div>
+            ) : (
+              <Form method="post">
+                <input
+                  type="hidden"
+                  name="intent"
+                  value="ready-for-pickup"
+                />
+
+                <input
+                  type="hidden"
+                  name="orderId"
+                  value={
+                    order.id
+                  }
+                />
+
+                <button
+                  type="submit"
+                  style={
+                    primaryButton
+                  }
+                >
+                  Mark Ready for Customer Pickup
+                </button>
+              </Form>
+            )}
+          </div>
+        )}
+
+
+      {/* SAME DAY */}
+
+      {ready &&
+        order.fulfillmentMethod ===
+          "HAIRGRAB_SAME_DAY" && (
+          <div
+            style={
+              actionSection
+            }
+          >
+            <div
+              style={
+                sectionTitle
+              }
+            >
+              HairGrab Same-Day Delivery
+            </div>
+
+
+            {order.fulfillmentStatus ===
+            "READY_FOR_PICKUP" ? (
+              <>
+                <div
+                  style={
+                    successBox
+                  }
+                >
+                  ✓ Package is marked ready for courier pickup.
+                </div>
+
+                <div
+                  style={{
+                    ...infoBox,
+                    marginTop:
+                      "9px",
+                  }}
+                >
+                  Courier dispatch is the next API phase. HairGrab has not requested a driver yet.
+                </div>
+              </>
+            ) : (
+              <Form method="post">
+                <input
+                  type="hidden"
+                  name="intent"
+                  value="ready-for-same-day"
+                />
+
+                <input
+                  type="hidden"
+                  name="orderId"
+                  value={
+                    order.id
+                  }
+                />
+
+                <button
+                  type="submit"
+                  style={
+                    primaryButton
+                  }
+                >
+                  Package Ready for HairGrab Delivery
+                </button>
+              </Form>
+            )}
+          </div>
+        )}
+
+
+      {/* SHIPPED INFO */}
+
+      {order.shopifyStatus ===
+        "SHIPPED" && (
+        <div
+          style={
+            actionSection
+          }
+        >
+          <div
+            style={
+              sectionTitle
+            }
+          >
+            Shipment Information
+          </div>
+
+          <div
+            style={{
+              color:
+                "#5f5664",
+
+              fontSize:
+                "11px",
+
+              lineHeight:
+                1.6,
+            }}
+          >
+            {order.carrier && (
+              <div>
+                <strong>
+                  Carrier:
+                </strong>{" "}
+                {order.carrier}
+              </div>
+            )}
+
+            {order.trackingNumber && (
+              <div>
+                <strong>
+                  Tracking:
+                </strong>{" "}
+                {order.trackingNumber}
+              </div>
+            )}
+
+            {order.trackingUrl && (
+              <div
+                style={{
+                  marginTop:
+                    "5px",
+                }}
+              >
+                <a
+                  href={
+                    order.trackingUrl
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    color:
+                      "#4B1678",
+
+                    fontWeight:
+                      "800",
+
+                    textDecoration:
+                      "none",
+                  }}
+                >
+                  Track Shipment ↗
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+
+      {order.shopifyStatus ===
+        "DELIVERED" && (
+        <div
+          style={{
+            ...actionSection,
+
+            background:
+              "#f6fbf7",
+          }}
+        >
+          <div
+            style={{
+              color:
+                "#28743b",
+
+              fontSize:
+                "11px",
+
+              fontWeight:
+                "800",
+            }}
+          >
+            ✓ Delivered
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
 
+// ==========================================================
+// STATUS BADGE
+// ==========================================================
+
+function StatusBadge({
+  status,
+  secondary = false,
+}: {
+  status: string;
+  secondary?: boolean;
+}) {
+  return (
+    <span
+      style={{
+        height:
+          "fit-content",
+
+        background:
+          secondary
+            ? "#f2eafa"
+            : status ===
+                "DELIVERED"
+              ? "#edf8ef"
+              : status ===
+                  "READY_TO_SHIP"
+                ? "#fff4e8"
+                : "#f2eafa",
+
+        color:
+          secondary
+            ? "#4B1678"
+            : status ===
+                "DELIVERED"
+              ? "#28743b"
+              : status ===
+                  "READY_TO_SHIP"
+                ? "#9a5c18"
+                : "#4B1678",
+
+        borderRadius:
+          "20px",
+
+        padding:
+          "6px 9px",
+
+        fontSize:
+          "9px",
+
+        fontWeight:
+          "800",
+      }}
+    >
+      {formatStatus(
+        status,
+      )}
+    </span>
+  );
+}
+
+
+// ==========================================================
+// STYLES
+// ==========================================================
+
 const field = {
   width:
     "100%",
+
   boxSizing:
     "border-box" as const,
+
   border:
     "1px solid #d8cce0",
+
   borderRadius:
     "9px",
+
   padding:
     "10px",
+
   background:
     "white",
 };
 
+
 const miniLabel = {
   color:
     "#756b79",
+
   fontSize:
     "10px",
+
   fontWeight:
     "700",
+
   marginBottom:
     "5px",
+};
+
+
+const actionSection = {
+  marginTop:
+    "15px",
+
+  borderTop:
+    "1px solid #eee7f2",
+
+  paddingTop:
+    "15px",
+};
+
+
+const sectionTitle = {
+  color:
+    "#4B1678",
+
+  fontSize:
+    "12px",
+
+  fontWeight:
+    "800",
+
+  marginBottom:
+    "9px",
+};
+
+
+const primaryButton = {
+  border:
+    0,
+
+  background:
+    "#4B1678",
+
+  color:
+    "white",
+
+  borderRadius:
+    "9px",
+
+  padding:
+    "11px 14px",
+
+  fontWeight:
+    "800",
+
+  cursor:
+    "pointer",
+};
+
+
+const disabledButton = {
+  border:
+    "1px solid #d7c9df",
+
+  background:
+    "#f4f0f6",
+
+  color:
+    "#8b8090",
+
+  borderRadius:
+    "9px",
+
+  padding:
+    "11px 14px",
+
+  fontWeight:
+    "800",
+
+  cursor:
+    "not-allowed",
+
+  marginTop:
+    "9px",
+};
+
+
+const infoBox = {
+  background:
+    "#f7f2fa",
+
+  border:
+    "1px solid #eadff0",
+
+  borderRadius:
+    "9px",
+
+  padding:
+    "11px",
+
+  color:
+    "#6f6675",
+
+  fontSize:
+    "10px",
+
+  lineHeight:
+    1.55,
+};
+
+
+const successBox = {
+  background:
+    "#edf8ef",
+
+  border:
+    "1px solid #cfe8d4",
+
+  borderRadius:
+    "9px",
+
+  padding:
+    "11px",
+
+  color:
+    "#28743b",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "800",
 };
