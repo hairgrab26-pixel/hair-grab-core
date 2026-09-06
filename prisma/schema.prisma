@@ -131,7 +131,7 @@ model Seller {
   sellsNationwide     Boolean  @default(true)
   offersLocalPickup   Boolean  @default(false)
   offersLocalDelivery Boolean  @default(false)
-
+  returnPolicy        String   @default("14_DAY_RETURNS")
   // Shopify mapping
   shopifyVendor       String   @unique
 
