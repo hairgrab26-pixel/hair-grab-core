@@ -26,22 +26,16 @@ export const loader = async ({
     seller: {
       businessName:
         seller.businessName,
+
       sellerCode:
         seller.sellerCode,
+
       storeDescription:
         seller.storeDescription ||
         "",
+
       logoUrl:
         seller.logoUrl ||
-        "",
-      website:
-        seller.website ||
-        "",
-      instagram:
-        seller.instagram ||
-        "",
-      tiktok:
-        seller.tiktok ||
         "",
     },
   };
@@ -64,6 +58,7 @@ export const action = async ({
       id:
         seller.id,
     },
+
     data: {
       storeDescription:
         String(
@@ -82,39 +77,13 @@ export const action = async ({
           "",
         ).trim() ||
         null,
-
-      website:
-        String(
-          formData.get(
-            "website",
-          ) ||
-          "",
-        ).trim() ||
-        null,
-
-      instagram:
-        String(
-          formData.get(
-            "instagram",
-          ) ||
-          "",
-        ).trim() ||
-        null,
-
-      tiktok:
-        String(
-          formData.get(
-            "tiktok",
-          ) ||
-          "",
-        ).trim() ||
-        null,
     },
   });
 
   return {
     success:
       true,
+
     message:
       "Storefront information saved.",
   };
@@ -149,9 +118,7 @@ export default function SellerStorePage() {
         />
       )}
 
-      <Form
-        method="post"
-      >
+      <Form method="post">
         <Field
           label="Store Description"
           name="storeDescription"
@@ -167,8 +134,6 @@ export default function SellerStorePage() {
           defaultValue={
             seller.logoUrl
           }
-        />
-
         />
 
         <button
@@ -204,10 +169,13 @@ function Shell({
       style={{
         minHeight:
           "100vh",
+
         background:
           "#faf8fc",
+
         padding:
           "28px 18px 70px",
+
         fontFamily:
           "Arial, sans-serif",
       }}
@@ -216,6 +184,7 @@ function Shell({
         style={{
           maxWidth:
             "760px",
+
           margin:
             "0 auto",
         }}
@@ -225,10 +194,13 @@ function Shell({
           style={{
             color:
               "#4B1678",
+
             textDecoration:
               "none",
+
             fontWeight:
               "800",
+
             fontSize:
               "12px",
           }}
@@ -240,12 +212,16 @@ function Shell({
           style={{
             background:
               "white",
+
             border:
               "1px solid #e5dce9",
+
             borderRadius:
               "16px",
+
             padding:
               "24px",
+
             marginTop:
               "12px",
           }}
@@ -254,6 +230,7 @@ function Shell({
             style={{
               margin:
                 0,
+
               color:
                 "#4B1678",
             }}
@@ -265,6 +242,7 @@ function Shell({
             style={{
               color:
                 "#756b79",
+
               fontSize:
                 "12px",
             }}
@@ -296,6 +274,7 @@ function Field({
       style={{
         display:
           "block",
+
         marginTop:
           "15px",
       }}
@@ -304,10 +283,13 @@ function Field({
         style={{
           color:
             "#4B1678",
+
           fontSize:
             "12px",
+
           fontWeight:
             "800",
+
           marginBottom:
             "6px",
         }}
@@ -326,6 +308,7 @@ function Field({
           }
           style={{
             ...fieldStyle,
+
             resize:
               "vertical",
           }}
@@ -356,16 +339,22 @@ function Notice({
       style={{
         background:
           "#edf8ef",
+
         color:
           "#28743b",
+
         borderRadius:
           "9px",
+
         padding:
           "11px",
+
         fontSize:
           "12px",
+
         fontWeight:
           "700",
+
         marginTop:
           "14px",
       }}
@@ -379,31 +368,43 @@ function Notice({
 const fieldStyle = {
   width:
     "100%",
+
   boxSizing:
     "border-box" as const,
+
   border:
     "1px solid #d8cce0",
+
   borderRadius:
     "9px",
+
   padding:
     "11px",
 };
 
+
 const saveButton = {
   border:
     0,
+
   background:
     "#4B1678",
+
   color:
     "white",
+
   borderRadius:
     "9px",
+
   padding:
     "12px 16px",
+
   fontWeight:
     "800",
+
   marginTop:
     "20px",
+
   cursor:
     "pointer",
 };
