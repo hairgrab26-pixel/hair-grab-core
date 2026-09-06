@@ -169,28 +169,6 @@ export default function SellerStorePage() {
           }
         />
 
-        <Field
-          label="Website"
-          name="website"
-          defaultValue={
-            seller.website
-          }
-        />
-
-        <Field
-          label="Instagram"
-          name="instagram"
-          defaultValue={
-            seller.instagram
-          }
-        />
-
-        <Field
-          label="TikTok"
-          name="tiktok"
-          defaultValue={
-            seller.tiktok
-          }
         />
 
         <button

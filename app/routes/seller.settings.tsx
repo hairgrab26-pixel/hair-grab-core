@@ -863,30 +863,7 @@ export default function SellerSettingsPage() {
                     "12px",
                 }}
               >
-                <Field
-                  label="Website"
-                  name="website"
-                  defaultValue={
-                    seller.website
-                  }
-                />
-
-                <Field
-                  label="Instagram"
-                  name="instagram"
-                  defaultValue={
-                    seller.instagram
-                  }
-                />
-
-                <Field
-                  label="TikTok"
-                  name="tiktok"
-                  defaultValue={
-                    seller.tiktok
-                  }
-                />
-              </div>
+                              </div>
             </Section>
 
             <Section
