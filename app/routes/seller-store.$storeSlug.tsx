@@ -191,11 +191,12 @@ export const loader = async ({
         ) {
           nodes(ids: $ids) {
             ... on Product {
-              id
-              title
-              handle
+  id
+  title
+  handle
+  status
 
-              featuredImage {
+  featuredImage {
                 url
                 altText
               }
@@ -241,14 +242,16 @@ export const loader = async ({
     }
 
     for (
-      const node of
-      json?.data?.nodes ||
-      []
-    ) {
-      if (!node?.id) {
-        continue;
-      }
-
+  const node of
+  json?.data?.nodes ||
+  []
+) {
+  if (
+    !node?.id ||
+    node.status !== "ACTIVE"
+  ) {
+    continue;
+  }
       const prices =
         (
           node
@@ -339,48 +342,43 @@ export const loader = async ({
     }
   }
 
-  const products =
-    ownedProducts.map(
-      (product) => {
-        const shopifyProduct =
-          product.shopifyProductId
-            ? shopifyById.get(
-                product.shopifyProductId,
-              )
-            : undefined;
+ const products =
+  ownedProducts.flatMap(
+    (product) => {
+      const shopifyProduct =
+        product.shopifyProductId
+          ? shopifyById.get(
+              product.shopifyProductId,
+            )
+          : undefined;
 
-        return {
+      if (!shopifyProduct) {
+        return [];
+      }
+
+      return [
+        {
           id:
             product.id,
 
           title:
-            shopifyProduct
-              ?.title ||
-            product.title,
+            shopifyProduct.title,
 
           handle:
-            shopifyProduct
-              ?.handle ||
-            product.shopifyHandle ||
-            "",
+            shopifyProduct.handle,
 
           imageUrl:
-            shopifyProduct
-              ?.imageUrl ||
-            null,
+            shopifyProduct.imageUrl,
 
           imageAlt:
-            shopifyProduct
-              ?.imageAlt ||
-            product.title,
+            shopifyProduct.imageAlt,
 
           price:
-            shopifyProduct
-              ?.price ||
-            "",
-        };
-      },
-    );
+            shopifyProduct.price,
+        },
+      ];
+    },
+  );
 
   return {
     seller: {
