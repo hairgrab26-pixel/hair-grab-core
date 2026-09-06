@@ -1095,3 +1095,9 @@ export default function SellerOnboardingPage() {
             >
               Continue Seller Setup
             </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
