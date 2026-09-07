@@ -61,7 +61,7 @@ model SellerApplication {
   city       String?
   state      String?
   postalCode String?
-  country    String  @default("US")
+  country    String @default("US")
 
   yearsInBusiness   String?
   productCountRange String?
@@ -74,13 +74,17 @@ model SellerApplication {
   notes            String?
   adminReviewNotes String?
 
-  submittedAt DateTime  @default(now())
+  submittedAt DateTime @default(now())
   reviewedAt  DateTime?
   approvedAt  DateTime?
   declinedAt  DateTime?
 
   approvedSellerId String? @unique
-  approvedSeller   Seller? @relation("ApprovedSellerApplication", fields: [approvedSellerId], references: [id])
+  approvedSeller   Seller? @relation(
+    "ApprovedSellerApplication",
+    fields: [approvedSellerId],
+    references: [id]
+  )
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -123,7 +127,7 @@ model Seller {
   city       String?
   state      String?
   postalCode String?
-  country    String  @default("US")
+  country    String @default("US")
 
   // Nationwide fulfillment
   sellsNationwide Boolean @default(true)
@@ -179,9 +183,15 @@ model Seller {
   deliveredOrders   SellerDeliveredOrder[]
   orderFulfillments SellerOrderFulfillment[]
 
+  // HairGrab internal communications
+  conversation      SellerConversation?
+  announcementReads AnnouncementRead[]
+  notifications     SellerNotification[]
+
   onboarding SellerOnboarding?
 
-  approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
+  approvedApplication SellerApplication?
+    @relation("ApprovedSellerApplication")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -194,30 +204,25 @@ model Seller {
 
 // ==========================================================
 // SELLER ONBOARDING
-//
-// One record per approved seller.
-//
-// Registration/application information is NOT entered again.
-// The Seller record is prefilled from the approved application.
-// This model tracks setup progress, autosave state, and the
-// seller's place in the onboarding flow.
 // ==========================================================
 
 model SellerOnboarding {
   id String @id @default(cuid())
 
   sellerId String @unique
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   // BUSINESS / STOREFRONT / FULFILLMENT / RETURNS /
   // PAYOUTS / AGREEMENTS / PRODUCTS / COMPLETE
   currentStep String @default("BUSINESS")
 
-  // Overall onboarding state:
   // NOT_STARTED / IN_PROGRESS / COMPLETE
   status String @default("NOT_STARTED")
 
-  // Individual step completion
   businessComplete    Boolean @default(false)
   storefrontComplete  Boolean @default(false)
   fulfillmentComplete Boolean @default(false)
@@ -226,8 +231,6 @@ model SellerOnboarding {
   agreementsComplete  Boolean @default(false)
   productsComplete    Boolean @default(false)
 
-  // Optional timestamps make the history auditable and let
-  // HairGrab show exactly when each section was completed.
   businessCompletedAt    DateTime?
   storefrontCompletedAt  DateTime?
   fulfillmentCompletedAt DateTime?
@@ -255,9 +258,13 @@ model SellerPortalAccount {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id],
+    onDelete: Cascade
+  )
 
-  email     String  @unique
+  email     String @unique
   firstName String?
   lastName  String?
 
@@ -269,7 +276,7 @@ model SellerPortalAccount {
 
   emailVerifiedAt DateTime?
   lastLoginAt     DateTime?
-  invitedAt       DateTime  @default(now())
+  invitedAt       DateTime @default(now())
 
   loginTokens SellerLoginToken[]
 
@@ -288,7 +295,11 @@ model SellerLoginToken {
   id String @id @default(cuid())
 
   portalAccountId String
-  portalAccount   SellerPortalAccount @relation(fields: [portalAccountId], references: [id], onDelete: Cascade)
+  portalAccount   SellerPortalAccount @relation(
+    fields: [portalAccountId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   tokenHash String @unique
 
@@ -309,7 +320,11 @@ model SellerProduct {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id],
+    onDelete: Restrict
+  )
 
   shopifyProductId String? @unique
   shopifyHandle    String?
@@ -321,7 +336,7 @@ model SellerProduct {
 
   sellerSku String?
 
-  publishedToShopify Boolean   @default(false)
+  publishedToShopify Boolean @default(false)
   publishedAt        DateTime?
 
   createdAt DateTime @default(now())
@@ -339,7 +354,10 @@ model SellerLedgerEntry {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id])
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id]
+  )
 
   shopifyOrderId    String
   shopifyOrderName  String?
@@ -355,7 +373,6 @@ model SellerLedgerEntry {
 
   currency String @default("USD")
 
-  // Snapshot of commission at transaction time
   commissionRate Float
 
   grossAmountCents      Int @default(0)
@@ -371,11 +388,9 @@ model SellerLedgerEntry {
 
   fundsClearedAt DateTime?
 
-  // Delivery information used for payout timing
   shopifyFulfillmentId String?
   deliveredAt          DateTime?
 
-  // When this SALE may become eligible for seller payout
   availableOn          DateTime?
   eligibilityCheckedAt DateTime?
 
@@ -399,19 +414,17 @@ model SellerLedgerEntry {
 
 // ==========================================================
 // SUCCESSFULLY DELIVERED SELLER ORDERS
-//
-// One record per SELLER + SHOPIFY ORDER.
-//
-// This prevents multiple line items or repeated Shopify
-// delivery events from inflating a seller's qualification
-// count toward Fast Payouts.
 // ==========================================================
 
 model SellerDeliveredOrder {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   shopifyOrderId   String
   shopifyOrderName String?
@@ -420,8 +433,6 @@ model SellerDeliveredOrder {
 
   deliveredAt DateTime
 
-  // Set when this delivery has been counted toward
-  // successfulDeliveredOrders.
   qualificationCountedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -444,7 +455,10 @@ model PayoutBatch {
   batchCode String @unique
 
   sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id])
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id]
+  )
 
   // DRAFT / READY / PROCESSING / PAID / FAILED / CANCELED
   status String @default("DRAFT")
@@ -477,10 +491,16 @@ model PayoutBatchItem {
   id String @id @default(cuid())
 
   payoutBatchId String
-  payoutBatch   PayoutBatch @relation(fields: [payoutBatchId], references: [id])
+  payoutBatch   PayoutBatch @relation(
+    fields: [payoutBatchId],
+    references: [id]
+  )
 
-  ledgerEntryId String            @unique
-  ledgerEntry   SellerLedgerEntry @relation(fields: [ledgerEntryId], references: [id])
+  ledgerEntryId String @unique
+  ledgerEntry   SellerLedgerEntry @relation(
+    fields: [ledgerEntryId],
+    references: [id]
+  )
 
   amountCents Int
   currency    String @default("USD")
@@ -492,11 +512,6 @@ model PayoutBatchItem {
 
 // ==========================================================
 // HAIRGRAB MARKETPLACE SETTINGS
-// ==========================================================
-//
-// One shared settings record for HairGrab Core.
-// These are marketplace defaults and global controls.
-// Individual seller overrides remain on the Seller record.
 // ==========================================================
 
 model MarketplaceSettings {
@@ -532,16 +547,17 @@ model MarketplaceSettings {
 
 // ==========================================================
 // SELLER ORDER FULFILLMENT
-//
-// One record per SELLER + SHOPIFY ORDER.
-// Records how this seller's portion of the order is fulfilled.
 // ==========================================================
 
 model SellerOrderFulfillment {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   shopifyOrderId   String
   shopifyOrderName String?
@@ -592,4 +608,200 @@ model SellerOrderFulfillment {
   @@index([shopifyOrderId])
   @@index([fulfillmentMethod])
   @@index([status])
+}
+
+// ==========================================================
+// SELLER CONVERSATION
+//
+// One private HairGrab <-> seller conversation per seller.
+// ==========================================================
+
+model SellerConversation {
+  id String @id @default(cuid())
+
+  sellerId String @unique
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  // OPEN / CLOSED
+  status String @default("OPEN")
+
+  subject String @default("HairGrab Support")
+
+  lastMessageAt DateTime?
+
+  messages SellerMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([lastMessageAt])
+}
+
+// ==========================================================
+// SELLER MESSAGE
+//
+// Internal private communication between HairGrab and seller.
+// ==========================================================
+
+model SellerMessage {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   SellerConversation @relation(
+    fields: [conversationId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  // HAIRGRAB / SELLER
+  senderType String
+
+  senderName String?
+
+  body String
+
+  // Read tracking for both sides
+  readBySellerAt   DateTime?
+  readByHairGrabAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([senderType])
+  @@index([createdAt])
+  @@index([readBySellerAt])
+  @@index([readByHairGrabAt])
+}
+
+// ==========================================================
+// HAIRGRAB ANNOUNCEMENT
+//
+// Marketplace announcements created by HairGrab.
+//
+// audience:
+// ALL      = every seller
+// ACTIVE   = active sellers
+// SELECTED = selected sellers are represented in AnnouncementRead
+// ==========================================================
+
+model Announcement {
+  id String @id @default(cuid())
+
+  title String
+  body  String
+
+  // DRAFT / PUBLISHED / ARCHIVED
+  status String @default("DRAFT")
+
+  // NORMAL / IMPORTANT / URGENT
+  priority String @default("NORMAL")
+
+  // ALL / ACTIVE / SELECTED
+  audience String @default("ALL")
+
+  createdByName String?
+
+  publishedAt DateTime?
+  expiresAt   DateTime?
+
+  reads AnnouncementRead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([audience])
+  @@index([publishedAt])
+  @@index([expiresAt])
+}
+
+// ==========================================================
+// ANNOUNCEMENT SELLER STATUS
+//
+// For ALL/ACTIVE announcements this records when a seller
+// opens the announcement.
+//
+// For SELECTED announcements these rows also identify the
+// sellers who should receive the announcement.
+// ==========================================================
+
+model AnnouncementRead {
+  id String @id @default(cuid())
+
+  announcementId String
+  announcement   Announcement @relation(
+    fields: [announcementId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  sellerId String
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  deliveredAt DateTime @default(now())
+  readAt      DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([announcementId, sellerId])
+  @@index([announcementId])
+  @@index([sellerId])
+  @@index([readAt])
+}
+
+// ==========================================================
+// SELLER NOTIFICATION
+//
+// System-generated alerts shown in the seller portal.
+// Examples:
+// NEW_ORDER
+// PRODUCT_APPROVED
+// PRODUCT_REJECTED
+// PAYOUT_READY
+// PAYOUT_SENT
+// NEW_MESSAGE
+// ANNOUNCEMENT
+// SHIPPING
+// ACCOUNT
+// ==========================================================
+
+model SellerNotification {
+  id String @id @default(cuid())
+
+  sellerId String
+  seller   Seller @relation(
+    fields: [sellerId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  type String
+
+  title   String
+  message String
+
+  // Optional seller portal destination
+  linkUrl String?
+
+  // Optional unique key prevents duplicate webhook notifications.
+  dedupeKey String? @unique
+
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([sellerId])
+  @@index([type])
+  @@index([readAt])
+  @@index([createdAt])
 }
