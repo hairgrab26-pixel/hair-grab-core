@@ -52,9 +52,7 @@ model SellerApplication {
   email            String
   phone            String?
 
-  website   String?
-  instagram String?
-  tiktok    String?
+  
 
   address1   String?
   address2   String?
@@ -70,6 +68,7 @@ model SellerApplication {
   sellsNationwide     Boolean @default(true)
   offersLocalPickup   Boolean @default(false)
   offersLocalDelivery Boolean @default(false)
+  offersSameDayDelivery Boolean @default(false)
 
   notes            String?
   adminReviewNotes String?
@@ -109,9 +108,7 @@ model Seller {
   email            String?
   phone            String?
 
-  website   String?
-  instagram String?
-  tiktok    String?
+  
 
   storeSlug        String? @unique
   storeDescription String?
@@ -134,6 +131,7 @@ model Seller {
   // Additional fulfillment options
   offersLocalPickup   Boolean @default(false)
   offersLocalDelivery Boolean @default(false)
+  offersSameDayDelivery Boolean @default(false)
 
   returnPolicy String @default("14_DAY_RETURNS")
 

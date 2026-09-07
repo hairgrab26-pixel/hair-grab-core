@@ -373,18 +373,6 @@ export const loader = async ({
         seller.bannerUrl ||
         "",
 
-      website:
-        seller.website ||
-        "",
-
-      instagram:
-        seller.instagram ||
-        "",
-
-      tiktok:
-        seller.tiktok ||
-        "",
-
       email:
         seller.email ||
         "",
@@ -413,6 +401,9 @@ export const loader = async ({
 
       offersLocalDelivery:
         seller.offersLocalDelivery,
+
+      offersSameDayDelivery:
+        seller.offersSameDayDelivery,
     },
   };
 };
@@ -522,33 +513,6 @@ export const action = async ({
           bannerUrl ||
           null,
 
-        website:
-          String(
-            formData.get(
-              "website",
-            ) ||
-            "",
-          ).trim() ||
-          null,
-
-        instagram:
-          String(
-            formData.get(
-              "instagram",
-            ) ||
-            "",
-          ).trim() ||
-          null,
-
-        tiktok:
-          String(
-            formData.get(
-              "tiktok",
-            ) ||
-            "",
-          ).trim() ||
-          null,
-
         email:
           String(
             formData.get(
@@ -609,6 +573,12 @@ export const action = async ({
         offersLocalDelivery:
           formData.get(
             "offersLocalDelivery",
+          ) ===
+          "on",
+
+        offersSameDayDelivery:
+          formData.get(
+            "offersSameDayDelivery",
           ) ===
           "on",
       },
@@ -949,6 +919,14 @@ export default function SellerSettingsPage() {
                 label="Offers Local Delivery"
                 defaultChecked={
                   seller.offersLocalDelivery
+                }
+              />
+
+              <Check
+                name="offersSameDayDelivery"
+                label="Offers HairGrab Same-Day Delivery"
+                defaultChecked={
+                  seller.offersSameDayDelivery
                 }
               />
             </Section>

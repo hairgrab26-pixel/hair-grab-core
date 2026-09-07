@@ -222,6 +222,22 @@ export const action = async ({
         await getNextSellerCode();
 
 
+      // The first 100 HairGrab seller IDs are Founding Sellers.
+      // Their 5% marketplace commission is permanent.
+      const sellerNumber =
+        Number(
+          sellerCode.replace(
+            "HG-",
+            "",
+          ),
+        );
+
+      const commissionRate =
+        sellerNumber <= 100
+          ? 5
+          : 7;
+
+
       const shopifyVendor =
         makeShopifyVendor(
           application.businessName,
@@ -257,15 +273,6 @@ export const action = async ({
                   phone:
                     application.phone,
 
-                  website:
-                    application.website,
-
-                  instagram:
-                    application.instagram,
-
-                  tiktok:
-                    application.tiktok,
-
                   address1:
                     application.address1,
 
@@ -293,13 +300,15 @@ export const action = async ({
                   offersLocalDelivery:
                     application.offersLocalDelivery,
 
+                  offersSameDayDelivery:
+                    application.offersSameDayDelivery,
+
                   shopifyVendor,
 
                   status:
                     "ACTIVE",
 
-                  commissionRate:
-                    7,
+                  commissionRate,
 
                   activeProductLimit:
                     50,
@@ -1098,6 +1107,17 @@ export default function ApplicationsPage() {
                     <strong>
                       {
                         application.offersLocalDelivery
+                          ? "Yes"
+                          : "No"
+                      }
+                    </strong>
+
+                    {" · "}
+
+                    Same-Day Delivery:{" "}
+                    <strong>
+                      {
+                        application.offersSameDayDelivery
                           ? "Yes"
                           : "No"
                       }

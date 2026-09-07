@@ -433,15 +433,6 @@ export const loader = async ({
       phone:
         seller.phone,
 
-      website:
-        seller.website,
-
-      instagram:
-        seller.instagram,
-
-      tiktok:
-        seller.tiktok,
-
       storeSlug:
         seller.storeSlug,
 
@@ -474,6 +465,9 @@ export const loader = async ({
 
       offersLocalDelivery:
         seller.offersLocalDelivery,
+
+      offersSameDayDelivery:
+        seller.offersSameDayDelivery,
 
       returnPolicy:
         seller.returnPolicy,
@@ -1405,33 +1399,6 @@ export default function SellerDetailPage() {
           />
 
           <InfoRow
-            label="Website"
-            value={
-              displayValue(
-                seller.website,
-              )
-            }
-          />
-
-          <InfoRow
-            label="Instagram"
-            value={
-              displayValue(
-                seller.instagram,
-              )
-            }
-          />
-
-          <InfoRow
-            label="TikTok"
-            value={
-              displayValue(
-                seller.tiktok,
-              )
-            }
-          />
-
-          <InfoRow
             label="Location"
             value={
               [
@@ -1661,6 +1628,15 @@ export default function SellerDetailPage() {
             value={
               yesNo(
                 seller.offersLocalDelivery,
+              )
+            }
+          />
+
+          <InfoRow
+            label="HairGrab Same-Day Delivery"
+            value={
+              yesNo(
+                seller.offersSameDayDelivery,
               )
             }
           />

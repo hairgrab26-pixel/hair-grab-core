@@ -811,7 +811,7 @@ export default function SellerOnboardingPage() {
 
           <ChecklistRow
             title="Shipping & fulfillment"
-            description="Confirm shipping speed, nationwide shipping, local pickup and local delivery."
+            description="Confirm shipping speed, nationwide shipping, local pickup, local delivery and HairGrab Same-Day Delivery."
             complete={
               onboarding.fulfillmentComplete
             }
@@ -1009,45 +1009,6 @@ export default function SellerOnboardingPage() {
 
             <div>
               <div style={labelStyle}>
-                Website
-              </div>
-
-              <div style={valueStyle}>
-                {displayValue(
-                  seller.website,
-                )}
-              </div>
-            </div>
-
-
-            <div>
-              <div style={labelStyle}>
-                Instagram
-              </div>
-
-              <div style={valueStyle}>
-                {displayValue(
-                  seller.instagram,
-                )}
-              </div>
-            </div>
-
-
-            <div>
-              <div style={labelStyle}>
-                TikTok
-              </div>
-
-              <div style={valueStyle}>
-                {displayValue(
-                  seller.tiktok,
-                )}
-              </div>
-            </div>
-
-
-            <div>
-              <div style={labelStyle}>
                 Ships Nationwide
               </div>
 
@@ -1080,6 +1041,19 @@ export default function SellerOnboardingPage() {
               <div style={valueStyle}>
                 {yesNo(
                   seller.offersLocalDelivery,
+                )}
+              </div>
+            </div>
+
+
+            <div>
+              <div style={labelStyle}>
+                HairGrab Same-Day Delivery
+              </div>
+
+              <div style={valueStyle}>
+                {yesNo(
+                  seller.offersSameDayDelivery,
                 )}
               </div>
             </div>
