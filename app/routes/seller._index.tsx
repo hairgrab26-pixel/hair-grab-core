@@ -8,57 +8,138 @@ import {
 } from "react-router";
 
 import db from "../db.server";
-import { requireSellerSession } from "../seller-session.server";
-import { syncSellerProductsFromShopify } from "../shopify-product-sync.server";
+
+import {
+  requireSellerSession,
+} from "../seller-session.server";
+
+import {
+  syncSellerProductsFromShopify,
+} from "../shopify-product-sync.server";
+
+import {
+  syncSellerNotifications,
+} from "../notifications.server";
+
+
+// ==========================================================
+// LOADER
+// ==========================================================
 
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
-  const { seller } =
+  const {
+    seller,
+  } =
     await requireSellerSession(
       request,
     );
+
 
   try {
     await syncSellerProductsFromShopify(
       seller,
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "[HairGrab Core] Seller product sync failed:",
       error,
     );
   }
 
-  const activeProducts =
-    await db.sellerProduct.count({
-      where: {
-        sellerId: seller.id,
-        status: "ACTIVE",
-      },
-    });
 
-  const ledgerEntries =
-    await db.sellerLedgerEntry.findMany({
-      where: {
-        sellerId: seller.id,
-      },
+  // Build any notifications that do not already exist.
+  await syncSellerNotifications(
+    seller.id,
+  );
 
-      select: {
-        shopifyOrderId: true,
-        grossAmountCents: true,
-        sellerEarningsCents: true,
-        commissionAmountCents: true,
-        status: true,
-        shopifyFulfillmentId: true,
-        deliveredAt: true,
-      },
-    });
 
-  let grossSales = 0;
-  let sellerEarnings = 0;
-  let commission = 0;
-  let payoutReady = 0;
+  const [
+    activeProducts,
+    ledgerEntries,
+    conversation,
+    unreadNotifications,
+  ] =
+    await Promise.all([
+      db.sellerProduct.count({
+        where: {
+          sellerId:
+            seller.id,
+
+          status:
+            "ACTIVE",
+        },
+      }),
+
+      db.sellerLedgerEntry.findMany({
+        where: {
+          sellerId:
+            seller.id,
+        },
+
+        select: {
+          shopifyOrderId:
+            true,
+
+          grossAmountCents:
+            true,
+
+          sellerEarningsCents:
+            true,
+
+          commissionAmountCents:
+            true,
+
+          status:
+            true,
+
+          shopifyFulfillmentId:
+            true,
+
+          deliveredAt:
+            true,
+        },
+      }),
+
+      db.sellerConversation.findUnique({
+        where: {
+          sellerId:
+            seller.id,
+        },
+
+        select: {
+          id:
+            true,
+        },
+      }),
+
+      db.sellerNotification.count({
+        where: {
+          sellerId:
+            seller.id,
+
+          readAt:
+            null,
+        },
+      }),
+    ]);
+
+
+  let grossSales =
+    0;
+
+  let sellerEarnings =
+    0;
+
+  let commission =
+    0;
+
+  let payoutReady =
+    0;
+
 
   const orderIds =
     new Set<string>();
@@ -69,21 +150,31 @@ export const loader = async ({
   const deliveredOrderIds =
     new Set<string>();
 
-  for (const entry of ledgerEntries) {
+
+  for (
+    const entry of
+    ledgerEntries
+  ) {
     grossSales +=
       Number(
-        entry.grossAmountCents || 0,
+        entry.grossAmountCents ||
+        0,
       ) / 100;
+
 
     sellerEarnings +=
       Number(
-        entry.sellerEarningsCents || 0,
+        entry.sellerEarningsCents ||
+        0,
       ) / 100;
+
 
     commission +=
       Number(
-        entry.commissionAmountCents || 0,
+        entry.commissionAmountCents ||
+        0,
       ) / 100;
+
 
     if (
       entry.status ===
@@ -92,9 +183,10 @@ export const loader = async ({
       payoutReady +=
         Number(
           entry.sellerEarningsCents ||
-            0,
+          0,
         ) / 100;
     }
+
 
     if (
       entry.shopifyOrderId
@@ -104,9 +196,11 @@ export const loader = async ({
           entry.shopifyOrderId,
         );
 
+
       orderIds.add(
         orderId,
       );
+
 
       if (
         entry.deliveredAt
@@ -124,42 +218,41 @@ export const loader = async ({
     }
   }
 
+
   const delivered =
     deliveredOrderIds.size;
+
 
   const shipped =
     Array.from(
       shippedOrderIds,
     ).filter(
-      (id) =>
+      (
+        orderId,
+      ) =>
         !deliveredOrderIds.has(
-          id,
+          orderId,
         ),
     ).length;
+
 
   const readyToShip =
     Math.max(
       0,
+
       orderIds.size -
         shipped -
         delivered,
     );
 
-  const conversation =
-    await db.sellerConversation.findUnique({
-      where: {
-        sellerId:
-          seller.id,
-      },
 
-      select: {
-        id: true,
-      },
-    });
+  let unreadMessages =
+    0;
 
-  let unreadMessages = 0;
 
-  if (conversation) {
+  if (
+    conversation
+  ) {
     unreadMessages =
       await db.sellerMessage.count({
         where: {
@@ -175,6 +268,7 @@ export const loader = async ({
       });
   }
 
+
   return {
     seller: {
       businessName:
@@ -186,19 +280,35 @@ export const loader = async ({
 
     stats: {
       activeProducts,
+
       totalOrders:
         orderIds.size,
+
       readyToShip,
+
       shipped,
+
       delivered,
+
       grossSales,
+
       commission,
+
       sellerEarnings,
+
       payoutReady,
+
       unreadMessages,
+
+      unreadNotifications,
     },
   };
 };
+
+
+// ==========================================================
+// MONEY
+// ==========================================================
 
 function money(
   amount: number,
@@ -217,6 +327,11 @@ function money(
   );
 }
 
+
+// ==========================================================
+// DASHBOARD
+// ==========================================================
+
 export default function SellerDashboard() {
   const {
     seller,
@@ -225,6 +340,7 @@ export default function SellerDashboard() {
     useLoaderData<
       typeof loader
     >();
+
 
   return (
     <div
@@ -297,6 +413,7 @@ export default function SellerDashboard() {
               HAIRGRAB SELLER
             </div>
 
+
             <div
               style={{
                 fontSize:
@@ -309,6 +426,7 @@ export default function SellerDashboard() {
               Seller Dashboard
             </div>
           </div>
+
 
           <Link
             to="/seller/add-product"
@@ -339,6 +457,7 @@ export default function SellerDashboard() {
           </Link>
         </div>
       </header>
+
 
       <main
         style={{
@@ -376,10 +495,11 @@ export default function SellerDashboard() {
             {seller.sellerCode}
           </div>
 
+
           <h1
             style={{
               margin:
-                "5px 0 5px",
+                "5px 0",
 
               color:
                 "#4B1678",
@@ -390,6 +510,7 @@ export default function SellerDashboard() {
           >
             Welcome, {seller.businessName}
           </h1>
+
 
           <div
             style={{
@@ -403,6 +524,7 @@ export default function SellerDashboard() {
             Everything you need to run your HairGrab store.
           </div>
         </section>
+
 
         <section
           style={{
@@ -437,6 +559,7 @@ export default function SellerDashboard() {
             HairGrab Announcement
           </div>
 
+
           <div
             style={{
               marginTop:
@@ -449,6 +572,7 @@ export default function SellerDashboard() {
             Welcome to HairGrab! Your seller dashboard is ready.
           </div>
         </section>
+
 
         <section>
           <div
@@ -472,6 +596,7 @@ export default function SellerDashboard() {
               My Store
             </h2>
 
+
             <div
               style={{
                 color:
@@ -487,6 +612,7 @@ export default function SellerDashboard() {
               Manage your products, orders and storefront from one place.
             </div>
           </div>
+
 
           <div
             style={{
@@ -507,12 +633,14 @@ export default function SellerDashboard() {
               to="/seller/products"
             />
 
+
             <StoreTile
               title="Orders & Shipping"
               value={`${stats.readyToShip} Ready to Ship`}
               text={`${stats.shipped} Shipped · ${stats.delivered} Delivered · ${stats.totalOrders} Total`}
               to="/seller/orders"
             />
+
 
             <StoreTile
               title="Messages"
@@ -524,7 +652,6 @@ export default function SellerDashboard() {
               }
               text="Private communication between your store and HairGrab."
               to="/seller/messages"
-              active
               badge={
                 stats.unreadMessages >
                 0
@@ -535,12 +662,27 @@ export default function SellerDashboard() {
               }
             />
 
+
             <StoreTile
               title="Notifications"
-              value="Marketplace Alerts"
-              text="Important HairGrab, order and shipping notices."
-              comingSoon
+              value={
+                stats.unreadNotifications >
+                0
+                  ? `${stats.unreadNotifications} Unread`
+                  : "Marketplace Alerts"
+              }
+              text="Order, shipping, payout and HairGrab message alerts."
+              to="/seller/notifications"
+              badge={
+                stats.unreadNotifications >
+                0
+                  ? String(
+                      stats.unreadNotifications,
+                    )
+                  : undefined
+              }
             />
+
 
             <StoreTile
               title="Store Settings"
@@ -550,6 +692,7 @@ export default function SellerDashboard() {
             />
           </div>
         </section>
+
 
         <section
           style={{
@@ -584,6 +727,7 @@ export default function SellerDashboard() {
             Financials
           </h2>
 
+
           <div
             style={{
               display:
@@ -605,6 +749,7 @@ export default function SellerDashboard() {
               }
             />
 
+
             <Financial
               label="HairGrab Fee"
               value={
@@ -614,6 +759,7 @@ export default function SellerDashboard() {
               }
             />
 
+
             <Financial
               label="Your Earnings"
               value={
@@ -622,6 +768,7 @@ export default function SellerDashboard() {
                 )
               }
             />
+
 
             <Financial
               label="Payout Ready"
@@ -638,243 +785,24 @@ export default function SellerDashboard() {
   );
 }
 
+
+// ==========================================================
+// STORE TILE
+// ==========================================================
+
 function StoreTile({
   title,
   value,
   text,
   to,
-  comingSoon,
-  active,
   badge,
 }: {
   title: string;
   value: string;
   text: string;
-  to?: string;
-  comingSoon?: boolean;
-  active?: boolean;
+  to: string;
   badge?: string;
 }) {
-  const card = (
-    <div
-      style={{
-        background:
-          "white",
-
-        border:
-          active
-            ? "1px solid #cdb9db"
-            : "1px solid #e5dce9",
-
-        borderRadius:
-          "14px",
-
-        padding:
-          "20px",
-
-        minHeight:
-          "125px",
-
-        boxSizing:
-          "border-box",
-
-        cursor:
-          to
-            ? "pointer"
-            : "default",
-
-        position:
-          "relative",
-      }}
-    >
-      <div
-        style={{
-          display:
-            "flex",
-
-          justifyContent:
-            "space-between",
-
-          gap:
-            "8px",
-
-          alignItems:
-            "start",
-        }}
-      >
-        <div
-          style={{
-            color:
-              "#4B1678",
-
-            fontWeight:
-              "800",
-
-            fontSize:
-              "17px",
-          }}
-        >
-          {title}
-        </div>
-
-        {comingSoon && (
-          <span
-            style={{
-              background:
-                "#f2eafa",
-
-              color:
-                "#6d447e",
-
-              borderRadius:
-                "20px",
-
-              padding:
-                "4px 7px",
-
-              fontSize:
-                "9px",
-
-              fontWeight:
-                "800",
-            }}
-          >
-            Coming Soon
-          </span>
-        )}
-
-        {!comingSoon &&
-          active &&
-          !badge && (
-            <span
-              style={{
-                background:
-                  "#edf8ef",
-
-                color:
-                  "#28743b",
-
-                borderRadius:
-                  "20px",
-
-                padding:
-                  "4px 7px",
-
-                fontSize:
-                  "9px",
-
-                fontWeight:
-                  "800",
-              }}
-            >
-              Active
-            </span>
-          )}
-
-        {badge && (
-          <span
-            style={{
-              background:
-                "#4B1678",
-
-              color:
-                "#ffffff",
-
-              borderRadius:
-                "20px",
-
-              minWidth:
-                "20px",
-
-              height:
-                "20px",
-
-              padding:
-                "0 6px",
-
-              display:
-                "inline-flex",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "center",
-
-              fontSize:
-                "10px",
-
-              fontWeight:
-                "800",
-            }}
-          >
-            {badge}
-          </span>
-        )}
-      </div>
-
-      <div
-        style={{
-          color:
-            "#2b1b35",
-
-          fontSize:
-            "14px",
-
-          fontWeight:
-            "800",
-
-          marginTop:
-            "16px",
-        }}
-      >
-        {value}
-      </div>
-
-      <div
-        style={{
-          color:
-            "#756b79",
-
-          fontSize:
-            "12px",
-
-          lineHeight:
-            1.45,
-
-          marginTop:
-            "5px",
-        }}
-      >
-        {text}
-      </div>
-
-      {to && (
-        <div
-          style={{
-            color:
-              "#4B1678",
-
-            fontSize:
-              "10px",
-
-            fontWeight:
-              "800",
-
-            marginTop:
-              "12px",
-          }}
-        >
-          Open →
-        </div>
-      )}
-    </div>
-  );
-
-  if (!to) {
-    return card;
-  }
-
   return (
     <Link
       to={to}
@@ -889,10 +817,168 @@ function StoreTile({
           "block",
       }}
     >
-      {card}
+      <div
+        style={{
+          background:
+            "white",
+
+          border:
+            "1px solid #e5dce9",
+
+          borderRadius:
+            "14px",
+
+          padding:
+            "20px",
+
+          minHeight:
+            "135px",
+
+          boxSizing:
+            "border-box",
+
+          cursor:
+            "pointer",
+        }}
+      >
+        <div
+          style={{
+            display:
+              "flex",
+
+            justifyContent:
+              "space-between",
+
+            alignItems:
+              "start",
+
+            gap:
+              "8px",
+          }}
+        >
+          <div
+            style={{
+              color:
+                "#4B1678",
+
+              fontWeight:
+                "800",
+
+              fontSize:
+                "17px",
+            }}
+          >
+            {title}
+          </div>
+
+
+          {badge && (
+            <span
+              style={{
+                background:
+                  "#4B1678",
+
+                color:
+                  "white",
+
+                borderRadius:
+                  "20px",
+
+                minWidth:
+                  "20px",
+
+                height:
+                  "20px",
+
+                padding:
+                  "0 6px",
+
+                display:
+                  "inline-flex",
+
+                alignItems:
+                  "center",
+
+                justifyContent:
+                  "center",
+
+                fontSize:
+                  "10px",
+
+                fontWeight:
+                  "800",
+              }}
+            >
+              {badge}
+            </span>
+          )}
+        </div>
+
+
+        <div
+          style={{
+            color:
+              "#2b1b35",
+
+            fontSize:
+              "14px",
+
+            fontWeight:
+              "800",
+
+            marginTop:
+              "16px",
+          }}
+        >
+          {value}
+        </div>
+
+
+        <div
+          style={{
+            color:
+              "#756b79",
+
+            fontSize:
+              "12px",
+
+            lineHeight:
+              1.45,
+
+            marginTop:
+              "5px",
+          }}
+        >
+          {text}
+        </div>
+
+
+        <div
+          style={{
+            color:
+              "#4B1678",
+
+            fontSize:
+              "10px",
+
+            fontWeight:
+              "800",
+
+            marginTop:
+              "11px",
+          }}
+        >
+          Open →
+        </div>
+      </div>
     </Link>
   );
 }
+
+
+// ==========================================================
+// FINANCIAL
+// ==========================================================
 
 function Financial({
   label,
@@ -914,6 +1000,7 @@ function Financial({
       >
         {label}
       </div>
+
 
       <div
         style={{

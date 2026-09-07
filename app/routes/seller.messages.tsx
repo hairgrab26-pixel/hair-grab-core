@@ -11,7 +11,10 @@ import {
 } from "react-router";
 
 import db from "../db.server";
-import { requireSellerSession } from "../seller-session.server";
+
+import {
+  requireSellerSession,
+} from "../seller-session.server";
 
 
 // ==========================================================
@@ -21,13 +24,14 @@ import { requireSellerSession } from "../seller-session.server";
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
-  const { seller } =
+  const {
+    seller,
+  } =
     await requireSellerSession(
       request,
     );
 
-  // Every seller gets one permanent private conversation
-  // with HairGrab support.
+
   const conversation =
     await db.sellerConversation.upsert({
       where: {
@@ -50,8 +54,11 @@ export const loader = async ({
     });
 
 
-  // Opening the inbox means the seller has seen
-  // any HairGrab replies that were still unread.
+  const now =
+    new Date();
+
+
+  // Seller has now read HairGrab messages.
   await db.sellerMessage.updateMany({
     where: {
       conversationId:
@@ -66,7 +73,27 @@ export const loader = async ({
 
     data: {
       readBySellerAt:
-        new Date(),
+        now,
+    },
+  });
+
+
+  // Clear matching message notifications too.
+  await db.sellerNotification.updateMany({
+    where: {
+      sellerId:
+        seller.id,
+
+      type:
+        "NEW_MESSAGE",
+
+      readAt:
+        null,
+    },
+
+    data: {
+      readAt:
+        now,
     },
   });
 
@@ -109,10 +136,6 @@ export const loader = async ({
 
       sellerCode:
         seller.sellerCode,
-
-      contactFirstName:
-        seller.contactFirstName ||
-        "",
     },
 
     conversation: {
@@ -121,9 +144,6 @@ export const loader = async ({
 
       status:
         conversation.status,
-
-      subject:
-        conversation.subject,
     },
 
     messages:
@@ -148,10 +168,13 @@ export const loader = async ({
 export const action = async ({
   request,
 }: ActionFunctionArgs) => {
-  const { seller } =
+  const {
+    seller,
+  } =
     await requireSellerSession(
       request,
     );
+
 
   const formData =
     await request.formData();
@@ -161,8 +184,7 @@ export const action = async ({
     String(
       formData.get(
         "body",
-      ) ||
-        "",
+      ) || "",
     ).trim();
 
 
@@ -180,7 +202,8 @@ export const action = async ({
     throw new Response(
       "Message is too long.",
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
@@ -225,17 +248,13 @@ export const action = async ({
           "SELLER",
 
         senderName:
-          seller.contactFirstName ||
           seller.businessName,
 
         body,
 
-        // The seller obviously knows the message
-        // they just sent.
         readBySellerAt:
           now,
 
-        // HairGrab has not read it yet.
         readByHairGrabAt:
           null,
       },
@@ -248,11 +267,11 @@ export const action = async ({
       },
 
       data: {
-        lastMessageAt:
-          now,
-
         status:
           "OPEN",
+
+        lastMessageAt:
+          now,
       },
     }),
   ]);
@@ -292,7 +311,7 @@ export default function SellerMessagesPage() {
           "28px 18px 70px",
 
         fontFamily:
-          "Arial, sans-serif",
+          "Arial, Helvetica, sans-serif",
 
         color:
           "#21152a",
@@ -345,8 +364,6 @@ export default function SellerMessagesPage() {
               "hidden",
           }}
         >
-          {/* HEADER */}
-
           <div
             style={{
               padding:
@@ -385,12 +402,9 @@ export default function SellerMessagesPage() {
 
                   letterSpacing:
                     "1px",
-
-                  textTransform:
-                    "uppercase",
                 }}
               >
-                HairGrab Seller Support
+                HAIRGRAB SELLER SUPPORT
               </div>
 
 
@@ -419,11 +433,7 @@ export default function SellerMessagesPage() {
                     "12px",
                 }}
               >
-                Private conversation between{" "}
-                <strong>
-                  {seller.businessName}
-                </strong>{" "}
-                and HairGrab.
+                Private conversation between {seller.businessName} and HairGrab.
               </div>
             </div>
 
@@ -449,15 +459,10 @@ export default function SellerMessagesPage() {
                   "800",
               }}
             >
-              {conversation.status ===
-              "OPEN"
-                ? "● Open"
-                : "Closed"}
+              ● {conversation.status}
             </div>
           </div>
 
-
-          {/* MESSAGE AREA */}
 
           <div
             style={{
@@ -503,6 +508,7 @@ export default function SellerMessagesPage() {
                   💬
                 </div>
 
+
                 <div
                   style={{
                     color:
@@ -518,6 +524,7 @@ export default function SellerMessagesPage() {
                   Need help?
                 </div>
 
+
                 <div
                   style={{
                     fontSize:
@@ -531,154 +538,134 @@ export default function SellerMessagesPage() {
                   }}
                 >
                   Send HairGrab a message below.
-                  Your conversation stays here
-                  in your seller account.
                 </div>
               </div>
             ) : (
-              <div
-                style={{
-                  display:
-                    "flex",
-
-                  flexDirection:
-                    "column",
-
-                  gap:
-                    "13px",
-                }}
-              >
-                {messages.map(
-                  (
-                    message,
-                  ) => {
-                    const sellerMessage =
-                      message.senderType ===
-                      "SELLER";
+              messages.map(
+                (
+                  message,
+                ) => {
+                  const sellerMessage =
+                    message.senderType ===
+                    "SELLER";
 
 
-                    return (
+                  return (
+                    <div
+                      key={
+                        message.id
+                      }
+                      style={{
+                        display:
+                          "flex",
+
+                        justifyContent:
+                          sellerMessage
+                            ? "flex-end"
+                            : "flex-start",
+
+                        marginBottom:
+                          "12px",
+                      }}
+                    >
                       <div
-                        key={
-                          message.id
-                        }
                         style={{
-                          display:
-                            "flex",
+                          maxWidth:
+                            "76%",
 
-                          justifyContent:
+                          background:
                             sellerMessage
-                              ? "flex-end"
-                              : "flex-start",
+                              ? "#4B1678"
+                              : "#ffffff",
+
+                          color:
+                            sellerMessage
+                              ? "#ffffff"
+                              : "#2c2032",
+
+                          border:
+                            sellerMessage
+                              ? "1px solid #4B1678"
+                              : "1px solid #e5dce9",
+
+                          borderRadius:
+                            "14px",
+
+                          padding:
+                            "11px 13px",
                         }}
                       >
                         <div
                           style={{
-                            maxWidth:
-                              "76%",
+                            fontSize:
+                              "10px",
 
-                            background:
-                              sellerMessage
-                                ? "#4B1678"
-                                : "#ffffff",
+                            fontWeight:
+                              "800",
+
+                            marginBottom:
+                              "5px",
 
                             color:
                               sellerMessage
-                                ? "#ffffff"
-                                : "#2c2032",
-
-                            border:
-                              sellerMessage
-                                ? "1px solid #4B1678"
-                                : "1px solid #e5dce9",
-
-                            borderRadius:
-                              sellerMessage
-                                ? "14px 14px 4px 14px"
-                                : "14px 14px 14px 4px",
-
-                            padding:
-                              "11px 13px",
-
-                            boxShadow:
-                              "0 1px 2px rgba(0,0,0,.03)",
+                                ? "#eadcf2"
+                                : "#4B1678",
                           }}
                         >
-                          <div
-                            style={{
-                              fontSize:
-                                "10px",
-
-                              fontWeight:
-                                "800",
-
-                              marginBottom:
-                                "5px",
-
-                              color:
-                                sellerMessage
-                                  ? "#eadcf2"
-                                  : "#4B1678",
-                            }}
-                          >
-                            {sellerMessage
-                              ? message.senderName ||
-                                seller.businessName
-                              : "HairGrab Support"}
-                          </div>
+                          {sellerMessage
+                            ? seller.businessName
+                            : "HairGrab Support"}
+                        </div>
 
 
-                          <div
-                            style={{
-                              fontSize:
-                                "13px",
+                        <div
+                          style={{
+                            fontSize:
+                              "13px",
 
-                              lineHeight:
-                                1.55,
+                            lineHeight:
+                              1.55,
 
-                              whiteSpace:
-                                "pre-wrap",
+                            whiteSpace:
+                              "pre-wrap",
 
-                              overflowWrap:
-                                "anywhere",
-                            }}
-                          >
-                            {message.body}
-                          </div>
+                            overflowWrap:
+                              "anywhere",
+                          }}
+                        >
+                          {message.body}
+                        </div>
 
 
-                          <div
-                            style={{
-                              fontSize:
-                                "9px",
+                        <div
+                          style={{
+                            fontSize:
+                              "9px",
 
-                              marginTop:
-                                "7px",
+                            marginTop:
+                              "7px",
 
-                              color:
-                                sellerMessage
-                                  ? "#d9c7e4"
-                                  : "#938a97",
+                            textAlign:
+                              "right",
 
-                              textAlign:
-                                "right",
-                            }}
-                          >
-                            {formatMessageTime(
-                              message.createdAt,
-                            )}
-                          </div>
+                            color:
+                              sellerMessage
+                                ? "#d9c7e4"
+                                : "#938a97",
+                          }}
+                        >
+                          {formatMessageDate(
+                            message.createdAt,
+                          )}
                         </div>
                       </div>
-                    );
-                  },
-                )}
-              </div>
+                    </div>
+                  );
+                },
+              )
             )}
           </div>
 
-
-          {/* COMPOSER */}
 
           <Form
             method="post"
@@ -693,35 +680,25 @@ export default function SellerMessagesPage() {
                 "#ffffff",
             }}
           >
-            <label>
-              <div
-                style={{
-                  color:
-                    "#4B1678",
+            <label
+              style={{
+                color:
+                  "#4B1678",
 
-                  fontSize:
-                    "11px",
+                fontSize:
+                  "11px",
 
-                  fontWeight:
-                    "800",
-
-                  marginBottom:
-                    "7px",
-                }}
-              >
-                Message HairGrab
-              </div>
-
+                fontWeight:
+                  "800",
+              }}
+            >
+              Message HairGrab
 
               <textarea
                 name="body"
                 required
-                maxLength={
-                  4000
-                }
-                rows={
-                  4
-                }
+                maxLength={4000}
+                rows={4}
                 placeholder="Type your message here..."
                 style={{
                   width:
@@ -749,16 +726,13 @@ export default function SellerMessagesPage() {
                     "90px",
 
                   fontFamily:
-                    "Arial, sans-serif",
+                    "Arial, Helvetica, sans-serif",
 
                   fontSize:
                     "13px",
 
-                  lineHeight:
-                    1.5,
-
-                  outline:
-                    "none",
+                  marginTop:
+                    "7px",
                 }}
               />
             </label>
@@ -770,36 +744,12 @@ export default function SellerMessagesPage() {
                   "flex",
 
                 justifyContent:
-                  "space-between",
-
-                alignItems:
-                  "center",
-
-                gap:
-                  "12px",
+                  "flex-end",
 
                 marginTop:
                   "10px",
-
-                flexWrap:
-                  "wrap",
               }}
             >
-              <div
-                style={{
-                  color:
-                    "#938a97",
-
-                  fontSize:
-                    "10px",
-                }}
-              >
-                HairGrab support can reply
-                directly inside your seller
-                account.
-              </div>
-
-
               <button
                 type="submit"
                 style={{
@@ -830,28 +780,6 @@ export default function SellerMessagesPage() {
             </div>
           </Form>
         </div>
-
-
-        <div
-          style={{
-            marginTop:
-              "12px",
-
-            textAlign:
-              "center",
-
-            color:
-              "#938a97",
-
-            fontSize:
-              "10px",
-          }}
-        >
-          Seller ID: {seller.sellerCode}
-          {" · "}
-          Messages are private between your
-          business and HairGrab.
-        </div>
       </div>
     </div>
   );
@@ -859,10 +787,10 @@ export default function SellerMessagesPage() {
 
 
 // ==========================================================
-// HELPERS
+// DATE
 // ==========================================================
 
-function formatMessageTime(
+function formatMessageDate(
   value: string,
 ) {
   return new Date(
