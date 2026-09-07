@@ -74,6 +74,47 @@ async function getNextSellerCode() {
 }
 
 
+async function createSellerLoginLink({
+  request,
+  portalAccountId,
+}: {
+  request: Request;
+  portalAccountId: string;
+}) {
+  const rawToken =
+    crypto.randomBytes(
+      32,
+    ).toString("hex");
+
+  const tokenHash =
+    crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
+
+  const expiresAt =
+    new Date(
+      Date.now() +
+        24 * 60 * 60 * 1000,
+    );
+
+  await db.sellerLoginToken.create({
+    data: {
+      portalAccountId,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  const requestUrl =
+    new URL(
+      request.url,
+    );
+
+  return `${requestUrl.origin}/seller/login/verify?token=${rawToken}`;
+}
+
+
 // ==========================================================
 // LOADER
 // ==========================================================
@@ -96,7 +137,12 @@ export const loader = async ({
 
       include: {
         approvedSeller:
-          true,
+          {
+            include: {
+              portalAccounts:
+                true,
+            },
+          },
       },
     });
 
@@ -184,7 +230,12 @@ export const action = async ({
 
       include: {
         approvedSeller:
-          true,
+          {
+            include: {
+              portalAccounts:
+                true,
+            },
+          },
       },
     });
 
@@ -430,57 +481,13 @@ export const action = async ({
         );
 
 
-      // ======================================================
-      // CREATE FIRST-TIME SELLER SIGN-IN LINK
-      // ======================================================
-
-      const rawToken =
-        crypto.randomBytes(
-          32,
-        ).toString("hex");
-
-
-      const tokenHash =
-        crypto
-          .createHash("sha256")
-          .update(rawToken)
-          .digest("hex");
-
-
-      const expiresAt =
-        new Date(
-          Date.now() +
-            24 * 60 * 60 * 1000,
-        );
-
-
-      await db.sellerLoginToken.create({
-        data: {
+      const onboardingUrl =
+        await createSellerLoginLink({
+          request,
           portalAccountId:
             result.portalAccount.id,
+        });
 
-          tokenHash,
-
-          expiresAt,
-        },
-      });
-
-
-      const requestUrl =
-        new URL(
-          request.url,
-        );
-
-
-      const onboardingUrl =
-        `${requestUrl.origin}/seller/login/verify?token=${rawToken}`;
-
-
-      // ======================================================
-      // SEND APPROVAL / ONBOARDING EMAIL
-      //
-      // Email failure does NOT undo seller approval.
-      // ======================================================
 
       let approvalEmailSent =
         true;
@@ -540,6 +547,98 @@ export const action = async ({
           error instanceof Error
             ? error.message
             : "Unable to approve seller application.",
+      };
+    }
+  }
+
+
+  // ========================================================
+  // RESEND APPROVAL EMAIL
+  // ========================================================
+
+  if (
+    intent ===
+    "resend-approval-email"
+  ) {
+
+    if (
+      application.status !==
+        "APPROVED" ||
+      !application.approvedSeller
+    ) {
+      return {
+        success: false,
+        message:
+          "Only approved sellers can receive an approval email.",
+      };
+    }
+
+
+    try {
+
+      const portalAccount =
+        application.approvedSeller.portalAccounts.find(
+          (account) =>
+            account.email.toLowerCase() ===
+            application.email.toLowerCase(),
+        ) ||
+        application.approvedSeller.portalAccounts[0];
+
+
+      if (!portalAccount) {
+        return {
+          success: false,
+          message:
+            "This seller does not have a portal account.",
+        };
+      }
+
+
+      const onboardingUrl =
+        await createSellerLoginLink({
+          request,
+          portalAccountId:
+            portalAccount.id,
+        });
+
+
+      await sendSellerApprovalEmail({
+        to:
+          application.email,
+
+        firstName:
+          application.contactFirstName,
+
+        businessName:
+          application.businessName,
+
+        sellerCode:
+          application.approvedSeller.sellerCode,
+
+        onboardingUrl,
+      });
+
+
+      return {
+        success: true,
+        message:
+          `Approval email resent to ${application.email}. A fresh 24-hour seller login link was created.`,
+      };
+
+    } catch (error) {
+
+      console.error(
+        "[HairGrab Core] Resend seller approval email error:",
+        error,
+      );
+
+
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to resend seller approval email.",
       };
     }
   }
@@ -1358,6 +1457,73 @@ export default function ApplicationsPage() {
                           }}
                         >
                           Decline
+                        </button>
+                      </Form>
+                    </div>
+                  )}
+
+
+                  {application.status ===
+                    "APPROVED" &&
+                    application.approvedSeller && (
+                    <div
+                      style={{
+                        display:
+                          "flex",
+                        gap:
+                          "10px",
+                        flexWrap:
+                          "wrap",
+                        marginTop:
+                          "18px",
+                        paddingTop:
+                          "16px",
+                        borderTop:
+                          "1px solid #eee6f2",
+                      }}
+                    >
+                      <Form
+                        method="post"
+                      >
+                        <input
+                          type="hidden"
+                          name="applicationId"
+                          value={
+                            application.id
+                          }
+                        />
+
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="resend-approval-email"
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={
+                            busy
+                          }
+                          style={{
+                            border:
+                              "1px solid #c9b1d9",
+                            borderRadius:
+                              "9px",
+                            background:
+                              "#ffffff",
+                            color:
+                              "#4B1678",
+                            padding:
+                              "10px 15px",
+                            fontWeight:
+                              "800",
+                            cursor:
+                              busy
+                                ? "wait"
+                                : "pointer",
+                          }}
+                        >
+                          Resend Approval Email
                         </button>
                       </Form>
                     </div>
