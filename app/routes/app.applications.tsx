@@ -13,6 +13,10 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
+import crypto from "node:crypto";
+
+import { sendSellerApprovalEmail } from "../email.server";
+
 
 // ==========================================================
 // HELPERS
@@ -325,30 +329,31 @@ export const action = async ({
               });
 
 
-            await tx.sellerPortalAccount.create({
-              data: {
-                sellerId:
-                  seller.id,
+            const portalAccount =
+              await tx.sellerPortalAccount.create({
+                data: {
+                  sellerId:
+                    seller.id,
 
-                email:
-                  application.email,
+                  email:
+                    application.email,
 
-                firstName:
-                  application.contactFirstName,
+                  firstName:
+                    application.contactFirstName,
 
-                lastName:
-                  application.contactLastName,
+                  lastName:
+                    application.contactLastName,
 
-                role:
-                  "OWNER",
+                  role:
+                    "OWNER",
 
-                status:
-                  "INVITED",
+                  status:
+                    "INVITED",
 
-                invitedAt:
-                  now,
-              },
-            });
+                  invitedAt:
+                    now,
+                },
+              });
 
 
             await tx.sellerOnboarding.create({
@@ -417,15 +422,108 @@ export const action = async ({
             });
 
 
-            return seller;
+            return {
+              seller,
+              portalAccount,
+            };
           },
         );
 
 
+      // ======================================================
+      // CREATE FIRST-TIME SELLER SIGN-IN LINK
+      // ======================================================
+
+      const rawToken =
+        crypto.randomBytes(
+          32,
+        ).toString("hex");
+
+
+      const tokenHash =
+        crypto
+          .createHash("sha256")
+          .update(rawToken)
+          .digest("hex");
+
+
+      const expiresAt =
+        new Date(
+          Date.now() +
+            24 * 60 * 60 * 1000,
+        );
+
+
+      await db.sellerLoginToken.create({
+        data: {
+          portalAccountId:
+            result.portalAccount.id,
+
+          tokenHash,
+
+          expiresAt,
+        },
+      });
+
+
+      const requestUrl =
+        new URL(
+          request.url,
+        );
+
+
+      const onboardingUrl =
+        `${requestUrl.origin}/seller/login/verify?token=${rawToken}`;
+
+
+      // ======================================================
+      // SEND APPROVAL / ONBOARDING EMAIL
+      //
+      // Email failure does NOT undo seller approval.
+      // ======================================================
+
+      let approvalEmailSent =
+        true;
+
+
+      try {
+
+        await sendSellerApprovalEmail({
+          to:
+            application.email,
+
+          firstName:
+            application.contactFirstName,
+
+          businessName:
+            application.businessName,
+
+          sellerCode:
+            result.seller.sellerCode,
+
+          onboardingUrl,
+        });
+
+      } catch (emailError) {
+
+        approvalEmailSent =
+          false;
+
+        console.error(
+          "[HairGrab Core] Seller approved but approval email failed:",
+          emailError,
+        );
+      }
+
+
       return {
-        success: true,
+        success:
+          true,
+
         message:
-          `${application.businessName} approved as ${result.sellerCode}. Seller account and onboarding were created.`,
+          approvalEmailSent
+            ? `${application.businessName} approved as ${result.seller.sellerCode}. Seller account and onboarding were created, and the seller email was sent.`
+            : `${application.businessName} approved as ${result.seller.sellerCode}. Seller account and onboarding were created, but the seller email could not be sent.`,
       };
 
     } catch (error) {
