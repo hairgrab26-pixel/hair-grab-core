@@ -61,7 +61,7 @@ model SellerApplication {
   city       String?
   state      String?
   postalCode String?
-  country    String @default("US")
+  country    String  @default("US")
 
   yearsInBusiness   String?
   productCountRange String?
@@ -74,17 +74,13 @@ model SellerApplication {
   notes            String?
   adminReviewNotes String?
 
-  submittedAt DateTime @default(now())
+  submittedAt DateTime  @default(now())
   reviewedAt  DateTime?
   approvedAt  DateTime?
   declinedAt  DateTime?
 
   approvedSellerId String? @unique
-  approvedSeller   Seller? @relation(
-    "ApprovedSellerApplication",
-    fields: [approvedSellerId],
-    references: [id]
-  )
+  approvedSeller   Seller? @relation("ApprovedSellerApplication", fields: [approvedSellerId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -127,7 +123,7 @@ model Seller {
   city       String?
   state      String?
   postalCode String?
-  country    String @default("US")
+  country    String  @default("US")
 
   // Nationwide fulfillment
   sellsNationwide Boolean @default(true)
@@ -190,8 +186,7 @@ model Seller {
 
   onboarding SellerOnboarding?
 
-  approvedApplication SellerApplication?
-    @relation("ApprovedSellerApplication")
+  approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -210,11 +205,7 @@ model SellerOnboarding {
   id String @id @default(cuid())
 
   sellerId String @unique
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id],
-    onDelete: Cascade
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   // BUSINESS / STOREFRONT / FULFILLMENT / RETURNS /
   // PAYOUTS / AGREEMENTS / PRODUCTS / COMPLETE
@@ -258,13 +249,9 @@ model SellerPortalAccount {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id],
-    onDelete: Cascade
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
-  email     String @unique
+  email     String  @unique
   firstName String?
   lastName  String?
 
@@ -276,7 +263,7 @@ model SellerPortalAccount {
 
   emailVerifiedAt DateTime?
   lastLoginAt     DateTime?
-  invitedAt       DateTime @default(now())
+  invitedAt       DateTime  @default(now())
 
   loginTokens SellerLoginToken[]
 
@@ -295,11 +282,7 @@ model SellerLoginToken {
   id String @id @default(cuid())
 
   portalAccountId String
-  portalAccount   SellerPortalAccount @relation(
-    fields: [portalAccountId],
-    references: [id],
-    onDelete: Cascade
-  )
+  portalAccount   SellerPortalAccount @relation(fields: [portalAccountId], references: [id], onDelete: Cascade)
 
   tokenHash String @unique
 
@@ -332,7 +315,7 @@ model SellerProduct {
 
   sellerSku String?
 
-  publishedToShopify Boolean @default(false)
+  publishedToShopify Boolean   @default(false)
   publishedAt        DateTime?
 
   createdAt DateTime @default(now())
@@ -350,10 +333,7 @@ model SellerLedgerEntry {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id]
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id])
 
   shopifyOrderId    String
   shopifyOrderName  String?
@@ -416,11 +396,7 @@ model SellerDeliveredOrder {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id],
-    onDelete: Cascade
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   shopifyOrderId   String
   shopifyOrderName String?
@@ -451,10 +427,7 @@ model PayoutBatch {
   batchCode String @unique
 
   sellerId String
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id]
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id])
 
   // DRAFT / READY / PROCESSING / PAID / FAILED / CANCELED
   status String @default("DRAFT")
@@ -487,16 +460,10 @@ model PayoutBatchItem {
   id String @id @default(cuid())
 
   payoutBatchId String
-  payoutBatch   PayoutBatch @relation(
-    fields: [payoutBatchId],
-    references: [id]
-  )
+  payoutBatch   PayoutBatch @relation(fields: [payoutBatchId], references: [id])
 
-  ledgerEntryId String @unique
-  ledgerEntry   SellerLedgerEntry @relation(
-    fields: [ledgerEntryId],
-    references: [id]
-  )
+  ledgerEntryId String            @unique
+  ledgerEntry   SellerLedgerEntry @relation(fields: [ledgerEntryId], references: [id])
 
   amountCents Int
   currency    String @default("USD")
@@ -549,11 +516,7 @@ model SellerOrderFulfillment {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id],
-    onDelete: Cascade
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   shopifyOrderId   String
   shopifyOrderName String?
@@ -616,11 +579,7 @@ model SellerConversation {
   id String @id @default(cuid())
 
   sellerId String @unique
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id],
-    onDelete: Cascade
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   // OPEN / CLOSED
   status String @default("OPEN")
@@ -648,11 +607,7 @@ model SellerMessage {
   id String @id @default(cuid())
 
   conversationId String
-  conversation   SellerConversation @relation(
-    fields: [conversationId],
-    references: [id],
-    onDelete: Cascade
-  )
+  conversation   SellerConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   // HAIRGRAB / SELLER
   senderType String
@@ -731,20 +686,12 @@ model AnnouncementRead {
   id String @id @default(cuid())
 
   announcementId String
-  announcement   Announcement @relation(
-    fields: [announcementId],
-    references: [id],
-    onDelete: Cascade
-  )
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
 
   sellerId String
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id],
-    onDelete: Cascade
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
-  deliveredAt DateTime @default(now())
+  deliveredAt DateTime  @default(now())
   readAt      DateTime?
 
   createdAt DateTime @default(now())
@@ -775,11 +722,7 @@ model SellerNotification {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id],
-    onDelete: Cascade
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   type String
 
