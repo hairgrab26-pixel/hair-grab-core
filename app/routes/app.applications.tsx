@@ -19,6 +19,46 @@ import { sendSellerApprovalEmail } from "../email.server";
 
 
 // ==========================================================
+// DISPLAY HELPERS
+// ==========================================================
+
+function formatYearsInBusiness(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const labels: Record<string, string> = {
+    LESS_THAN_1: "Less than 1 year",
+    "1_TO_2": "1–2 years",
+    "3_TO_5": "3–5 years",
+    "6_TO_10": "6–10 years",
+    MORE_THAN_10: "More than 10 years",
+    "10_PLUS": "10+ years",
+  };
+
+  return labels[value] || value.replaceAll("_", " ");
+}
+
+
+function formatProductRange(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const labels: Record<string, string> = {
+    "1_TO_10": "1–10 products",
+    "11_TO_25": "11–25 products",
+    "26_TO_50": "26–50 products",
+    "51_TO_100": "51–100 products",
+    MORE_THAN_100: "More than 100 products",
+    "100_PLUS": "100+ products",
+  };
+
+  return labels[value] || value.replaceAll("_", " ");
+}
+
+
+// ==========================================================
 // HELPERS
 // ==========================================================
 
@@ -43,8 +83,7 @@ async function getNextSellerCode() {
       },
     });
 
-  let highestSellerNumber =
-    0;
+  let highestSellerNumber = 0;
 
   for (const seller of sellers) {
     const match =
@@ -107,9 +146,7 @@ async function createSellerLoginLink({
   });
 
   const requestUrl =
-    new URL(
-      request.url,
-    );
+    new URL(request.url);
 
   return `${requestUrl.origin}/seller/login/verify?token=${rawToken}`;
 }
@@ -122,11 +159,9 @@ async function createSellerLoginLink({
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
-
   await authenticate.admin(
     request,
   );
-
 
   const applications =
     await db.sellerApplication.findMany({
@@ -136,16 +171,14 @@ export const loader = async ({
       },
 
       include: {
-        approvedSeller:
-          {
-            include: {
-              portalAccounts:
-                true,
-            },
+        approvedSeller: {
+          include: {
+            portalAccounts:
+              true,
           },
+        },
       },
     });
-
 
   const pendingCount =
     applications.filter(
@@ -154,7 +187,6 @@ export const loader = async ({
         "PENDING",
     ).length;
 
-
   const approvedCount =
     applications.filter(
       (application) =>
@@ -162,14 +194,12 @@ export const loader = async ({
         "APPROVED",
     ).length;
 
-
   const declinedCount =
     applications.filter(
       (application) =>
         application.status ===
         "DECLINED",
     ).length;
-
 
   return {
     applications,
@@ -187,22 +217,18 @@ export const loader = async ({
 export const action = async ({
   request,
 }: ActionFunctionArgs) => {
-
   await authenticate.admin(
     request,
   );
 
-
   const formData =
     await request.formData();
-
 
   const intent =
     String(
       formData.get("intent") ||
       "",
     );
-
 
   const applicationId =
     String(
@@ -211,15 +237,15 @@ export const action = async ({
       ) || "",
     );
 
-
   if (!applicationId) {
     return {
       success: false,
       message:
         "Application ID is missing.",
+      intent,
+      applicationId,
     };
   }
-
 
   const application =
     await db.sellerApplication.findUnique({
@@ -229,22 +255,22 @@ export const action = async ({
       },
 
       include: {
-        approvedSeller:
-          {
-            include: {
-              portalAccounts:
-                true,
-            },
+        approvedSeller: {
+          include: {
+            portalAccounts:
+              true,
           },
+        },
       },
     });
-
 
   if (!application) {
     return {
       success: false,
       message:
         "Seller application was not found.",
+      intent,
+      applicationId,
     };
   }
 
@@ -257,7 +283,6 @@ export const action = async ({
     intent ===
     "approve"
   ) {
-
     if (
       application.status ===
         "APPROVED" &&
@@ -267,18 +292,15 @@ export const action = async ({
         success: false,
         message:
           `This application is already approved as ${application.approvedSeller.sellerCode}.`,
+        intent,
+        applicationId,
       };
     }
 
-
     try {
-
       const sellerCode =
         await getNextSellerCode();
 
-
-      // The first 100 HairGrab seller IDs are Founding Sellers.
-      // Their 5% marketplace commission is permanent.
       const sellerNumber =
         Number(
           sellerCode.replace(
@@ -292,22 +314,18 @@ export const action = async ({
           ? 5
           : 7;
 
-
       const shopifyVendor =
         makeShopifyVendor(
           application.businessName,
           sellerCode,
         );
 
-
       const now =
         new Date();
-
 
       const result =
         await db.$transaction(
           async (tx) => {
-
             const seller =
               await tx.seller.create({
                 data: {
@@ -379,7 +397,6 @@ export const action = async ({
                 },
               });
 
-
             const portalAccount =
               await tx.sellerPortalAccount.create({
                 data: {
@@ -405,7 +422,6 @@ export const action = async ({
                     now,
                 },
               });
-
 
             await tx.sellerOnboarding.create({
               data: {
@@ -450,7 +466,6 @@ export const action = async ({
               },
             });
 
-
             await tx.sellerApplication.update({
               where: {
                 id:
@@ -472,14 +487,12 @@ export const action = async ({
               },
             });
 
-
             return {
               seller,
               portalAccount,
             };
           },
         );
-
 
       const onboardingUrl =
         await createSellerLoginLink({
@@ -488,13 +501,10 @@ export const action = async ({
             result.portalAccount.id,
         });
 
-
       let approvalEmailSent =
         true;
 
-
       try {
-
         await sendSellerApprovalEmail({
           to:
             application.email,
@@ -512,7 +522,6 @@ export const action = async ({
         });
 
       } catch (emailError) {
-
         approvalEmailSent =
           false;
 
@@ -522,7 +531,6 @@ export const action = async ({
         );
       }
 
-
       return {
         success:
           true,
@@ -531,15 +539,16 @@ export const action = async ({
           approvalEmailSent
             ? `${application.businessName} approved as ${result.seller.sellerCode}. Seller account and onboarding were created, and the seller email was sent.`
             : `${application.businessName} approved as ${result.seller.sellerCode}. Seller account and onboarding were created, but the seller email could not be sent.`,
+
+        intent,
+        applicationId,
       };
 
     } catch (error) {
-
       console.error(
         "[HairGrab Core] Seller approval error:",
         error,
       );
-
 
       return {
         success: false,
@@ -547,6 +556,8 @@ export const action = async ({
           error instanceof Error
             ? error.message
             : "Unable to approve seller application.",
+        intent,
+        applicationId,
       };
     }
   }
@@ -560,7 +571,6 @@ export const action = async ({
     intent ===
     "resend-approval-email"
   ) {
-
     if (
       application.status !==
         "APPROVED" ||
@@ -570,12 +580,12 @@ export const action = async ({
         success: false,
         message:
           "Only approved sellers can receive an approval email.",
+        intent,
+        applicationId,
       };
     }
 
-
     try {
-
       const portalAccount =
         application.approvedSeller.portalAccounts.find(
           (account) =>
@@ -584,15 +594,15 @@ export const action = async ({
         ) ||
         application.approvedSeller.portalAccounts[0];
 
-
       if (!portalAccount) {
         return {
           success: false,
           message:
             "This seller does not have a portal account.",
+          intent,
+          applicationId,
         };
       }
-
 
       const onboardingUrl =
         await createSellerLoginLink({
@@ -600,7 +610,6 @@ export const action = async ({
           portalAccountId:
             portalAccount.id,
         });
-
 
       await sendSellerApprovalEmail({
         to:
@@ -618,20 +627,19 @@ export const action = async ({
         onboardingUrl,
       });
 
-
       return {
         success: true,
         message:
-          `Approval email resent to ${application.email}. A fresh 24-hour seller login link was created.`,
+          `Approval email sent to ${application.email}.`,
+        intent,
+        applicationId,
       };
 
     } catch (error) {
-
       console.error(
         "[HairGrab Core] Resend seller approval email error:",
         error,
       );
-
 
       return {
         success: false,
@@ -639,6 +647,8 @@ export const action = async ({
           error instanceof Error
             ? error.message
             : "Unable to resend seller approval email.",
+        intent,
+        applicationId,
       };
     }
   }
@@ -652,7 +662,6 @@ export const action = async ({
     intent ===
     "decline"
   ) {
-
     if (
       application.status ===
       "APPROVED"
@@ -661,12 +670,12 @@ export const action = async ({
         success: false,
         message:
           "An approved seller application cannot be declined from this screen.",
+        intent,
+        applicationId,
       };
     }
 
-
     try {
-
       await db.sellerApplication.update({
         where: {
           id:
@@ -685,34 +694,36 @@ export const action = async ({
         },
       });
 
-
       return {
         success: true,
         message:
           `${application.businessName} was declined.`,
+        intent,
+        applicationId,
       };
 
     } catch (error) {
-
       console.error(
         "[HairGrab Core] Seller decline error:",
         error,
       );
 
-
       return {
         success: false,
         message:
           "Unable to decline seller application.",
+        intent,
+        applicationId,
       };
     }
   }
-
 
   return {
     success: false,
     message:
       "Unknown application action.",
+    intent,
+    applicationId,
   };
 };
 
@@ -738,7 +749,6 @@ const cardStyle = {
 const badgeStyle = (
   status: string,
 ) => {
-
   if (
     status ===
     "APPROVED"
@@ -753,7 +763,6 @@ const badgeStyle = (
     };
   }
 
-
   if (
     status ===
     "DECLINED"
@@ -767,7 +776,6 @@ const badgeStyle = (
         "1px solid #efc4c4",
     };
   }
-
 
   return {
     background:
@@ -785,7 +793,6 @@ const badgeStyle = (
 // ==========================================================
 
 export default function ApplicationsPage() {
-
   const {
     applications,
     pendingCount,
@@ -796,21 +803,35 @@ export default function ApplicationsPage() {
       typeof loader
     >();
 
-
   const actionData =
     useActionData<
       typeof action
     >();
 
-
   const navigation =
     useNavigation();
-
 
   const busy =
     navigation.state ===
     "submitting";
 
+  const submittingIntent =
+    navigation.formData
+      ? String(
+          navigation.formData.get(
+            "intent",
+          ) || "",
+        )
+      : "";
+
+  const submittingApplicationId =
+    navigation.formData
+      ? String(
+          navigation.formData.get(
+            "applicationId",
+          ) || "",
+        )
+      : "";
 
   return (
     <div
@@ -883,9 +904,11 @@ export default function ApplicationsPage() {
       </div>
 
 
-      {/* ACTION RESULT */}
+      {/* RESULT FOR NON-RESEND ACTIONS */}
 
-      {actionData?.message && (
+      {actionData?.message &&
+        actionData.intent !==
+          "resend-approval-email" && (
         <div
           style={{
             marginBottom:
@@ -1047,12 +1070,25 @@ export default function ApplicationsPage() {
         ) : (
           applications.map(
             (application) => {
-
               const badge =
                 badgeStyle(
                   application.status,
                 );
 
+              const isResending =
+                busy &&
+                submittingIntent ===
+                  "resend-approval-email" &&
+                submittingApplicationId ===
+                  application.id;
+
+              const resendResult =
+                actionData?.intent ===
+                  "resend-approval-email" &&
+                actionData.applicationId ===
+                  application.id
+                  ? actionData
+                  : null;
 
               return (
                 <div
@@ -1115,7 +1151,6 @@ export default function ApplicationsPage() {
                         }
                       </div>
                     </div>
-
 
                     <div
                       style={{
@@ -1197,10 +1232,9 @@ export default function ApplicationsPage() {
                             "700",
                         }}
                       >
-                        {
-                          application.yearsInBusiness ||
-                          "—"
-                        }
+                        {formatYearsInBusiness(
+                          application.yearsInBusiness,
+                        )}
                       </div>
                     </div>
 
@@ -1225,10 +1259,9 @@ export default function ApplicationsPage() {
                             "700",
                         }}
                       >
-                        {
-                          application.productCountRange ||
-                          "—"
-                        }
+                        {formatProductRange(
+                          application.productCountRange,
+                        )}
                       </div>
                     </div>
 
@@ -1408,6 +1441,10 @@ export default function ApplicationsPage() {
                               busy
                                 ? "wait"
                                 : "pointer",
+                            opacity:
+                              busy
+                                ? 0.65
+                                : 1,
                           }}
                         >
                           Approve Seller
@@ -1454,6 +1491,10 @@ export default function ApplicationsPage() {
                               busy
                                 ? "wait"
                                 : "pointer",
+                            opacity:
+                              busy
+                                ? 0.65
+                                : 1,
                           }}
                         >
                           Decline
@@ -1468,12 +1509,6 @@ export default function ApplicationsPage() {
                     application.approvedSeller && (
                     <div
                       style={{
-                        display:
-                          "flex",
-                        gap:
-                          "10px",
-                        flexWrap:
-                          "wrap",
                         marginTop:
                           "18px",
                         paddingTop:
@@ -1502,7 +1537,7 @@ export default function ApplicationsPage() {
                         <button
                           type="submit"
                           disabled={
-                            busy
+                            isResending
                           }
                           style={{
                             border:
@@ -1510,7 +1545,9 @@ export default function ApplicationsPage() {
                             borderRadius:
                               "9px",
                             background:
-                              "#ffffff",
+                              isResending
+                                ? "#f3eef6"
+                                : "#ffffff",
                             color:
                               "#4B1678",
                             padding:
@@ -1518,14 +1555,59 @@ export default function ApplicationsPage() {
                             fontWeight:
                               "800",
                             cursor:
-                              busy
+                              isResending
                                 ? "wait"
                                 : "pointer",
+                            opacity:
+                              isResending
+                                ? 0.65
+                                : 1,
                           }}
                         >
-                          Resend Approval Email
+                          {
+                            isResending
+                              ? "Sending..."
+                              : "Resend Approval Email"
+                          }
                         </button>
                       </Form>
+
+
+                      {resendResult && (
+                        <div
+                          style={{
+                            marginTop:
+                              "12px",
+                            padding:
+                              "11px 13px",
+                            borderRadius:
+                              "9px",
+                            background:
+                              resendResult.success
+                                ? "#eef8f0"
+                                : "#fff0f0",
+                            border:
+                              resendResult.success
+                                ? "1px solid #cbe3d0"
+                                : "1px solid #efc0c0",
+                            color:
+                              resendResult.success
+                                ? "#2f6b3c"
+                                : "#9a2929",
+                            fontWeight:
+                              "700",
+                            fontSize:
+                              "13px",
+                          }}
+                        >
+                          {
+                            resendResult.success
+                              ? "✓ "
+                              : ""
+                          }
+                          {resendResult.message}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
