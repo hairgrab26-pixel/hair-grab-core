@@ -11,11 +11,6 @@ import db from "../db.server";
 import { requireSellerSession } from "../seller-session.server";
 import { syncSellerProductsFromShopify } from "../shopify-product-sync.server";
 
-
-// ==========================================================
-// LOADER
-// ==========================================================
-
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
@@ -24,85 +19,46 @@ export const loader = async ({
       request,
     );
 
-
-  // Keep HairGrab Core product ownership
-  // synchronized with Shopify.
   try {
     await syncSellerProductsFromShopify(
       seller,
     );
   } catch (error) {
     console.error(
-      "[HairGrab Core] Seller product adoption sync failed:",
+      "[HairGrab Core] Seller product sync failed:",
       error,
     );
   }
 
-
-  // ========================================================
-  // PRODUCTS
-  // ========================================================
-
   const activeProducts =
     await db.sellerProduct.count({
       where: {
-        sellerId:
-          seller.id,
-
-        status:
-          "ACTIVE",
+        sellerId: seller.id,
+        status: "ACTIVE",
       },
     });
-
-
-  // ========================================================
-  // FINANCIALS + ORDER COUNTS
-  // ========================================================
 
   const ledgerEntries =
     await db.sellerLedgerEntry.findMany({
       where: {
-        sellerId:
-          seller.id,
+        sellerId: seller.id,
       },
 
       select: {
-        shopifyOrderId:
-          true,
-
-        grossAmountCents:
-          true,
-
-        sellerEarningsCents:
-          true,
-
-        commissionAmountCents:
-          true,
-
-        status:
-          true,
-
-        shopifyFulfillmentId:
-          true,
-
-        deliveredAt:
-          true,
+        shopifyOrderId: true,
+        grossAmountCents: true,
+        sellerEarningsCents: true,
+        commissionAmountCents: true,
+        status: true,
+        shopifyFulfillmentId: true,
+        deliveredAt: true,
       },
     });
 
-
-  let grossSales =
-    0;
-
-  let sellerEarnings =
-    0;
-
-  let commission =
-    0;
-
-  let payoutReady =
-    0;
-
+  let grossSales = 0;
+  let sellerEarnings = 0;
+  let commission = 0;
+  let payoutReady = 0;
 
   const orderIds =
     new Set<string>();
@@ -113,31 +69,21 @@ export const loader = async ({
   const deliveredOrderIds =
     new Set<string>();
 
-
-  for (
-    const entry of
-    ledgerEntries
-  ) {
+  for (const entry of ledgerEntries) {
     grossSales +=
       Number(
-        entry.grossAmountCents ||
-        0,
+        entry.grossAmountCents || 0,
       ) / 100;
-
 
     sellerEarnings +=
       Number(
-        entry.sellerEarningsCents ||
-        0,
+        entry.sellerEarningsCents || 0,
       ) / 100;
-
 
     commission +=
       Number(
-        entry.commissionAmountCents ||
-        0,
+        entry.commissionAmountCents || 0,
       ) / 100;
-
 
     if (
       entry.status ===
@@ -146,10 +92,9 @@ export const loader = async ({
       payoutReady +=
         Number(
           entry.sellerEarningsCents ||
-          0,
+            0,
         ) / 100;
     }
-
 
     if (
       entry.shopifyOrderId
@@ -159,11 +104,9 @@ export const loader = async ({
           entry.shopifyOrderId,
         );
 
-
       orderIds.add(
         orderId,
       );
-
 
       if (
         entry.deliveredAt
@@ -181,37 +124,26 @@ export const loader = async ({
     }
   }
 
-
   const delivered =
     deliveredOrderIds.size;
-
 
   const shipped =
     Array.from(
       shippedOrderIds,
     ).filter(
-      (
-        id,
-      ) =>
+      (id) =>
         !deliveredOrderIds.has(
           id,
         ),
     ).length;
 
-
   const readyToShip =
     Math.max(
       0,
-
       orderIds.size -
         shipped -
         delivered,
     );
-
-
-  // ========================================================
-  // COMMUNICATIONS
-  // ========================================================
 
   const conversation =
     await db.sellerConversation.findUnique({
@@ -221,19 +153,13 @@ export const loader = async ({
       },
 
       select: {
-        id:
-          true,
+        id: true,
       },
     });
 
+  let unreadMessages = 0;
 
-  let unreadMessages =
-    0;
-
-
-  if (
-    conversation
-  ) {
+  if (conversation) {
     unreadMessages =
       await db.sellerMessage.count({
         where: {
@@ -249,106 +175,6 @@ export const loader = async ({
       });
   }
 
-
-  const unreadNotifications =
-    await db.sellerNotification.count({
-      where: {
-        sellerId:
-          seller.id,
-
-        readAt:
-          null,
-      },
-    });
-
-
-  // ========================================================
-  // LATEST HAIRGRAB ANNOUNCEMENT
-  // ========================================================
-
-  const now =
-    new Date();
-
-
-  const latestAnnouncement =
-    await db.announcement.findFirst({
-      where: {
-        status:
-          "PUBLISHED",
-
-        publishedAt: {
-          lte:
-            now,
-        },
-
-        OR: [
-          {
-            expiresAt:
-              null,
-          },
-
-          {
-            expiresAt: {
-              gt:
-                now,
-            },
-          },
-        ],
-
-        AND: [
-          {
-            OR: [
-              {
-                audience:
-                  "ALL",
-              },
-
-              {
-                audience:
-                  "ACTIVE",
-              },
-
-              {
-                reads: {
-                  some: {
-                    sellerId:
-                      seller.id,
-                  },
-                },
-              },
-            ],
-          },
-        ],
-      },
-
-      orderBy: {
-        publishedAt:
-          "desc",
-      },
-
-      select: {
-        id:
-          true,
-
-        title:
-          true,
-
-        body:
-          true,
-
-        priority:
-          true,
-
-        publishedAt:
-          true,
-      },
-    });
-
-
-  // ========================================================
-  // RETURN DASHBOARD DATA
-  // ========================================================
-
   return {
     seller: {
       businessName:
@@ -360,57 +186,19 @@ export const loader = async ({
 
     stats: {
       activeProducts,
-
       totalOrders:
         orderIds.size,
-
       readyToShip,
-
       shipped,
-
       delivered,
-
       grossSales,
-
       commission,
-
       sellerEarnings,
-
       payoutReady,
-
       unreadMessages,
-
-      unreadNotifications,
     },
-
-    announcement:
-      latestAnnouncement
-        ? {
-            id:
-              latestAnnouncement.id,
-
-            title:
-              latestAnnouncement.title,
-
-            body:
-              latestAnnouncement.body,
-
-            priority:
-              latestAnnouncement.priority,
-
-            publishedAt:
-              latestAnnouncement.publishedAt
-                ? latestAnnouncement.publishedAt.toISOString()
-                : null,
-          }
-        : null,
   };
 };
-
-
-// ==========================================================
-// MONEY
-// ==========================================================
 
 function money(
   amount: number,
@@ -429,21 +217,14 @@ function money(
   );
 }
 
-
-// ==========================================================
-// SELLER DASHBOARD
-// ==========================================================
-
 export default function SellerDashboard() {
   const {
     seller,
     stats,
-    announcement,
   } =
     useLoaderData<
       typeof loader
     >();
-
 
   return (
     <div
@@ -461,10 +242,6 @@ export default function SellerDashboard() {
           "#21152a",
       }}
     >
-      {/* ================================================== */}
-      {/* HEADER */}
-      {/* ================================================== */}
-
       <header
         style={{
           background:
@@ -520,7 +297,6 @@ export default function SellerDashboard() {
               HAIRGRAB SELLER
             </div>
 
-
             <div
               style={{
                 fontSize:
@@ -533,7 +309,6 @@ export default function SellerDashboard() {
               Seller Dashboard
             </div>
           </div>
-
 
           <Link
             to="/seller/add-product"
@@ -565,11 +340,6 @@ export default function SellerDashboard() {
         </div>
       </header>
 
-
-      {/* ================================================== */}
-      {/* MAIN */}
-      {/* ================================================== */}
-
       <main
         style={{
           maxWidth:
@@ -582,10 +352,6 @@ export default function SellerDashboard() {
             "28px 20px 60px",
         }}
       >
-        {/* ================================================= */}
-        {/* WELCOME */}
-        {/* ================================================= */}
-
         <section
           style={{
             marginBottom:
@@ -610,7 +376,6 @@ export default function SellerDashboard() {
             {seller.sellerCode}
           </div>
 
-
           <h1
             style={{
               margin:
@@ -626,7 +391,6 @@ export default function SellerDashboard() {
             Welcome, {seller.businessName}
           </h1>
 
-
           <div
             style={{
               color:
@@ -640,30 +404,13 @@ export default function SellerDashboard() {
           </div>
         </section>
 
-
-        {/* ================================================= */}
-        {/* ANNOUNCEMENT */}
-        {/* ================================================= */}
-
         <section
           style={{
             background:
-              announcement?.priority ===
-              "URGENT"
-                ? "#fff1f1"
-                : announcement?.priority ===
-                    "IMPORTANT"
-                  ? "#fff8e7"
-                  : "#f2eafa",
+              "#f2eafa",
 
             border:
-              announcement?.priority ===
-              "URGENT"
-                ? "1px solid #e8caca"
-                : announcement?.priority ===
-                    "IMPORTANT"
-                  ? "1px solid #eadba9"
-                  : "1px solid #e2d1ef",
+              "1px solid #e2d1ef",
 
             borderRadius:
               "12px",
@@ -678,10 +425,7 @@ export default function SellerDashboard() {
           <div
             style={{
               color:
-                announcement?.priority ===
-                "URGENT"
-                  ? "#922f2f"
-                  : "#4B1678",
+                "#4B1678",
 
               fontWeight:
                 "800",
@@ -693,7 +437,6 @@ export default function SellerDashboard() {
             HairGrab Announcement
           </div>
 
-
           <div
             style={{
               marginTop:
@@ -701,101 +444,49 @@ export default function SellerDashboard() {
 
               fontSize:
                 "13px",
-
-              fontWeight:
-                announcement
-                  ? "700"
-                  : "400",
             }}
           >
-            {announcement
-              ? announcement.title
-              : "Welcome to HairGrab! Your seller dashboard is ready."}
+            Welcome to HairGrab! Your seller dashboard is ready.
           </div>
-
-
-          {announcement && (
-            <div
-              style={{
-                marginTop:
-                  "5px",
-
-                fontSize:
-                  "12px",
-
-                lineHeight:
-                  1.5,
-
-                color:
-                  "#5f5664",
-              }}
-            >
-              {announcement.body}
-            </div>
-          )}
         </section>
-
-
-        {/* ================================================= */}
-        {/* MY STORE */}
-        {/* ================================================= */}
 
         <section>
           <div
             style={{
-              display:
-                "flex",
-
-              justifyContent:
-                "space-between",
-
-              alignItems:
-                "end",
-
-              gap:
-                "12px",
-
-              flexWrap:
-                "wrap",
-
               marginBottom:
                 "14px",
             }}
           >
-            <div>
-              <h2
-                style={{
-                  margin:
-                    0,
+            <h2
+              style={{
+                margin:
+                  0,
 
-                  color:
-                    "#4B1678",
+                color:
+                  "#4B1678",
 
-                  fontSize:
-                    "23px",
-                }}
-              >
-                My Store
-              </h2>
+                fontSize:
+                  "23px",
+              }}
+            >
+              My Store
+            </h2>
 
+            <div
+              style={{
+                color:
+                  "#756b79",
 
-              <div
-                style={{
-                  color:
-                    "#756b79",
+                fontSize:
+                  "12px",
 
-                  fontSize:
-                    "12px",
-
-                  marginTop:
-                    "3px",
-                }}
-              >
-                Manage your products, orders and storefront from one place.
-              </div>
+                marginTop:
+                  "3px",
+              }}
+            >
+              Manage your products, orders and storefront from one place.
             </div>
           </div>
-
 
           <div
             style={{
@@ -809,8 +500,6 @@ export default function SellerDashboard() {
                 "14px",
             }}
           >
-            {/* PRODUCTS */}
-
             <StoreTile
               title="Products"
               value={`${stats.activeProducts} Active`}
@@ -818,18 +507,12 @@ export default function SellerDashboard() {
               to="/seller/products"
             />
 
-
-            {/* ORDERS */}
-
             <StoreTile
               title="Orders & Shipping"
               value={`${stats.readyToShip} Ready to Ship`}
               text={`${stats.shipped} Shipped · ${stats.delivered} Delivered · ${stats.totalOrders} Total`}
               to="/seller/orders"
             />
-
-
-            {/* MESSAGES — NOW ACTIVE */}
 
             <StoreTile
               title="Messages"
@@ -839,12 +522,7 @@ export default function SellerDashboard() {
                   ? `${stats.unreadMessages} Unread`
                   : "HairGrab Support"
               }
-              text={
-                stats.unreadMessages >
-                0
-                  ? "You have a new message from HairGrab."
-                  : "Private communication between your store and HairGrab."
-              }
+              text="Private communication between your store and HairGrab."
               to="/seller/messages"
               active
               badge={
@@ -857,23 +535,12 @@ export default function SellerDashboard() {
               }
             />
 
-
-            {/* NOTIFICATIONS */}
-
             <StoreTile
               title="Notifications"
-              value={
-                stats.unreadNotifications >
-                0
-                  ? `${stats.unreadNotifications} Unread`
-                  : "Marketplace Alerts"
-              }
+              value="Marketplace Alerts"
               text="Important HairGrab, order and shipping notices."
               comingSoon
             />
-
-
-            {/* SETTINGS */}
 
             <StoreTile
               title="Store Settings"
@@ -883,11 +550,6 @@ export default function SellerDashboard() {
             />
           </div>
         </section>
-
-
-        {/* ================================================= */}
-        {/* FINANCIALS */}
-        {/* ================================================= */}
 
         <section
           style={{
@@ -922,7 +584,6 @@ export default function SellerDashboard() {
             Financials
           </h2>
 
-
           <div
             style={{
               display:
@@ -944,7 +605,6 @@ export default function SellerDashboard() {
               }
             />
 
-
             <Financial
               label="HairGrab Fee"
               value={
@@ -954,7 +614,6 @@ export default function SellerDashboard() {
               }
             />
 
-
             <Financial
               label="Your Earnings"
               value={
@@ -963,7 +622,6 @@ export default function SellerDashboard() {
                 )
               }
             />
-
 
             <Financial
               label="Payout Ready"
@@ -979,11 +637,6 @@ export default function SellerDashboard() {
     </div>
   );
 }
-
-
-// ==========================================================
-// STORE TILE
-// ==========================================================
 
 function StoreTile({
   title,
@@ -1032,11 +685,6 @@ function StoreTile({
 
         position:
           "relative",
-
-        boxShadow:
-          active
-            ? "0 2px 8px rgba(75,22,120,.06)"
-            : "none",
       }}
     >
       <div
@@ -1069,7 +717,6 @@ function StoreTile({
           {title}
         </div>
 
-
         {comingSoon && (
           <span
             style={{
@@ -1095,7 +742,6 @@ function StoreTile({
             Coming Soon
           </span>
         )}
-
 
         {!comingSoon &&
           active &&
@@ -1124,7 +770,6 @@ function StoreTile({
               Active
             </span>
           )}
-
 
         {badge && (
           <span
@@ -1168,7 +813,6 @@ function StoreTile({
         )}
       </div>
 
-
       <div
         style={{
           color:
@@ -1187,7 +831,6 @@ function StoreTile({
         {value}
       </div>
 
-
       <div
         style={{
           color:
@@ -1205,7 +848,6 @@ function StoreTile({
       >
         {text}
       </div>
-
 
       {to && (
         <div
@@ -1229,13 +871,9 @@ function StoreTile({
     </div>
   );
 
-
-  if (
-    !to
-  ) {
+  if (!to) {
     return card;
   }
-
 
   return (
     <Link
@@ -1255,11 +893,6 @@ function StoreTile({
     </Link>
   );
 }
-
-
-// ==========================================================
-// FINANCIAL ITEM
-// ==========================================================
 
 function Financial({
   label,
@@ -1281,7 +914,6 @@ function Financial({
       >
         {label}
       </div>
-
 
       <div
         style={{

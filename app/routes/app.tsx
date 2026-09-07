@@ -1,24 +1,58 @@
-import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useLoaderData, useRouteError } from "react-router";
-import { boundary } from "@shopify/shopify-app-react-router/server";
-import { AppProvider } from "@shopify/shopify-app-react-router/react";
+import type {
+  HeadersFunction,
+  LoaderFunctionArgs,
+} from "react-router";
 
-import { authenticate } from "../shopify.server";
+import {
+  Outlet,
+  useLoaderData,
+  useRouteError,
+} from "react-router";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+import {
+  boundary,
+} from "@shopify/shopify-app-react-router/server";
+
+import {
+  AppProvider,
+} from "@shopify/shopify-app-react-router/react";
+
+import {
+  authenticate,
+} from "../shopify.server";
+
+export const loader = async ({
+  request,
+}: LoaderFunctionArgs) => {
+  await authenticate.admin(
+    request,
+  );
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  return {
+    apiKey:
+      process.env.SHOPIFY_API_KEY ||
+      "",
+  };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const {
+    apiKey,
+  } =
+    useLoaderData<
+      typeof loader
+    >();
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
+    <AppProvider
+      embedded
+      apiKey={apiKey}
+    >
       <s-app-nav>
-        <s-link href="/app">Home</s-link>
+        <s-link href="/app">
+          Home
+        </s-link>
 
         <s-link href="/app/applications">
           Seller Applications
@@ -26,10 +60,6 @@ export default function App() {
 
         <s-link href="/app/sellers">
           Sellers
-        </s-link>
-
-        <s-link href="/app/products">
-          Products
         </s-link>
 
         <s-link href="/app/orders">
@@ -44,12 +74,8 @@ export default function App() {
           Payouts
         </s-link>
 
-        <s-link href="/app/settings">
-          Settings
-        </s-link>
-
-        <s-link href="/app/guide">
-          Admin Guide
+        <s-link href="/app/communications">
+          Communications
         </s-link>
       </s-app-nav>
 
@@ -58,12 +84,15 @@ export default function App() {
   );
 }
 
-// Shopify needs React Router to catch some thrown responses,
-// so that their headers are included in the response.
 export function ErrorBoundary() {
-  return boundary.error(useRouteError());
+  return boundary.error(
+    useRouteError(),
+  );
 }
 
-export const headers: HeadersFunction = (headersArgs) => {
-  return boundary.headers(headersArgs);
-};
+export const headers: HeadersFunction =
+  (headersArgs) => {
+    return boundary.headers(
+      headersArgs,
+    );
+  };
