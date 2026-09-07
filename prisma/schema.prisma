@@ -320,11 +320,7 @@ model SellerProduct {
   id String @id @default(cuid())
 
   sellerId String
-  seller   Seller @relation(
-    fields: [sellerId],
-    references: [id],
-    onDelete: Restrict
-  )
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Restrict)
 
   shopifyProductId String? @unique
   shopifyHandle    String?
