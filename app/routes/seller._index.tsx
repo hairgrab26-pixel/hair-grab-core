@@ -7,6 +7,12 @@ import {
   useLoaderData,
 } from "react-router";
 
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import db from "../db.server";
 
 import {
@@ -20,6 +26,19 @@ import {
 import {
   syncSellerNotifications,
 } from "../notifications.server";
+
+
+// ==========================================================
+// TYPES
+// ==========================================================
+
+type OrderAlert = {
+  id: string;
+  title: string;
+  message: string;
+  linkUrl: string;
+  createdAt: string;
+};
 
 
 // ==========================================================
@@ -51,7 +70,6 @@ export const loader = async ({
   }
 
 
-  // Build any notifications that do not already exist.
   await syncSellerNotifications(
     seller.id,
   );
@@ -144,8 +162,10 @@ export const loader = async ({
   const orderIds =
     new Set<string>();
 
+
   const shippedOrderIds =
     new Set<string>();
+
 
   const deliveredOrderIds =
     new Set<string>();
@@ -158,21 +178,21 @@ export const loader = async ({
     grossSales +=
       Number(
         entry.grossAmountCents ||
-        0,
+          0,
       ) / 100;
 
 
     sellerEarnings +=
       Number(
         entry.sellerEarningsCents ||
-        0,
+          0,
       ) / 100;
 
 
     commission +=
       Number(
         entry.commissionAmountCents ||
-        0,
+          0,
       ) / 100;
 
 
@@ -183,7 +203,7 @@ export const loader = async ({
       payoutReady +=
         Number(
           entry.sellerEarningsCents ||
-          0,
+            0,
         ) / 100;
     }
 
@@ -329,6 +349,698 @@ function money(
 
 
 // ==========================================================
+// HAIRGRAB ORDER CHIME
+//
+// Web Audio is used so HairGrab does not need to host
+// or license an audio file.
+// ==========================================================
+
+function playHairGrabOrderChime() {
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (
+        window as typeof window & {
+          webkitAudioContext?: typeof AudioContext;
+        }
+      ).webkitAudioContext;
+
+
+    if (
+      !AudioContextClass
+    ) {
+      return;
+    }
+
+
+    const audioContext =
+      new AudioContextClass();
+
+
+    const masterGain =
+      audioContext.createGain();
+
+
+    masterGain.connect(
+      audioContext.destination,
+    );
+
+
+    masterGain.gain.setValueAtTime(
+      0.0001,
+      audioContext.currentTime,
+    );
+
+
+    masterGain.gain.exponentialRampToValueAtTime(
+      0.22,
+      audioContext.currentTime +
+        0.025,
+    );
+
+
+    masterGain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      audioContext.currentTime +
+        1.15,
+    );
+
+
+    const notes = [
+      {
+        frequency:
+          659.25,
+
+        start:
+          0,
+
+        duration:
+          0.42,
+      },
+
+      {
+        frequency:
+          880,
+
+        start:
+          0.18,
+
+        duration:
+          0.55,
+      },
+
+      {
+        frequency:
+          1046.5,
+
+        start:
+          0.38,
+
+        duration:
+          0.65,
+      },
+    ];
+
+
+    for (
+      const note of
+      notes
+    ) {
+      const oscillator =
+        audioContext.createOscillator();
+
+
+      const noteGain =
+        audioContext.createGain();
+
+
+      oscillator.type =
+        "sine";
+
+
+      oscillator.frequency.setValueAtTime(
+        note.frequency,
+        audioContext.currentTime +
+          note.start,
+      );
+
+
+      noteGain.gain.setValueAtTime(
+        0.0001,
+        audioContext.currentTime +
+          note.start,
+      );
+
+
+      noteGain.gain.exponentialRampToValueAtTime(
+        0.9,
+        audioContext.currentTime +
+          note.start +
+          0.02,
+      );
+
+
+      noteGain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        audioContext.currentTime +
+          note.start +
+          note.duration,
+      );
+
+
+      oscillator.connect(
+        noteGain,
+      );
+
+
+      noteGain.connect(
+        masterGain,
+      );
+
+
+      oscillator.start(
+        audioContext.currentTime +
+          note.start,
+      );
+
+
+      oscillator.stop(
+        audioContext.currentTime +
+          note.start +
+          note.duration +
+          0.05,
+      );
+    }
+
+
+    window.setTimeout(
+      () => {
+        void audioContext.close();
+      },
+      1600,
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "[HairGrab] Could not play order chime:",
+      error,
+    );
+  }
+}
+
+
+// ==========================================================
+// ORDER ALERT CONTROLLER
+// ==========================================================
+
+function OrderAlertController() {
+  const [
+    enabled,
+    setEnabled,
+  ] =
+    useState(
+      false,
+    );
+
+
+  const [
+    permission,
+    setPermission,
+  ] =
+    useState<
+      NotificationPermission |
+      "unsupported"
+    >(
+      "default",
+    );
+
+
+  const initialized =
+    useRef(
+      false,
+    );
+
+
+  const seenIds =
+    useRef<
+      Set<string>
+    >(
+      new Set(),
+    );
+
+
+  // ========================================================
+  // LOAD SAVED DEVICE SETTINGS
+  // ========================================================
+
+  useEffect(
+    () => {
+      const savedEnabled =
+        window.localStorage.getItem(
+          "hairgrab_order_ding_enabled",
+        ) ===
+        "true";
+
+
+      setEnabled(
+        savedEnabled,
+      );
+
+
+      if (
+        "Notification" in
+        window
+      ) {
+        setPermission(
+          Notification.permission,
+        );
+      } else {
+        setPermission(
+          "unsupported",
+        );
+      }
+
+
+      try {
+        const savedSeen =
+          JSON.parse(
+            window.localStorage.getItem(
+              "hairgrab_order_ding_seen",
+            ) ||
+              "[]",
+          ) as string[];
+
+
+        seenIds.current =
+          new Set(
+            savedSeen,
+          );
+      } catch {
+        seenIds.current =
+          new Set();
+      }
+
+
+      initialized.current =
+        true;
+    },
+    [],
+  );
+
+
+  // ========================================================
+  // SAVE SEEN IDS
+  // ========================================================
+
+  function saveSeenIds() {
+    const recentIds =
+      Array.from(
+        seenIds.current,
+      ).slice(
+        -100,
+      );
+
+
+    window.localStorage.setItem(
+      "hairgrab_order_ding_seen",
+      JSON.stringify(
+        recentIds,
+      ),
+    );
+  }
+
+
+  // ========================================================
+  // FETCH ALERTS
+  // ========================================================
+
+  async function fetchAlerts() {
+    const response =
+      await fetch(
+        "/seller/order-alerts",
+        {
+          method:
+            "GET",
+
+          credentials:
+            "include",
+
+          headers: {
+            Accept:
+              "application/json",
+          },
+
+          cache:
+            "no-store",
+        },
+      );
+
+
+    if (
+      !response.ok
+    ) {
+      throw new Error(
+        `Order alert request failed: ${response.status}`,
+      );
+    }
+
+
+    const result =
+      (await response.json()) as {
+        alerts?: OrderAlert[];
+      };
+
+
+    return Array.isArray(
+      result.alerts,
+    )
+      ? result.alerts
+      : [];
+  }
+
+
+  // ========================================================
+  // ENABLE
+  //
+  // Existing orders are marked as already seen so turning
+  // the feature on does not suddenly ding for old orders.
+  // ========================================================
+
+  async function enableAlerts() {
+    try {
+      if (
+        "Notification" in
+        window
+      ) {
+        const result =
+          await Notification.requestPermission();
+
+
+        setPermission(
+          result,
+        );
+      }
+
+
+      const currentAlerts =
+        await fetchAlerts();
+
+
+      for (
+        const alert of
+        currentAlerts
+      ) {
+        seenIds.current.add(
+          alert.id,
+        );
+      }
+
+
+      saveSeenIds();
+
+
+      window.localStorage.setItem(
+        "hairgrab_order_ding_enabled",
+        "true",
+      );
+
+
+      setEnabled(
+        true,
+      );
+
+
+      // Confirmation/test sound.
+      playHairGrabOrderChime();
+    } catch (
+      error
+    ) {
+      console.error(
+        "[HairGrab] Could not enable order alerts:",
+        error,
+      );
+    }
+  }
+
+
+  // ========================================================
+  // DISABLE
+  // ========================================================
+
+  function disableAlerts() {
+    window.localStorage.setItem(
+      "hairgrab_order_ding_enabled",
+      "false",
+    );
+
+
+    setEnabled(
+      false,
+    );
+  }
+
+
+  // ========================================================
+  // POLLING
+  // ========================================================
+
+  useEffect(
+    () => {
+      if (
+        !initialized.current ||
+        !enabled
+      ) {
+        return;
+      }
+
+
+      let stopped =
+        false;
+
+
+      async function checkForNewOrders() {
+        try {
+          const alerts =
+            await fetchAlerts();
+
+
+          if (
+            stopped
+          ) {
+            return;
+          }
+
+
+          // API returns newest first.
+          // Reverse so multiple new orders alert oldest first.
+          const newAlerts =
+            alerts
+              .filter(
+                (
+                  alert,
+                ) =>
+                  !seenIds.current.has(
+                    alert.id,
+                  ),
+              )
+              .reverse();
+
+
+          for (
+            let index =
+              0;
+            index <
+            newAlerts.length;
+            index++
+          ) {
+            const alert =
+              newAlerts[
+                index
+              ];
+
+
+            seenIds.current.add(
+              alert.id,
+            );
+
+
+            saveSeenIds();
+
+
+            window.setTimeout(
+              () => {
+                playHairGrabOrderChime();
+              },
+              index *
+                900,
+            );
+
+
+            if (
+              "Notification" in
+                window &&
+              Notification.permission ===
+                "granted"
+            ) {
+              const browserNotification =
+                new Notification(
+                  alert.title,
+                  {
+                    body:
+                      alert.message,
+
+                    tag:
+                      `hairgrab-order-${alert.id}`,
+                  },
+                );
+
+
+              browserNotification.onclick =
+                () => {
+                  window.focus();
+
+                  window.location.href =
+                    alert.linkUrl ||
+                    "/seller/orders";
+
+
+                  browserNotification.close();
+                };
+            }
+          }
+        } catch (
+          error
+        ) {
+          console.error(
+            "[HairGrab] Order alert check failed:",
+            error,
+          );
+        }
+      }
+
+
+      void checkForNewOrders();
+
+
+      const timer =
+        window.setInterval(
+          () => {
+            void checkForNewOrders();
+          },
+          7000,
+        );
+
+
+      return () => {
+        stopped =
+          true;
+
+        window.clearInterval(
+          timer,
+        );
+      };
+    },
+    [
+      enabled,
+    ],
+  );
+
+
+  // ========================================================
+  // UI
+  // ========================================================
+
+  return (
+    <div
+      style={{
+        display:
+          "flex",
+
+        alignItems:
+          "center",
+
+        gap:
+          "8px",
+
+        flexWrap:
+          "wrap",
+      }}
+    >
+      {enabled ? (
+        <button
+          type="button"
+          onClick={
+            disableAlerts
+          }
+          title="Turn off HairGrab order sounds on this device."
+          style={{
+            border:
+              "1px solid rgba(255,255,255,.55)",
+
+            background:
+              "rgba(255,255,255,.13)",
+
+            color:
+              "white",
+
+            borderRadius:
+              "8px",
+
+            padding:
+              "10px 12px",
+
+            fontWeight:
+              "800",
+
+            fontSize:
+              "11px",
+
+            cursor:
+              "pointer",
+          }}
+        >
+          🔔 Order Ding On
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={
+            enableAlerts
+          }
+          title="Enable HairGrab new-order sounds on this device."
+          style={{
+            border:
+              "1px solid rgba(255,255,255,.65)",
+
+            background:
+              "rgba(255,255,255,.12)",
+
+            color:
+              "white",
+
+            borderRadius:
+              "8px",
+
+            padding:
+              "10px 12px",
+
+            fontWeight:
+              "800",
+
+            fontSize:
+              "11px",
+
+            cursor:
+              "pointer",
+          }}
+        >
+          🔕 Enable Order Ding
+        </button>
+      )}
+
+
+      {enabled &&
+        permission ===
+          "denied" && (
+          <span
+            style={{
+              fontSize:
+                "9px",
+
+              opacity:
+                0.85,
+            }}
+          >
+            Sound on · browser pop-ups blocked
+          </span>
+        )}
+    </div>
+  );
+}
+
+
+// ==========================================================
 // DASHBOARD
 // ==========================================================
 
@@ -428,33 +1140,55 @@ export default function SellerDashboard() {
           </div>
 
 
-          <Link
-            to="/seller/add-product"
+          <div
             style={{
-              background:
-                "white",
+              display:
+                "flex",
 
-              color:
-                "#4B1678",
+              alignItems:
+                "center",
 
-              textDecoration:
-                "none",
-
-              fontWeight:
-                "800",
-
-              fontSize:
-                "13px",
-
-              padding:
-                "11px 16px",
-
-              borderRadius:
+              gap:
                 "8px",
+
+              flexWrap:
+                "wrap",
+
+              justifyContent:
+                "flex-end",
             }}
           >
-            + Add Product
-          </Link>
+            <OrderAlertController />
+
+
+            <Link
+              to="/seller/add-product"
+              style={{
+                background:
+                  "white",
+
+                color:
+                  "#4B1678",
+
+                textDecoration:
+                  "none",
+
+                fontWeight:
+                  "800",
+
+                fontSize:
+                  "13px",
+
+                padding:
+                  "11px 16px",
+
+                borderRadius:
+                  "8px",
+              }}
+            >
+              + Add Product
+            </Link>
+          </div>
         </div>
       </header>
 

@@ -6,7 +6,6 @@ import db from "../db.server";
 
 // ==========================================================
 // SHOPIFY ORDER WEBHOOK PAYLOAD
-// Only the fields HairGrab Core needs right now.
 // ==========================================================
 
 type ShopifyOrderLineItem = {
@@ -33,24 +32,61 @@ type ShopifyOrderPayload = {
 // MONEY HELPERS
 // ==========================================================
 
-function dollarsToCents(value: string | number | undefined) {
+function dollarsToCents(
+  value:
+    | string
+    | number
+    | undefined,
+) {
   const amount =
     typeof value === "number"
       ? value
       : Number(value || 0);
 
-  if (!Number.isFinite(amount)) {
+  if (
+    !Number.isFinite(
+      amount,
+    )
+  ) {
     return 0;
   }
 
-  return Math.round(amount * 100);
+  return Math.round(
+    amount * 100,
+  );
 }
 
 
-function normalizeVendor(value?: string | null) {
-  return String(value || "")
+function normalizeVendor(
+  value?:
+    | string
+    | null,
+) {
+  return String(
+    value || "",
+  )
     .trim()
     .toLowerCase();
+}
+
+
+function formatMoney(
+  cents: number,
+  currency: string,
+) {
+  return new Intl.NumberFormat(
+    "en-US",
+    {
+      style:
+        "currency",
+
+      currency:
+        currency ||
+        "USD",
+    },
+  ).format(
+    cents / 100,
+  );
 }
 
 
@@ -61,23 +97,33 @@ function normalizeVendor(value?: string | null) {
 export const action = async ({
   request,
 }: ActionFunctionArgs) => {
-
   const {
     topic,
     shop,
     payload,
-  } = await authenticate.webhook(request);
+  } =
+    await authenticate.webhook(
+      request,
+    );
 
 
-  // Shopify React Router webhook topics use screaming case.
-  if (topic !== "ORDERS_CREATE") {
+  // Shopify React Router webhook topics
+  // use screaming case.
+  if (
+    topic !==
+    "ORDERS_CREATE"
+  ) {
     console.log(
       `[HairGrab Core] Ignored webhook topic ${topic} from ${shop}`,
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status:
+          200,
+      },
+    );
   }
 
 
@@ -85,33 +131,51 @@ export const action = async ({
     payload as ShopifyOrderPayload;
 
 
-  if (!order?.id) {
+  if (
+    !order?.id
+  ) {
     console.error(
       "[HairGrab Core] orders/create webhook received without an order ID.",
     );
 
-    return new Response("OK", {
-      status: 200,
-    });
+    return new Response(
+      "OK",
+      {
+        status:
+          200,
+      },
+    );
   }
 
 
   const orderId =
-    String(order.id);
+    String(
+      order.id,
+    );
+
 
   const orderName =
-    order.name || orderId;
+    order.name ||
+    orderId;
+
 
   const currency =
-    order.currency || "USD";
+    order.currency ||
+    "USD";
+
 
   const shopifyCreatedAt =
     order.created_at
-      ? new Date(order.created_at)
+      ? new Date(
+          order.created_at,
+        )
       : new Date();
 
+
   const lineItems =
-    Array.isArray(order.line_items)
+    Array.isArray(
+      order.line_items,
+    )
       ? order.line_items
       : [];
 
@@ -122,13 +186,14 @@ export const action = async ({
 
 
   // ========================================================
-  // LOAD HAIRGRAB SELLERS
+  // LOAD ACTIVE HAIRGRAB SELLERS
   // ========================================================
 
   const sellers =
     await db.seller.findMany({
       where: {
-        status: "ACTIVE",
+        status:
+          "ACTIVE",
       },
     });
 
@@ -137,36 +202,69 @@ export const action = async ({
     new Map(
       sellers
         .filter(
-          (seller) =>
+          (
+            seller,
+          ) =>
             seller.shopifyVendor &&
-            seller.shopifyVendor.trim().length > 0,
+            seller.shopifyVendor
+              .trim()
+              .length >
+              0,
         )
-        .map((seller) => [
-          normalizeVendor(
-            seller.shopifyVendor,
-          ),
-          seller,
-        ]),
+        .map(
+          (
+            seller,
+          ) => [
+            normalizeVendor(
+              seller.shopifyVendor,
+            ),
+
+            seller,
+          ],
+        ),
     );
 
 
   // ========================================================
-  // PROCESS EACH ORDER LINE
+  // SELLER ORDER ALERT ACCUMULATOR
   //
-  // Each seller-owned line item gets its own ledger entry.
-  // This is what allows one Shopify order to contain
-  // products from multiple HairGrab sellers later.
+  // One Shopify order can contain products from several
+  // HairGrab sellers.
+  //
+  // Each seller receives ONE alert for their portion.
   // ========================================================
 
-  for (const lineItem of lineItems) {
+  const sellerOrderAlerts =
+    new Map<
+      string,
+      {
+        sellerId: string;
+        sellerCode: string;
+        grossAmountCents: number;
+        quantity: number;
+        lineCount: number;
+      }
+    >();
 
+
+  // ========================================================
+  // PROCESS EACH SHOPIFY LINE ITEM
+  // ========================================================
+
+  for (
+    const lineItem of
+    lineItems
+  ) {
     const vendor =
       String(
-        lineItem.vendor || "",
+        lineItem.vendor ||
+          "",
       ).trim();
 
 
-    if (!vendor) {
+    if (
+      !vendor
+    ) {
       console.log(
         `[HairGrab Core] Skipping line ${lineItem.id}: no Shopify vendor.`,
       );
@@ -177,11 +275,15 @@ export const action = async ({
 
     const seller =
       sellerByVendor.get(
-        normalizeVendor(vendor),
+        normalizeVendor(
+          vendor,
+        ),
       );
 
 
-    if (!seller) {
+    if (
+      !seller
+    ) {
       console.log(
         `[HairGrab Core] Skipping vendor "${vendor}" on ${orderName}: no active HairGrab seller match.`,
       );
@@ -192,7 +294,10 @@ export const action = async ({
 
     const quantity =
       Math.max(
-        Number(lineItem.quantity || 0),
+        Number(
+          lineItem.quantity ||
+            0,
+        ),
         0,
       );
 
@@ -204,7 +309,8 @@ export const action = async ({
 
 
     const lineSubtotalCents =
-      unitPriceCents * quantity;
+      unitPriceCents *
+      quantity;
 
 
     const discountCents =
@@ -228,7 +334,8 @@ export const action = async ({
     const commissionAmountCents =
       Math.round(
         grossAmountCents *
-          (commissionRate / 100),
+          (commissionRate /
+            100),
       );
 
 
@@ -240,8 +347,52 @@ export const action = async ({
       );
 
 
-    // One unique SALE record per Shopify line item.
-    // Shopify webhook retries therefore cannot duplicate it.
+    // ======================================================
+    // COLLECT SELLER'S PORTION FOR ALERT
+    // ======================================================
+
+    const existingAlert =
+      sellerOrderAlerts.get(
+        seller.id,
+      );
+
+
+    if (
+      existingAlert
+    ) {
+      existingAlert.grossAmountCents +=
+        grossAmountCents;
+
+      existingAlert.quantity +=
+        quantity;
+
+      existingAlert.lineCount +=
+        1;
+    } else {
+      sellerOrderAlerts.set(
+        seller.id,
+        {
+          sellerId:
+            seller.id,
+
+          sellerCode:
+            seller.sellerCode,
+
+          grossAmountCents,
+
+          quantity,
+
+          lineCount:
+            1,
+        },
+      );
+    }
+
+
+    // ======================================================
+    // LEDGER IDEMPOTENCY
+    // ======================================================
+
     const idempotencyKey =
       `SALE:${orderId}:${String(
         lineItem.id,
@@ -256,14 +407,20 @@ export const action = async ({
       });
 
 
-    if (existingEntry) {
+    if (
+      existingEntry
+    ) {
       console.log(
-        `[HairGrab Core] Ledger entry already exists for ${orderName}, line ${lineItem.id}. Skipping duplicate.`,
+        `[HairGrab Core] Ledger entry already exists for ${orderName}, line ${lineItem.id}. Skipping duplicate ledger entry.`,
       );
 
       continue;
     }
 
+
+    // ======================================================
+    // CREATE SELLER LEDGER ENTRY
+    // ======================================================
 
     await db.sellerLedgerEntry.create({
       data: {
@@ -277,7 +434,9 @@ export const action = async ({
           orderName,
 
         shopifyLineItemId:
-          String(lineItem.id),
+          String(
+            lineItem.id,
+          ),
 
         idempotencyKey,
 
@@ -289,10 +448,7 @@ export const action = async ({
 
         currency,
 
-        // IMPORTANT:
-        // This stores the commission rate used
-        // when THIS sale happened.
-        // Future rate changes will not alter old orders.
+        // Commission rate used when THIS sale happened.
         commissionRate,
 
         grossAmountCents,
@@ -326,8 +482,77 @@ export const action = async ({
   }
 
 
+  // ========================================================
+  // CREATE ONE NEW-ORDER NOTIFICATION PER SELLER
+  //
+  // Uses the same dedupe key as HairGrab's notification
+  // sync engine so it can NEVER create a duplicate.
+  // ========================================================
+
+  for (
+    const alert of
+    sellerOrderAlerts.values()
+  ) {
+    const itemWord =
+      alert.quantity ===
+      1
+        ? "item"
+        : "items";
+
+
+    const notificationMessage =
+      `${orderName} · ` +
+      `${formatMoney(
+        alert.grossAmountCents,
+        currency,
+      )} · ` +
+      `${alert.quantity} ${itemWord}`;
+
+
+    const dedupeKey =
+      `new-order:${alert.sellerId}:${orderId}`;
+
+
+    await db.sellerNotification.upsert({
+      where: {
+        dedupeKey,
+      },
+
+      update: {},
+
+      create: {
+        sellerId:
+          alert.sellerId,
+
+        type:
+          "NEW_ORDER",
+
+        title:
+          "New HairGrab Order! 🎉",
+
+        message:
+          notificationMessage,
+
+        linkUrl:
+          "/seller/orders",
+
+        dedupeKey,
+      },
+    });
+
+
+    console.log(
+      `[HairGrab Core] Order alert created for ${alert.sellerCode}: ${notificationMessage}`,
+    );
+  }
+
+
   // Shopify expects a successful response.
-  return new Response("OK", {
-    status: 200,
-  });
+  return new Response(
+    "OK",
+    {
+      status:
+        200,
+    },
+  );
 };
