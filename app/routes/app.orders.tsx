@@ -18,6 +18,7 @@ export const loader = async ({
       include: {
         seller: {
           select: {
+            id: true,
             sellerCode: true,
             businessName: true,
           },
@@ -38,6 +39,7 @@ export const loader = async ({
     sellers: Map<
       string,
       {
+        id: string;
         sellerCode: string;
         businessName: string;
       }
@@ -100,6 +102,9 @@ export const loader = async ({
     order.sellers.set(
       entry.seller.sellerCode,
       {
+        id:
+          entry.seller.id,
+
         sellerCode:
           entry.seller.sellerCode,
 
@@ -166,6 +171,80 @@ export const loader = async ({
     }));
 
 
+  const orderIds =
+    orders.map(
+      (order) => order.shopifyOrderId,
+    );
+
+
+  const fulfillmentRows =
+    orderIds.length > 0
+      ? await db.sellerOrderFulfillment.findMany({
+          where: {
+            shopifyOrderId: {
+              in: orderIds,
+            },
+          },
+          select: {
+            sellerId: true,
+            shopifyOrderId: true,
+            fulfillmentMethod: true,
+            status: true,
+            carrier: true,
+            trackingNumber: true,
+            trackingUrl: true,
+            shippedAt: true,
+            deliveredAt: true,
+          },
+        })
+      : [];
+
+
+  const fulfillmentMap =
+    new Map(
+      fulfillmentRows.map((row) => [
+        `${row.shopifyOrderId}:${row.sellerId}`,
+        row,
+      ]),
+    );
+
+
+  const ordersWithFulfillment =
+    orders.map((order) => ({
+      ...order,
+      sellers: order.sellers.map((seller) => {
+        const fulfillment =
+          fulfillmentMap.get(
+            `${order.shopifyOrderId}:${seller.id}`,
+          );
+
+        return {
+          ...seller,
+          fulfillment: fulfillment
+            ? {
+                method:
+                  fulfillment.fulfillmentMethod,
+                status:
+                  fulfillment.status,
+                carrier:
+                  fulfillment.carrier,
+                trackingNumber:
+                  fulfillment.trackingNumber,
+                trackingUrl:
+                  fulfillment.trackingUrl,
+                shippedAt:
+                  fulfillment.shippedAt?.toISOString() ||
+                  null,
+                deliveredAt:
+                  fulfillment.deliveredAt?.toISOString() ||
+                  null,
+              }
+            : null,
+        };
+      }),
+    }));
+
+
   const totalSalesCents =
     orders.reduce(
       (total, order) =>
@@ -194,7 +273,7 @@ export const loader = async ({
 
 
   return {
-    orders,
+    orders: ordersWithFulfillment,
     totalSalesCents,
     totalCommissionCents,
     totalSellerEarningsCents,
@@ -259,6 +338,37 @@ function formatDate(
   ).format(
     new Date(value),
   );
+}
+
+
+function formatFulfillmentMethod(
+  value: string,
+) {
+  const labels: Record<string, string> = {
+    SELLER_MANAGED: "Seller Managed",
+    HAIRGRAB_SHIPPING: "HairGrab Shipping",
+    LOCAL_PICKUP: "Local Pickup",
+    HAIRGRAB_SAME_DAY: "HairGrab Same-Day",
+  };
+
+  return labels[value] || value;
+}
+
+
+function formatFulfillmentStatus(
+  value: string,
+) {
+  const labels: Record<string, string> = {
+    READY: "Ready",
+    LABEL_READY: "Label Ready",
+    READY_FOR_PICKUP: "Ready for Pickup",
+    COURIER_REQUESTED: "Courier Requested",
+    SHIPPED: "Shipped",
+    DELIVERED: "Delivered",
+    CANCELED: "Canceled",
+  };
+
+  return labels[value] || value;
 }
 
 
@@ -489,7 +599,7 @@ export default function OrdersPage() {
             <table
               style={{
                 width: "100%",
-                minWidth: "950px",
+                minWidth: "1180px",
                 borderCollapse:
                   "collapse",
               }}
@@ -555,6 +665,14 @@ export default function OrdersPage() {
                     }
                   >
                     Seller Earnings
+                  </th>
+
+                  <th
+                    style={
+                      tableHeaderStyle
+                    }
+                  >
+                    Fulfillment
                   </th>
 
                   <th
@@ -703,6 +821,144 @@ export default function OrdersPage() {
                         {formatMoney(
                           order.sellerEarningsCents,
                           order.currency,
+                        )}
+                      </td>
+
+
+                      <td
+                        style={
+                          tableCellStyle
+                        }
+                      >
+                        {order.sellers.map(
+                          (seller) => {
+                            const fulfillment =
+                              seller.fulfillment;
+
+                            if (!fulfillment) {
+                              return (
+                                <div
+                                  key={
+                                    seller.sellerCode
+                                  }
+                                  style={{
+                                    color:
+                                      "#756b7b",
+                                    fontSize:
+                                      "12px",
+                                  }}
+                                >
+                                  Not started
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div
+                                key={
+                                  seller.sellerCode
+                                }
+                                style={{
+                                  marginBottom:
+                                    "8px",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    color:
+                                      fulfillment.status ===
+                                      "SHIPPED"
+                                        ? "#177245"
+                                        : "#542378",
+                                    fontWeight:
+                                      "700",
+                                  }}
+                                >
+                                  {formatFulfillmentStatus(
+                                    fulfillment.status,
+                                  )}
+                                </div>
+
+                                <div
+                                  style={{
+                                    marginTop:
+                                      "3px",
+                                    color:
+                                      "#756b7b",
+                                    fontSize:
+                                      "11px",
+                                  }}
+                                >
+                                  {formatFulfillmentMethod(
+                                    fulfillment.method,
+                                  )}
+                                </div>
+
+                                {fulfillment.carrier ? (
+                                  <div
+                                    style={{
+                                      marginTop:
+                                        "3px",
+                                      fontSize:
+                                        "11px",
+                                    }}
+                                  >
+                                    {
+                                      fulfillment.carrier
+                                    }
+                                    {fulfillment.trackingNumber
+                                      ? ` · ${fulfillment.trackingNumber}`
+                                      : ""}
+                                  </div>
+                                ) : null}
+
+                                {fulfillment.trackingUrl ? (
+                                  <div
+                                    style={{
+                                      marginTop:
+                                        "3px",
+                                    }}
+                                  >
+                                    <a
+                                      href={
+                                        fulfillment.trackingUrl
+                                      }
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        color:
+                                          "#542378",
+                                        fontSize:
+                                          "11px",
+                                        fontWeight:
+                                          "700",
+                                      }}
+                                    >
+                                      Track Shipment ↗
+                                    </a>
+                                  </div>
+                                ) : null}
+
+                                {fulfillment.shippedAt ? (
+                                  <div
+                                    style={{
+                                      marginTop:
+                                        "3px",
+                                      color:
+                                        "#756b7b",
+                                      fontSize:
+                                        "11px",
+                                    }}
+                                  >
+                                    Shipped{" "}
+                                    {formatDate(
+                                      fulfillment.shippedAt,
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          },
                         )}
                       </td>
 
