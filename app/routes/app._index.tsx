@@ -432,6 +432,31 @@ export default function Index() {
   </div>
 </Link>
           <Link
+            to="/app/inventory"
+            style={clickableModuleStyle}
+          >
+            <div
+              style={{
+                fontWeight: "700",
+                color: "#542378",
+                marginBottom: "5px",
+              }}
+            >
+              Catalog Inventory
+            </div>
+
+            <div
+              style={{
+                fontSize: "12px",
+                color: "#756b7b",
+                lineHeight: "1.4",
+              }}
+            >
+              Category, length, color & inventory depth
+            </div>
+          </Link>
+
+          <Link
             to="/app/ledger"
             style={clickableModuleStyle}
           >
