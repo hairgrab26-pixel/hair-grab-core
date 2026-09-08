@@ -75,6 +75,9 @@ type ProductPayload = {
   bundleWeight: string;
 
   shippingMethod: string;
+  flatRateShipping: string;
+  localPickupAvailable: boolean;
+  localDeliveryAvailable: boolean;
   shipsWithin: string;
   returnPolicy: string;
   showOnMap: string;
@@ -365,6 +368,12 @@ export const loader =
           seller.businessName,
         shopifyVendor:
           seller.shopifyVendor,
+        sellsNationwide:
+          seller.sellsNationwide,
+        offersLocalPickup:
+          seller.offersLocalPickup,
+        offersLocalDelivery:
+          seller.offersLocalDelivery,
       },
     };
   };
@@ -2040,6 +2049,16 @@ export const action =
           shipsFromState,
       });
 
+      // ----------------------------------------------------
+      // HAIRGRAB SHIPPING SOURCE OF TRUTH
+      //
+      // Keep the legacy Shopify choice metafield populated when
+      // the selected value is compatible, but store HairGrab's
+      // shipping settings in dedicated unstructured metafields
+      // so seller-set flat rates and local fulfillment are not
+      // constrained by the old Shopify choice list.
+      // ----------------------------------------------------
+
       addExistingMetafield({
         definitions:
           metafieldDefinitions,
@@ -2058,13 +2077,67 @@ export const action =
           payload.shippingMethod,
       });
 
-      const isLocalPickup =
-        payload.shippingMethod ===
-        "Local Pickup";
+      metafields.push({
+        namespace:
+          "hairgrab",
+        key:
+          "shipping_charge_type",
+        type:
+          "single_line_text_field",
+        value:
+          payload.shippingMethod,
+      });
 
-      const isLocalDelivery =
+      if (
         payload.shippingMethod ===
-        "Local Delivery";
+          "Flat Rate Shipping" &&
+        Number(
+          payload.flatRateShipping,
+        ) > 0
+      ) {
+        metafields.push({
+          namespace:
+            "hairgrab",
+          key:
+            "flat_rate_shipping",
+          type:
+            "number_decimal",
+          value:
+            Number(
+              payload.flatRateShipping,
+            ).toFixed(2),
+        });
+      }
+
+      metafields.push({
+        namespace:
+          "hairgrab",
+        key:
+          "local_pickup_available",
+        type:
+          "boolean",
+        value:
+          String(
+            Boolean(
+              payload.localPickupAvailable,
+            ),
+          ),
+      });
+
+      metafields.push({
+        namespace:
+          "hairgrab",
+        key:
+          "local_delivery_available",
+        type:
+          "boolean",
+        value:
+          String(
+            Boolean(
+              payload.localDeliveryAvailable,
+            ),
+          ),
+      });
 
       addExistingMetafield({
         definitions:
@@ -2078,10 +2151,9 @@ export const action =
         ],
 
         value:
-          isLocalPickup ||
-          isLocalDelivery
-            ? "Local"
-            : "Nationwide",
+          seller.sellsNationwide
+            ? "Nationwide"
+            : "Local",
       });
 
       addExistingMetafield({
@@ -3062,6 +3134,30 @@ export default function SellerAddProductPage() {
       typeof loader
     >();
 
+  useEffect(
+    () => {
+      if (
+        !seller.offersLocalPickup
+      ) {
+        setLocalPickupAvailable(
+          false,
+        );
+      }
+
+      if (
+        !seller.offersLocalDelivery
+      ) {
+        setLocalDeliveryAvailable(
+          false,
+        );
+      }
+    },
+    [
+      seller.offersLocalPickup,
+      seller.offersLocalDelivery,
+    ],
+  );
+
   const actionData =
     useActionData<
       typeof action
@@ -3249,6 +3345,24 @@ export default function SellerAddProductPage() {
     useState(
       "Calculated at Checkout",
     );
+
+  const [
+    flatRateShipping,
+    setFlatRateShipping,
+  ] =
+    useState("");
+
+  const [
+    localPickupAvailable,
+    setLocalPickupAvailable,
+  ] =
+    useState(false);
+
+  const [
+    localDeliveryAvailable,
+    setLocalDeliveryAvailable,
+  ] =
+    useState(false);
 
   const [
     shipsWithin,
@@ -3903,6 +4017,13 @@ export default function SellerAddProductPage() {
         ),
     );
 
+  const flatRateIsValid =
+    shippingMethod !==
+      "Flat Rate Shipping" ||
+    Number(
+      flatRateShipping,
+    ) > 0;
+
   const ready =
     title.trim()
       .length >
@@ -3922,6 +4043,7 @@ export default function SellerAddProductPage() {
     shippingMethod
       .length >
       0 &&
+    flatRateIsValid &&
     shipsWithin
       .length >
       0 &&
@@ -3977,6 +4099,20 @@ export default function SellerAddProductPage() {
         bundleWeight,
 
         shippingMethod,
+
+        flatRateShipping:
+          shippingMethod ===
+            "Flat Rate Shipping"
+            ? flatRateShipping
+            : "",
+
+        localPickupAvailable:
+          seller.offersLocalPickup &&
+          localPickupAvailable,
+
+        localDeliveryAvailable:
+          seller.offersLocalDelivery &&
+          localDeliveryAvailable,
 
         shipsWithin,
 
@@ -5922,7 +6058,7 @@ export default function SellerAddProductPage() {
         </div>
       )}
 
-      {/* FULFILLMENT */}
+      {/* SHIPPING & FULFILLMENT */}
 
       {productType && (
         <div
@@ -5935,23 +6071,231 @@ export default function SellerAddProductPage() {
               headingStyle
             }
           >
-            Fulfillment
+            Shipping & Fulfillment
           </h2>
 
           <p
             style={{
               margin:
-                "-5px 0 14px",
+                "-5px 0 16px",
 
               color:
                 "#776e7b",
 
               fontSize:
                 "11px",
+
+              lineHeight:
+                "1.5",
             }}
           >
-            Choose the product shipping details. HairGrab fills your seller city and state automatically.
+            Tell shoppers what they will pay for standard shipping and how quickly you normally hand the order to the carrier. HairGrab fills your seller city and state automatically.
           </p>
+
+          <div
+            style={{
+              padding:
+                "14px",
+
+              border:
+                "1px solid #e2d5eb",
+
+              borderRadius:
+                "11px",
+
+              background:
+                "#fcf9fe",
+
+              marginBottom:
+                "16px",
+            }}
+          >
+            <div
+              style={{
+                fontWeight:
+                  "800",
+
+                color:
+                  "#4B1678",
+
+                fontSize:
+                  "13px",
+
+                marginBottom:
+                  "10px",
+              }}
+            >
+              Customer Shipping Charge *
+            </div>
+
+            <select
+              value={
+                shippingMethod
+              }
+              onChange={(
+                event,
+              ) => {
+                const value =
+                  event.target
+                    .value;
+
+                setShippingMethod(
+                  value,
+                );
+
+                if (
+                  value !==
+                  "Flat Rate Shipping"
+                ) {
+                  setFlatRateShipping(
+                    "",
+                  );
+                }
+              }}
+              style={
+                fieldStyle
+              }
+            >
+              <option value="Calculated at Checkout">
+                Calculated Shipping at Checkout
+              </option>
+
+              <option value="Free Shipping">
+                Free Shipping — Seller Covers Shipping Cost
+              </option>
+
+              <option value="Flat Rate Shipping">
+                Flat Rate Shipping — You Set the Rate
+              </option>
+            </select>
+
+            {shippingMethod ===
+              "Calculated at Checkout" && (
+              <div
+                style={{
+                  marginTop:
+                    "8px",
+
+                  color:
+                    "#6f6675",
+
+                  fontSize:
+                    "10px",
+
+                  lineHeight:
+                    "1.45",
+                }}
+              >
+                The shopper&apos;s shipping charge is calculated at checkout based on the delivery address and shipment details.
+              </div>
+            )}
+
+            {shippingMethod ===
+              "Free Shipping" && (
+              <div
+                style={{
+                  marginTop:
+                    "8px",
+
+                  color:
+                    "#6f6675",
+
+                  fontSize:
+                    "10px",
+
+                  lineHeight:
+                    "1.45",
+                }}
+              >
+                The shopper pays $0 for standard shipping. You are responsible for the cost of the shipping label.
+              </div>
+            )}
+
+            {shippingMethod ===
+              "Flat Rate Shipping" && (
+              <div
+                style={{
+                  marginTop:
+                    "12px",
+
+                  maxWidth:
+                    "280px",
+                }}
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
+                  Customer Shipping Charge *
+                </label>
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+
+                    alignItems:
+                      "center",
+
+                    gap:
+                      "7px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontWeight:
+                        "800",
+
+                      color:
+                        "#4B1678",
+                    }}
+                  >
+                    $
+                  </span>
+
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={
+                      flatRateShipping
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      setFlatRateShipping(
+                        event.target
+                          .value,
+                      )
+                    }
+                    placeholder="7.99"
+                    style={
+                      fieldStyle
+                    }
+                  />
+                </div>
+
+                <div
+                  style={{
+                    marginTop:
+                      "7px",
+
+                    color:
+                      "#6f6675",
+
+                    fontSize:
+                      "10px",
+
+                    lineHeight:
+                      "1.45",
+                  }}
+                >
+                  The shopper will be charged this amount for standard shipping. If the actual label costs more, you are responsible for the difference.
+                </div>
+              </div>
+            )}
+          </div>
 
           <div
             style={{
@@ -5965,53 +6309,6 @@ export default function SellerAddProductPage() {
                 "14px",
             }}
           >
-            <div>
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                Shipping Method *
-              </label>
-
-              <select
-                value={
-                  shippingMethod
-                }
-                onChange={(
-                  event,
-                ) =>
-                  setShippingMethod(
-                    event.target
-                      .value,
-                  )
-                }
-                style={
-                  fieldStyle
-                }
-              >
-                <option value="Free Shipping">
-                  Free Shipping
-                </option>
-
-                <option value="Calculated at Checkout">
-                  Calculated at Checkout
-                </option>
-
-                <option value="$9.99 Flat Rate Shipping">
-                  $9.99 Flat Rate Shipping
-                </option>
-
-                <option value="Local Pickup">
-                  Local Pickup
-                </option>
-
-                <option value="Local Delivery">
-                  Local Delivery
-                </option>
-              </select>
-            </div>
-
             <div>
               <label
                 style={
@@ -6037,10 +6334,6 @@ export default function SellerAddProductPage() {
                   fieldStyle
                 }
               >
-                <option value="Same Day">
-                  Same Day
-                </option>
-
                 <option value="24 Hours">
                   24 Hours
                 </option>
@@ -6053,6 +6346,24 @@ export default function SellerAddProductPage() {
                   72 Hours
                 </option>
               </select>
+
+              <div
+                style={{
+                  marginTop:
+                    "6px",
+
+                  color:
+                    "#817787",
+
+                  fontSize:
+                    "10px",
+
+                  lineHeight:
+                    "1.4",
+                }}
+              >
+                This is your normal processing time before the package is handed to the carrier. Same-day courier delivery is a separate HairGrab feature.
+              </div>
             </div>
 
             <div>
@@ -6159,6 +6470,306 @@ export default function SellerAddProductPage() {
               >
                 Yes makes this product eligible for HairGrab local/map discovery.
               </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop:
+                "18px",
+
+              display:
+                "grid",
+
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(240px, 1fr))",
+
+              gap:
+                "12px",
+            }}
+          >
+            {seller.offersLocalPickup ? (
+              <div
+                style={{
+                  border:
+                    "1px solid #e2d5eb",
+
+                  borderRadius:
+                    "11px",
+
+                  padding:
+                    "13px",
+
+                  background:
+                    "#ffffff",
+                }}
+              >
+                <label
+                  style={{
+                    ...labelStyle,
+                    marginBottom:
+                      "8px",
+                  }}
+                >
+                  Local Pickup
+                </label>
+
+                <select
+                  value={
+                    localPickupAvailable
+                      ? "Yes"
+                      : "No"
+                  }
+                  onChange={(
+                    event,
+                  ) =>
+                    setLocalPickupAvailable(
+                      event.target
+                        .value ===
+                        "Yes",
+                    )
+                  }
+                  style={
+                    fieldStyle
+                  }
+                >
+                  <option value="No">
+                    Not Available for This Product
+                  </option>
+
+                  <option value="Yes">
+                    Local Pickup Available
+                  </option>
+                </select>
+
+                <div
+                  style={{
+                    marginTop:
+                      "6px",
+
+                    color:
+                      "#817787",
+
+                    fontSize:
+                      "10px",
+
+                    lineHeight:
+                      "1.4",
+                  }}
+                >
+                  Local pickup is enabled in your HairGrab store settings.
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  border:
+                    "1px dashed #d8cce0",
+
+                  borderRadius:
+                    "11px",
+
+                  padding:
+                    "13px",
+
+                  background:
+                    "#faf8fb",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight:
+                      "800",
+
+                    color:
+                      "#6f6675",
+
+                    fontSize:
+                      "12px",
+                  }}
+                >
+                  Local Pickup
+                </div>
+
+                <div
+                  style={{
+                    marginTop:
+                      "5px",
+
+                    color:
+                      "#8b828f",
+
+                    fontSize:
+                      "10px",
+
+                    lineHeight:
+                      "1.4",
+                  }}
+                >
+                  Not enabled for your store. You can turn on Local Pickup in Store Settings before offering it on products.
+                </div>
+              </div>
+            )}
+
+            {seller.offersLocalDelivery && (
+              <div
+                style={{
+                  border:
+                    "1px solid #e2d5eb",
+
+                  borderRadius:
+                    "11px",
+
+                  padding:
+                    "13px",
+
+                  background:
+                    "#ffffff",
+                }}
+              >
+                <label
+                  style={{
+                    ...labelStyle,
+                    marginBottom:
+                      "8px",
+                  }}
+                >
+                  Seller-Managed Local Delivery
+                </label>
+
+                <select
+                  value={
+                    localDeliveryAvailable
+                      ? "Yes"
+                      : "No"
+                  }
+                  onChange={(
+                    event,
+                  ) =>
+                    setLocalDeliveryAvailable(
+                      event.target
+                        .value ===
+                        "Yes",
+                    )
+                  }
+                  style={
+                    fieldStyle
+                  }
+                >
+                  <option value="No">
+                    Not Available for This Product
+                  </option>
+
+                  <option value="Yes">
+                    Local Delivery Available
+                  </option>
+                </select>
+
+                <div
+                  style={{
+                    marginTop:
+                      "6px",
+
+                    color:
+                      "#817787",
+
+                    fontSize:
+                      "10px",
+
+                    lineHeight:
+                      "1.4",
+                  }}
+                >
+                  This is delivery you arrange yourself. It is separate from HairGrab Same-Day Delivery.
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              marginTop:
+                "18px",
+
+              padding:
+                "16px",
+
+              border:
+                "1px solid #d7bfe8",
+
+              borderRadius:
+                "12px",
+
+              background:
+                "#f7f0fb",
+            }}
+          >
+            <div
+              style={{
+                display:
+                  "flex",
+
+                alignItems:
+                  "center",
+
+                gap:
+                  "8px",
+
+                fontWeight:
+                  "900",
+
+                color:
+                  "#4B1678",
+
+                fontSize:
+                  "14px",
+              }}
+            >
+              <span
+                aria-hidden="true"
+              >
+                ⚡
+              </span>
+              HairGrab Same-Day Delivery — Coming Soon
+            </div>
+
+            <div
+              style={{
+                marginTop:
+                  "8px",
+
+                color:
+                  "#5f5367",
+
+                fontSize:
+                  "11px",
+
+                lineHeight:
+                  "1.55",
+              }}
+            >
+              HairGrab is working to bring DoorDash-style same-day delivery to participating areas. When available, a local delivery driver can pick up eligible orders from the seller and deliver them directly to nearby HairGrab shoppers.
+            </div>
+
+            <div
+              style={{
+                marginTop:
+                  "7px",
+
+                color:
+                  "#4B1678",
+
+                fontSize:
+                  "10px",
+
+                fontWeight:
+                  "700",
+
+                lineHeight:
+                  "1.45",
+              }}
+            >
+              No action is needed right now. Availability will vary by location, and HairGrab will notify eligible sellers when Same-Day Delivery becomes available in their area.
             </div>
           </div>
         </div>
