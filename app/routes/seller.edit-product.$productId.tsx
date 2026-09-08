@@ -1220,7 +1220,7 @@ export const action = async ({
                   ),
                 ),
 
-              compareQuantity:
+              changeFromQuantity:
                 null,
             }),
           );
@@ -1253,9 +1253,6 @@ export const action = async ({
 
                   reason:
                     "correction",
-
-                  ignoreCompareQuantity:
-                    true,
 
                   referenceDocumentUri:
                     `hairgrab://seller-product/${coreProduct.id}`,
