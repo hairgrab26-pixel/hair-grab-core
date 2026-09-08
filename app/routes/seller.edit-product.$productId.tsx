@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { Form, Link, redirect, useActionData, useLoaderData } from "react-router";
 import db from "../db.server";
@@ -1234,10 +1235,11 @@ export const action = async ({
             `#graphql
             mutation HairGrabSetSellerInventory(
               $input: InventorySetQuantitiesInput!
+              $idempotencyKey: String!
             ) {
               inventorySetQuantities(
                 input: $input
-              ) {
+              ) @idempotent(key: $idempotencyKey) {
                 userErrors {
                   field
                   message
@@ -1247,6 +1249,9 @@ export const action = async ({
             `,
             {
               variables: {
+                idempotencyKey:
+                  randomUUID(),
+
                 input: {
                   name:
                     "available",
