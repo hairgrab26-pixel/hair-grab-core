@@ -381,6 +381,14 @@ export const loader = async ({
         seller.phone ||
         "",
 
+      address1:
+        seller.address1 ||
+        "",
+
+      address2:
+        seller.address2 ||
+        "",
+
       city:
         seller.city ||
         "",
@@ -526,6 +534,24 @@ export const action = async ({
           String(
             formData.get(
               "phone",
+            ) ||
+            "",
+          ).trim() ||
+          null,
+
+        address1:
+          String(
+            formData.get(
+              "address1",
+            ) ||
+            "",
+          ).trim() ||
+          null,
+
+        address2:
+          String(
+            formData.get(
+              "address2",
             ) ||
             "",
           ).trim() ||
@@ -865,6 +891,22 @@ export default function SellerSettingsPage() {
                   name="phone"
                   defaultValue={
                     seller.phone
+                  }
+                />
+
+                <Field
+                  label="Street Address"
+                  name="address1"
+                  defaultValue={
+                    seller.address1
+                  }
+                />
+
+                <Field
+                  label="Address Line 2 (Optional)"
+                  name="address2"
+                  defaultValue={
+                    seller.address2
                   }
                 />
 
