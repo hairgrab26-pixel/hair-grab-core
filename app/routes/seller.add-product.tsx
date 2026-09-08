@@ -66,6 +66,7 @@ type ProductPayload = {
 
   selectedOptions: string[];
   optionsAreVariants: boolean;
+  searchClassifications: string[];
 
   density: string;
   laceSize: string;
@@ -2186,6 +2187,40 @@ export const action =
       // ALWAYS DRAFT FOR NOW.
       // ====================================================
 
+      const selectedOptionTags =
+        payload.selectedOptions
+          .map(
+            (value) =>
+              productOptions[
+                payload.productType
+              ].find(
+                (option) =>
+                  option.value ===
+                  value,
+              )?.label ||
+              "",
+          )
+          .filter(Boolean);
+
+      const classificationTags =
+        (
+          productClassifications[
+            payload.productType
+          ] || []
+        )
+          .filter(
+            (choice) =>
+              payload.searchClassifications
+                ?.includes(
+                  choice.value,
+                ),
+          )
+          .map(
+            (choice) =>
+              choice.label,
+          );
+
+
       const productSetResponse =
         await admin.graphql(
           `#graphql
@@ -2261,6 +2296,8 @@ export const action =
                   "HairGrab",
                   `HairGrab Seller ${seller.sellerCode}`,
                   productTypeDisplay,
+                  ...selectedOptionTags,
+                  ...classificationTags,
                 ],
 
                 productOptions:
@@ -2706,6 +2743,47 @@ const productOptions:
   ],
 };
 
+const productClassifications:
+  Partial<
+    Record<
+      ProductType,
+      Choice[]
+    >
+  > = {
+  WIG: [
+    {
+      value:
+        "KOSHER_WIG",
+      label:
+        "Kosher Wig",
+    },
+
+    {
+      value:
+        "MEDICAL_WIG",
+      label:
+        "Medical Wig",
+    },
+  ],
+
+  BRAIDING_HAIR: [
+    {
+      value:
+        "CROCHET_HAIR",
+      label:
+        "Crochet Hair",
+    },
+
+    {
+      value:
+        "LOCS_LOCKS",
+      label:
+        "Locs / Locks",
+    },
+  ],
+};
+
+
 const materials = [
   "Human Hair",
   "Synthetic Hair",
@@ -3046,6 +3124,14 @@ export default function SellerAddProductPage() {
       false,
     );
 
+  const [
+    searchClassifications,
+    setSearchClassifications,
+  ] =
+    useState<string[]>(
+      [],
+    );
+
   // HairGrab keeps this dumb easy:
   // selecting 2+ product options automatically turns those
   // options into separate variants. No hidden checkbox needed.
@@ -3250,6 +3336,13 @@ export default function SellerAddProductPage() {
       ? productOptions[
           productType
         ]
+      : [];
+
+  const currentClassifications =
+    productType
+      ? productClassifications[
+          productType
+        ] || []
       : [];
 
   const optionLabel =
@@ -3870,6 +3963,8 @@ export default function SellerAddProductPage() {
         selectedOptions,
 
         optionsAreVariants,
+
+        searchClassifications,
 
         density,
 
@@ -4507,6 +4602,40 @@ export default function SellerAddProductPage() {
         </div>
       </div>
 
+      <div
+        style={{
+          marginTop:
+            "18px",
+
+          padding:
+            "13px 14px",
+
+          background:
+            "#f7f0fb",
+
+          border:
+            "1px solid #e2d1ef",
+
+          borderRadius:
+            "11px",
+
+          color:
+            "#4B1678",
+
+          fontSize:
+            "11px",
+
+          lineHeight:
+            1.55,
+        }}
+      >
+        <strong>
+          Help shoppers find your product.
+        </strong>{" "}
+        HairGrab uses the details you enter below for search, filters and product matching. Complete every field that applies to your product. Leaving an applicable field blank may keep the product from appearing in some shopper searches or filters.
+      </div>
+
+
       {/* PRODUCT INFO */}
 
       <div
@@ -4593,6 +4722,27 @@ export default function SellerAddProductPage() {
 
         <div
           style={{
+            color:
+              "#7d7480",
+
+            fontSize:
+              "10px",
+
+            lineHeight:
+              1.5,
+
+            marginTop:
+              "-7px",
+
+            marginBottom:
+              "12px",
+          }}
+        >
+          Choose the closest main category. HairGrab uses it to show the right product fields and connect the item to the right shopper filters.
+        </div>
+
+        <div
+          style={{
             display:
               "grid",
 
@@ -4618,6 +4768,10 @@ export default function SellerAddProductPage() {
                   );
 
                   setSelectedOptions(
+                    [],
+                  );
+
+                  setSearchClassifications(
                     [],
                   );
 
@@ -4985,6 +5139,27 @@ export default function SellerAddProductPage() {
 
             <div
               style={{
+                color:
+                  "#7d7480",
+
+                fontSize:
+                  "10px",
+
+                lineHeight:
+                  1.5,
+
+                marginTop:
+                  "-7px",
+
+                marginBottom:
+                  "12px",
+              }}
+            >
+              Select every option that applies. These details help HairGrab categorize the product and improve matching in shopper search and filters.
+            </div>
+
+            <div
+              style={{
                 display:
                   "flex",
 
@@ -5026,6 +5201,103 @@ export default function SellerAddProductPage() {
                 ),
               )}
             </div>
+
+            {currentClassifications.length >
+              0 && (
+              <div
+                style={{
+                  marginTop:
+                    "18px",
+
+                  paddingTop:
+                    "16px",
+
+                  borderTop:
+                    "1px solid #eee7f2",
+                }}
+              >
+                <div
+                  style={{
+                    color:
+                      "#4B1678",
+
+                    fontSize:
+                      "13px",
+
+                    fontWeight:
+                      "800",
+
+                    marginBottom:
+                      "5px",
+                  }}
+                >
+                  Search & Product Classification
+                </div>
+
+                <div
+                  style={{
+                    color:
+                      "#7d7480",
+
+                    fontSize:
+                      "10px",
+
+                    lineHeight:
+                      1.5,
+
+                    marginBottom:
+                      "10px",
+                  }}
+                >
+                  Select every classification that applies. These are discovery labels, not separate price variants, and help shoppers find specialized products more easily.
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+
+                    flexWrap:
+                      "wrap",
+
+                    gap:
+                      "8px",
+                  }}
+                >
+                  {currentClassifications.map(
+                    (
+                      item,
+                    ) => (
+                      <ChoiceButton
+                        key={
+                          item.value
+                        }
+                        label={
+                          item.label
+                        }
+                        selected={
+                          searchClassifications.includes(
+                            item.value,
+                          )
+                        }
+                        onClick={() =>
+                          setSearchClassifications(
+                            (
+                              current,
+                            ) =>
+                              toggleValue(
+                                current,
+                                item.value,
+                              ),
+                          )
+                        }
+                      />
+                    ),
+                  )}
+                </div>
+              </div>
+            )}
+
 
             {selectedOptions.length >
               1 && (
@@ -5081,6 +5353,27 @@ export default function SellerAddProductPage() {
           >
             Hair Details
           </h2>
+
+          <div
+            style={{
+              color:
+                "#7d7480",
+
+              fontSize:
+                "10px",
+
+              lineHeight:
+                1.5,
+
+              marginTop:
+                "-7px",
+
+              marginBottom:
+                "13px",
+            }}
+          >
+            Complete every detail that applies. Texture, length, lace, density and other attributes help your product appear when shoppers narrow or search the HairGrab catalog.
+          </div>
 
           <label
             style={
@@ -5279,8 +5572,26 @@ export default function SellerAddProductPage() {
                     "pointer",
                 }}
               >
-                Optional wig details
+                Additional wig details — recommended
               </summary>
+
+              <div
+                style={{
+                  marginTop:
+                    "9px",
+
+                  color:
+                    "#7d7480",
+
+                  fontSize:
+                    "10px",
+
+                  lineHeight:
+                    1.5,
+                }}
+              >
+                Fill in everything that applies to maximize search and filter visibility. Leave a field blank only when it truly does not apply to this wig.
+              </div>
 
               <div
                 style={{
