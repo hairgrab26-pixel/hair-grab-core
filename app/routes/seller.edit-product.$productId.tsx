@@ -1125,25 +1125,27 @@ export const action = async ({
                 coreProduct
                   .shopifyProductId,
 
-              variants:
-                variants.map(
-                  (
-                    variant,
-                  ) => ({
-                    id:
-                      variant.id,
+             variants:
+  variants.map(
+    (
+      variant,
+    ) => ({
+      id:
+        variant.id,
 
-                    price:
-                      Number(
-                        variant.price,
-                      ),
+      price:
+        Number(
+          variant.price,
+        ),
 
-                    sku:
-                      variant.sku
-                        .trim() ||
-                      null,
-                  }),
-                ),
+      inventoryItem: {
+        sku:
+          variant.sku
+            .trim() ||
+          null,
+      },
+    }),
+  ),
             },
           },
         );
