@@ -1334,6 +1334,282 @@ export const action = async ({
 
 
     // ========================================================
+    // HAIRGRAB SHIPPING - CREATE SHIPPO TEST LABEL
+    // Test token only: no real postage is purchased.
+    // ========================================================
+
+    if (
+      intent ===
+      "create-hairgrab-shipping-label"
+    ) {
+      const fulfillmentRecord =
+        await db.sellerOrderFulfillment.findUnique({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+        });
+
+
+      if (
+        !fulfillmentRecord ||
+        fulfillmentRecord.fulfillmentMethod !==
+          "HAIRGRAB_SHIPPING"
+      ) {
+        return {
+          success: false,
+
+          message:
+            "This order is not set for HairGrab Shipping.",
+        };
+      }
+
+
+      const rateId =
+        String(
+          formData.get(
+            "rateId",
+          ) ||
+            "",
+        ).trim();
+
+      const rateProvider =
+        String(
+          formData.get(
+            "rateProvider",
+          ) ||
+            "Carrier",
+        ).trim();
+
+      const rateAmount =
+        Number(
+          formData.get(
+            "rateAmount",
+          ),
+        );
+
+
+      if (!rateId) {
+        return {
+          success: false,
+
+          message:
+            "Choose a shipping rate before creating the label.",
+        };
+      }
+
+
+      const transactionResponse =
+        await fetch(
+          "https://api.goshippo.com/transactions/",
+          {
+            method:
+              "POST",
+
+            headers: {
+              Authorization:
+                `ShippoToken ${getShippoToken()}`,
+
+              "Content-Type":
+                "application/json",
+
+              "SHIPPO-API-VERSION":
+                "2018-02-08",
+            },
+
+            body:
+              JSON.stringify({
+                rate:
+                  rateId,
+
+                label_file_type:
+                  "PDF",
+
+                async:
+                  false,
+              }),
+          },
+        );
+
+
+      const transactionJson =
+        await transactionResponse.json();
+
+
+      if (
+        !transactionResponse.ok ||
+        String(
+          transactionJson?.status ||
+            "",
+        ).toUpperCase() ===
+          "ERROR"
+      ) {
+        const errorMessage =
+          shippoErrorMessage(
+            transactionJson,
+            "Shippo could not create the test shipping label.",
+          );
+
+        await db.sellerOrderFulfillment.update({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+
+          data: {
+            shippingPurchaseStatus:
+              "ERROR",
+
+            shippingPurchaseError:
+              errorMessage,
+          },
+        });
+
+        throw new Error(
+          errorMessage,
+        );
+      }
+
+
+      const labelUrl =
+        transactionJson?.label_url
+          ? String(
+              transactionJson.label_url,
+            )
+          : "";
+
+      const trackingNumber =
+        transactionJson?.tracking_number
+          ? String(
+              transactionJson.tracking_number,
+            )
+          : "";
+
+      const trackingUrl =
+        transactionJson?.tracking_url_provider
+          ? String(
+              transactionJson.tracking_url_provider,
+            )
+          : null;
+
+      const transactionId =
+        transactionJson?.object_id
+          ? String(
+              transactionJson.object_id,
+            )
+          : "";
+
+
+      if (
+        !labelUrl ||
+        !transactionId
+      ) {
+        throw new Error(
+          "Shippo created the transaction but did not return a printable test label.",
+        );
+      }
+
+
+      const transactionRateAmount =
+        Number(
+          transactionJson?.rate
+            ?.amount,
+        );
+
+      const finalRateAmount =
+        Number.isFinite(
+          transactionRateAmount,
+        )
+          ? transactionRateAmount
+          : rateAmount;
+
+      const shippingCostCents =
+        Number.isFinite(
+          finalRateAmount,
+        )
+          ? Math.round(
+              finalRateAmount *
+                100,
+            )
+          : null;
+
+
+      await db.sellerOrderFulfillment.update({
+        where: {
+          sellerId_shopifyOrderId: {
+            sellerId:
+              seller.id,
+
+            shopifyOrderId:
+              orderId,
+          },
+        },
+
+        data: {
+          status:
+            "LABEL_READY",
+
+          carrier:
+            rateProvider ||
+            "Carrier",
+
+          trackingNumber:
+            trackingNumber ||
+            null,
+
+          trackingUrl,
+
+          shippingLabelUrl:
+            labelUrl,
+
+          shippingRateId:
+            rateId,
+
+          shippingCostCents,
+
+          shippingPurchaseId:
+            transactionId,
+
+          shippingPurchaseStatus:
+            String(
+              transactionJson?.status ||
+                "SUCCESS",
+            ).toUpperCase(),
+
+          shippingPurchaseError:
+            null,
+
+          shippingLabelPurchasedAt:
+            new Date(),
+        },
+      });
+
+
+      return {
+        success: true,
+
+        message:
+          "Shippo test label created. No real postage was charged. Use Print Test Label below to verify the PDF.",
+
+        labelOrderId:
+          orderId,
+
+        labelUrl,
+      };
+    }
+
+
+    // ========================================================
     // SELLER-MANAGED SHIPPING
     // Existing working Shopify fulfillment process
     // ========================================================
@@ -2822,10 +3098,11 @@ function OrderCard({
                     (
                       rate,
                     ) => (
-                      <div
+                      <Form
                         key={
                           rate.id
                         }
+                        method="post"
                         style={{
                           display:
                             "flex",
@@ -2855,6 +3132,36 @@ function OrderCard({
                             "white",
                         }}
                       >
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="create-hairgrab-shipping-label"
+                        />
+
+                        <input
+                          type="hidden"
+                          name="orderId"
+                          value={order.id}
+                        />
+
+                        <input
+                          type="hidden"
+                          name="rateId"
+                          value={rate.id}
+                        />
+
+                        <input
+                          type="hidden"
+                          name="rateProvider"
+                          value={rate.provider}
+                        />
+
+                        <input
+                          type="hidden"
+                          name="rateAmount"
+                          value={rate.amount}
+                        />
+
                         <div>
                           <div
                             style={{
@@ -2920,7 +3227,14 @@ function OrderCard({
                             ),
                           )}
                         </div>
-                      </div>
+
+                        <button
+                          type="submit"
+                          style={primaryButton}
+                        >
+                          Choose & Create Test Label
+                        </button>
+                      </Form>
                     ),
                   )}
                 </div>
@@ -2932,8 +3246,60 @@ function OrderCard({
                       "9px",
                   }}
                 >
-                  Test rates only. HairGrab has not purchased a label or charged postage. Once this rate test is working correctly, the next step is selecting a rate and generating the Shippo test label automatically.
+                  Test mode only. Choose a rate above to generate a Shippo test label. The test token does not purchase real postage.
                 </div>
+              </div>
+            )}
+
+
+            {order.shippingLabelUrl && (
+              <div
+                style={{
+                  ...successBox,
+                  marginTop:
+                    "12px",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight:
+                      "800",
+                    marginBottom:
+                      "8px",
+                  }}
+                >
+                  ✓ Shippo Test Label Ready
+                </div>
+
+                {order.trackingNumber && (
+                  <div
+                    style={{
+                      fontSize:
+                        "11px",
+                      marginBottom:
+                        "9px",
+                    }}
+                  >
+                    {order.carrier || "Carrier"}
+                    {" · Tracking: "}
+                    {order.trackingNumber}
+                  </div>
+                )}
+
+                <a
+                  href={order.shippingLabelUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    ...primaryButton,
+                    display:
+                      "inline-block",
+                    textDecoration:
+                      "none",
+                  }}
+                >
+                  Print Test Label ↗
+                </a>
               </div>
             )}
           </div>
