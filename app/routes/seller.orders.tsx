@@ -1610,6 +1610,421 @@ export const action = async ({
 
 
     // ========================================================
+    // HAIRGRAB SHIPPING - CONFIRM SHOPIFY FULFILLMENT
+    // Uses the saved Shippo label + tracking.
+    // Only this seller's Shopify vendor line items are fulfilled.
+    // ========================================================
+
+    if (
+      intent ===
+      "fulfill-hairgrab-shipping"
+    ) {
+      const fulfillmentRecord =
+        await db.sellerOrderFulfillment.findUnique({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+        });
+
+
+      if (
+        !fulfillmentRecord ||
+        fulfillmentRecord.fulfillmentMethod !==
+          "HAIRGRAB_SHIPPING"
+      ) {
+        return {
+          success: false,
+
+          message:
+            "This order is not set for HairGrab Shipping.",
+        };
+      }
+
+
+      if (
+        !fulfillmentRecord.shippingLabelUrl ||
+        !fulfillmentRecord.trackingNumber
+      ) {
+        return {
+          success: false,
+
+          message:
+            "Create the Shippo label before marking this order shipped.",
+        };
+      }
+
+
+      if (
+        fulfillmentRecord.status ===
+          "SHIPPED"
+      ) {
+        return {
+          success: false,
+
+          message:
+            "This HairGrab shipment has already been marked shipped.",
+        };
+      }
+
+
+      const {
+        admin,
+      } =
+        await getShopifyAdmin();
+
+
+      const response =
+        await admin.graphql(
+          `#graphql
+          query HairGrabShippoFulfillmentOrder(
+            $id: ID!
+          ) {
+            order(id: $id) {
+              id
+
+              fulfillmentOrders(
+                first: 20
+              ) {
+                nodes {
+                  id
+                  status
+
+                  lineItems(
+                    first: 100
+                  ) {
+                    nodes {
+                      id
+                      remainingQuantity
+
+                      lineItem {
+                        id
+                        vendor
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          `,
+          {
+            variables: {
+              id:
+                normalizeShopifyOrderId(
+                  orderId,
+                ),
+            },
+          },
+        );
+
+
+      const json =
+        await response.json();
+
+
+      if (
+        json?.errors?.length
+      ) {
+        throw new Error(
+          json.errors
+            .map(
+              (
+                error: {
+                  message?: string;
+                },
+              ) =>
+                error.message ||
+                "Unable to load the Shopify fulfillment order.",
+            )
+            .join(
+              " | ",
+            ),
+        );
+      }
+
+
+      const fulfillmentOrders =
+        json?.data?.order
+          ?.fulfillmentOrders
+          ?.nodes ||
+        [];
+
+
+      const lineItemsByFulfillmentOrder =
+        fulfillmentOrders
+          .map(
+            (
+              fulfillmentOrder:
+                any,
+            ) => {
+              const sellerLineItems =
+                (
+                  fulfillmentOrder
+                    ?.lineItems
+                    ?.nodes ||
+                  []
+                )
+                  .filter(
+                    (
+                      item:
+                        any,
+                    ) =>
+                      item
+                        ?.lineItem
+                        ?.vendor ===
+                        seller.shopifyVendor &&
+                      Number(
+                        item
+                          ?.remainingQuantity ||
+                          0,
+                      ) >
+                        0,
+                  )
+                  .map(
+                    (
+                      item:
+                        any,
+                    ) => ({
+                      id:
+                        item.id,
+
+                      quantity:
+                        Number(
+                          item.remainingQuantity,
+                        ),
+                    }),
+                  );
+
+
+              if (
+                sellerLineItems.length ===
+                0
+              ) {
+                return null;
+              }
+
+
+              return {
+                fulfillmentOrderId:
+                  fulfillmentOrder.id,
+
+                fulfillmentOrderLineItems:
+                  sellerLineItems,
+              };
+            },
+          )
+          .filter(Boolean);
+
+
+      if (
+        lineItemsByFulfillmentOrder.length ===
+        0
+      ) {
+        return {
+          success: false,
+
+          message:
+            "There are no unfulfilled items for your store on this order.",
+        };
+      }
+
+
+      const carrier =
+        fulfillmentRecord.carrier ||
+        "Other";
+
+      const tracking =
+        fulfillmentRecord.trackingNumber;
+
+
+      const fulfillmentResponse =
+        await admin.graphql(
+          `#graphql
+          mutation HairGrabConfirmShippoShipment(
+            $fulfillment: FulfillmentInput!
+          ) {
+            fulfillmentCreate(
+              fulfillment: $fulfillment
+            ) {
+              fulfillment {
+                id
+                status
+
+                trackingInfo {
+                  company
+                  number
+                  url
+                }
+              }
+
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+          `,
+          {
+            variables: {
+              fulfillment: {
+                lineItemsByFulfillmentOrder,
+
+                notifyCustomer:
+                  true,
+
+                trackingInfo: {
+                  company:
+                    carrier,
+
+                  number:
+                    tracking,
+                },
+              },
+            },
+          },
+        );
+
+
+      const fulfillmentJson =
+        await fulfillmentResponse.json();
+
+
+      if (
+        fulfillmentJson?.errors?.length
+      ) {
+        throw new Error(
+          fulfillmentJson.errors
+            .map(
+              (
+                error: {
+                  message?: string;
+                },
+              ) =>
+                error.message ||
+                "Unable to create the Shopify fulfillment.",
+            )
+            .join(
+              " | ",
+            ),
+        );
+      }
+
+
+      const result =
+        fulfillmentJson
+          ?.data
+          ?.fulfillmentCreate;
+
+
+      const errors =
+        result?.userErrors ||
+        [];
+
+
+      if (
+        errors.length >
+        0
+      ) {
+        throw new Error(
+          errors
+            .map(
+              (
+                error: {
+                  message?: string;
+                },
+              ) =>
+                error.message ||
+                "Unable to mark this HairGrab shipment shipped.",
+            )
+            .join(
+              " | ",
+            ),
+        );
+      }
+
+
+      const fulfillmentId =
+        result?.fulfillment
+          ?.id;
+
+
+      if (!fulfillmentId) {
+        throw new Error(
+          "Shopify did not return a fulfillment.",
+        );
+      }
+
+
+      const shopifyTrackingUrl =
+        result?.fulfillment
+          ?.trackingInfo?.url ||
+        fulfillmentRecord.trackingUrl ||
+        null;
+
+
+      await db.$transaction([
+        db.sellerLedgerEntry.updateMany({
+          where: {
+            sellerId:
+              seller.id,
+
+            shopifyOrderId:
+              orderId,
+
+            entryType:
+              "SALE",
+          },
+
+          data: {
+            shopifyFulfillmentId:
+              String(
+                fulfillmentId,
+              ),
+          },
+        }),
+
+
+        db.sellerOrderFulfillment.update({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+
+          data: {
+            status:
+              "SHIPPED",
+
+            trackingUrl:
+              shopifyTrackingUrl,
+
+            shippedAt:
+              new Date(),
+          },
+        }),
+      ]);
+
+
+      return {
+        success: true,
+
+        message:
+          `Order marked shipped in Shopify. Customer notification sent. Tracking: ${tracking}`,
+      };
+    }
+
+
+    // ========================================================
     // SELLER-MANAGED SHIPPING
     // Existing working Shopify fulfillment process
     // ========================================================
@@ -3286,20 +3701,71 @@ function OrderCard({
                   </div>
                 )}
 
-                <a
-                  href={order.shippingLabelUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <div
                   style={{
-                    ...primaryButton,
                     display:
-                      "inline-block",
-                    textDecoration:
-                      "none",
+                      "flex",
+
+                    gap:
+                      "9px",
+
+                    flexWrap:
+                      "wrap",
+
+                    alignItems:
+                      "center",
                   }}
                 >
-                  Print Test Label ↗
-                </a>
+                  <a
+                    href={order.shippingLabelUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      ...primaryButton,
+                      display:
+                        "inline-block",
+                      textDecoration:
+                        "none",
+                    }}
+                  >
+                    Print Test Label ↗
+                  </a>
+
+                  <Form method="post">
+                    <input
+                      type="hidden"
+                      name="intent"
+                      value="fulfill-hairgrab-shipping"
+                    />
+
+                    <input
+                      type="hidden"
+                      name="orderId"
+                      value={
+                        order.id
+                      }
+                    />
+
+                    <button
+                      type="submit"
+                      style={
+                        primaryButton
+                      }
+                    >
+                      Mark Shipped & Notify Customer
+                    </button>
+                  </Form>
+                </div>
+
+                <div
+                  style={{
+                    ...infoBox,
+                    marginTop:
+                      "9px",
+                  }}
+                >
+                  Test label verified? Use Mark Shipped & Notify Customer to fulfill only this seller's items in Shopify and send the Shopify shipping notification.
+                </div>
               </div>
             )}
           </div>
