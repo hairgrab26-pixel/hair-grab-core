@@ -100,6 +100,80 @@ function normalizeShopifyOrderId(
 
 
 // ==========================================================
+// SHIPPO TEST RATE HELPERS
+// ==========================================================
+
+type HairGrabShippingRate = {
+  id: string;
+  provider: string;
+  service: string;
+  amount: string;
+  currency: string;
+  estimatedDays: number | null;
+  durationTerms: string | null;
+};
+
+
+function getShippoToken() {
+  const token =
+    process.env.SHIPPO_API_TOKEN?.trim();
+
+  if (!token) {
+    throw new Error(
+      "SHIPPO_API_TOKEN is not configured in Railway.",
+    );
+  }
+
+  return token;
+}
+
+
+function shippoErrorMessage(
+  payload: any,
+  fallback: string,
+) {
+  if (
+    typeof payload?.detail ===
+      "string" &&
+    payload.detail.trim()
+  ) {
+    return payload.detail.trim();
+  }
+
+  if (
+    typeof payload?.message ===
+      "string" &&
+    payload.message.trim()
+  ) {
+    return payload.message.trim();
+  }
+
+  if (
+    Array.isArray(payload?.messages) &&
+    payload.messages.length > 0
+  ) {
+    const joined =
+      payload.messages
+        .map(
+          (item: any) =>
+            item?.text ||
+            item?.message ||
+            item?.code ||
+            "",
+        )
+        .filter(Boolean)
+        .join(" | ");
+
+    if (joined) {
+      return joined;
+    }
+  }
+
+  return fallback;
+}
+
+
+// ==========================================================
 // LOADER
 // ==========================================================
 
@@ -205,6 +279,18 @@ export const loader = async ({
 
         shippingLabelUrl:
           string | null;
+
+        packageLengthInches:
+          number | null;
+
+        packageWidthInches:
+          number | null;
+
+        packageHeightInches:
+          number | null;
+
+        packageWeightOunces:
+          number | null;
 
         courierProvider:
           string | null;
@@ -324,6 +410,26 @@ export const loader = async ({
         shippingLabelUrl:
           fulfillment
             ?.shippingLabelUrl ||
+          null,
+
+        packageLengthInches:
+          fulfillment
+            ?.packageLengthInches ||
+          null,
+
+        packageWidthInches:
+          fulfillment
+            ?.packageWidthInches ||
+          null,
+
+        packageHeightInches:
+          fulfillment
+            ?.packageHeightInches ||
+          null,
+
+        packageWeightOunces:
+          fulfillment
+            ?.packageWeightOunces ||
           null,
 
         courierProvider:
@@ -723,6 +829,506 @@ export const action = async ({
 
         message:
           "Order is ready for HairGrab Same-Day Delivery. Courier dispatch will be connected in the next phase.",
+      };
+    }
+
+
+    // ========================================================
+    // HAIRGRAB SHIPPING - GET SHIPPO TEST RATES
+    // No postage is purchased in this step.
+    // ========================================================
+
+    if (
+      intent ===
+      "get-hairgrab-shipping-rates"
+    ) {
+      const fulfillmentRecord =
+        await db.sellerOrderFulfillment.findUnique({
+          where: {
+            sellerId_shopifyOrderId: {
+              sellerId:
+                seller.id,
+
+              shopifyOrderId:
+                orderId,
+            },
+          },
+        });
+
+
+      if (
+        !fulfillmentRecord ||
+        fulfillmentRecord.fulfillmentMethod !==
+          "HAIRGRAB_SHIPPING"
+      ) {
+        return {
+          success: false,
+
+          message:
+            "This order is not set for HairGrab Shipping.",
+        };
+      }
+
+
+      if (
+        !seller.address1 ||
+        !seller.city ||
+        !seller.state ||
+        !seller.postalCode
+      ) {
+        return {
+          success: false,
+
+          message:
+            "Your seller shipping address is incomplete. Add your street address, city, state and ZIP in Store Settings before requesting rates.",
+        };
+      }
+
+
+      const packageLength =
+        Number(
+          formData.get(
+            "packageLength",
+          ),
+        );
+
+      const packageWidth =
+        Number(
+          formData.get(
+            "packageWidth",
+          ),
+        );
+
+      const packageHeight =
+        Number(
+          formData.get(
+            "packageHeight",
+          ),
+        );
+
+      const packageWeight =
+        Number(
+          formData.get(
+            "packageWeight",
+          ),
+        );
+
+
+      if (
+        !Number.isFinite(
+          packageLength,
+        ) ||
+        packageLength <= 0 ||
+        !Number.isFinite(
+          packageWidth,
+        ) ||
+        packageWidth <= 0 ||
+        !Number.isFinite(
+          packageHeight,
+        ) ||
+        packageHeight <= 0 ||
+        !Number.isFinite(
+          packageWeight,
+        ) ||
+        packageWeight <= 0
+      ) {
+        return {
+          success: false,
+
+          message:
+            "Enter valid package dimensions and weight before requesting shipping rates.",
+        };
+      }
+
+
+      const {
+        admin,
+      } =
+        await getShopifyAdmin();
+
+
+      const orderResponse =
+        await admin.graphql(
+          `#graphql
+          query HairGrabShippoOrderAddress(
+            $id: ID!
+          ) {
+            order(id: $id) {
+              id
+              name
+              email
+
+              shippingAddress {
+                firstName
+                lastName
+                company
+                address1
+                address2
+                city
+                provinceCode
+                zip
+                countryCodeV2
+                phone
+              }
+            }
+          }
+          `,
+          {
+            variables: {
+              id:
+                normalizeShopifyOrderId(
+                  orderId,
+                ),
+            },
+          },
+        );
+
+
+      const orderJson =
+        await orderResponse.json();
+
+
+      if (
+        orderJson?.errors?.length
+      ) {
+        throw new Error(
+          orderJson.errors
+            .map(
+              (
+                error: {
+                  message?: string;
+                },
+              ) =>
+                error.message ||
+                "Unable to load the customer shipping address.",
+            )
+            .join(
+              " | ",
+            ),
+        );
+      }
+
+
+      const shopifyOrder =
+        orderJson?.data?.order;
+
+      const shippingAddress =
+        shopifyOrder?.shippingAddress;
+
+
+      if (
+        !shippingAddress?.address1 ||
+        !shippingAddress?.city ||
+        !shippingAddress?.zip ||
+        !shippingAddress?.countryCodeV2
+      ) {
+        return {
+          success: false,
+
+          message:
+            "This order does not have a complete shippable customer address.",
+        };
+      }
+
+
+      const shippoResponse =
+        await fetch(
+          "https://api.goshippo.com/shipments/",
+          {
+            method:
+              "POST",
+
+            headers: {
+              Authorization:
+                `ShippoToken ${getShippoToken()}`,
+
+              "Content-Type":
+                "application/json",
+
+              "SHIPPO-API-VERSION":
+                "2018-02-08",
+            },
+
+            body:
+              JSON.stringify({
+                address_from: {
+                  name:
+                    [
+                      seller.contactFirstName,
+                      seller.contactLastName,
+                    ]
+                      .filter(Boolean)
+                      .join(" ") ||
+                    seller.businessName,
+
+                  company:
+                    seller.businessName,
+
+                  street1:
+                    seller.address1,
+
+                  street2:
+                    seller.address2 ||
+                    "",
+
+                  city:
+                    seller.city,
+
+                  state:
+                    seller.state,
+
+                  zip:
+                    seller.postalCode,
+
+                  country:
+                    seller.country ||
+                    "US",
+
+                  phone:
+                    seller.phone ||
+                    undefined,
+
+                  email:
+                    seller.email ||
+                    undefined,
+                },
+
+                address_to: {
+                  name:
+                    [
+                      shippingAddress.firstName,
+                      shippingAddress.lastName,
+                    ]
+                      .filter(Boolean)
+                      .join(" ") ||
+                    shippingAddress.company ||
+                    "HairGrab Customer",
+
+                  company:
+                    shippingAddress.company ||
+                    undefined,
+
+                  street1:
+                    shippingAddress.address1,
+
+                  street2:
+                    shippingAddress.address2 ||
+                    "",
+
+                  city:
+                    shippingAddress.city,
+
+                  state:
+                    shippingAddress.provinceCode ||
+                    "",
+
+                  zip:
+                    shippingAddress.zip,
+
+                  country:
+                    shippingAddress.countryCodeV2,
+
+                  phone:
+                    shippingAddress.phone ||
+                    undefined,
+
+                  email:
+                    shopifyOrder.email ||
+                    undefined,
+                },
+
+                parcels: [
+                  {
+                    length:
+                      String(
+                        packageLength,
+                      ),
+
+                    width:
+                      String(
+                        packageWidth,
+                      ),
+
+                    height:
+                      String(
+                        packageHeight,
+                      ),
+
+                    distance_unit:
+                      "in",
+
+                    weight:
+                      String(
+                        packageWeight,
+                      ),
+
+                    mass_unit:
+                      "oz",
+                  },
+                ],
+
+                metadata:
+                  `${seller.sellerCode} ${shopifyOrder.name || orderId}`.slice(
+                    0,
+                    100,
+                  ),
+
+                async:
+                  false,
+              }),
+          },
+        );
+
+
+      const shippoJson =
+        await shippoResponse.json();
+
+
+      if (
+        !shippoResponse.ok
+      ) {
+        throw new Error(
+          shippoErrorMessage(
+            shippoJson,
+            "Shippo could not return shipping rates.",
+          ),
+        );
+      }
+
+
+      const rates:
+        HairGrabShippingRate[] =
+        (
+          Array.isArray(
+            shippoJson?.rates,
+          )
+            ? shippoJson.rates
+            : []
+        )
+          .filter(
+            (rate: any) =>
+              rate?.object_id &&
+              rate?.amount,
+          )
+          .map(
+            (rate: any) => ({
+              id:
+                String(
+                  rate.object_id,
+                ),
+
+              provider:
+                String(
+                  rate.provider ||
+                    "Carrier",
+                ),
+
+              service:
+                String(
+                  rate?.servicelevel
+                    ?.name ||
+                    "Shipping Service",
+                ),
+
+              amount:
+                String(
+                  rate.amount,
+                ),
+
+              currency:
+                String(
+                  rate.currency ||
+                    "USD",
+                ),
+
+              estimatedDays:
+                Number.isFinite(
+                  Number(
+                    rate.estimated_days,
+                  ),
+                )
+                  ? Number(
+                      rate.estimated_days,
+                    )
+                  : null,
+
+              durationTerms:
+                rate.duration_terms
+                  ? String(
+                      rate.duration_terms,
+                    )
+                  : null,
+            }))
+          .sort(
+            (
+              a,
+              b,
+            ) =>
+              Number(
+                a.amount,
+              ) -
+              Number(
+                b.amount,
+              ),
+          );
+
+
+      if (
+        rates.length ===
+        0
+      ) {
+        throw new Error(
+          shippoErrorMessage(
+            shippoJson,
+            "Shippo did not return any rates for this package and address.",
+          ),
+        );
+      }
+
+
+      await db.sellerOrderFulfillment.update({
+        where: {
+          sellerId_shopifyOrderId: {
+            sellerId:
+              seller.id,
+
+            shopifyOrderId:
+              orderId,
+          },
+        },
+
+        data: {
+          packageLengthInches:
+            packageLength,
+
+          packageWidthInches:
+            packageWidth,
+
+          packageHeightInches:
+            packageHeight,
+
+          packageWeightOunces:
+            packageWeight,
+
+          shippingPurchaseStatus:
+            "RATES_READY",
+
+          shippingPurchaseError:
+            null,
+        },
+      });
+
+
+      return {
+        success: true,
+
+        message:
+          `Shippo returned ${rates.length} test shipping rate${rates.length === 1 ? "" : "s"}. No postage has been purchased.`,
+
+        ratesOrderId:
+          orderId,
+
+        rates,
       };
     }
 
@@ -1167,6 +1773,27 @@ export default function SellerOrdersPage() {
     >();
 
 
+  const shippingRates =
+    actionData &&
+    "rates" in actionData &&
+    Array.isArray(
+      actionData.rates,
+    )
+      ? actionData.rates
+      : [];
+
+
+  const shippingRatesOrderId =
+    actionData &&
+    "ratesOrderId" in
+      actionData
+      ? String(
+          actionData.ratesOrderId ||
+            "",
+        )
+      : "";
+
+
   return (
     <div
       style={{
@@ -1465,6 +2092,13 @@ export default function SellerOrdersPage() {
                   seller={
                     seller
                   }
+
+                  shippingRates={
+                    shippingRatesOrderId ===
+                    order.id
+                      ? shippingRates
+                      : []
+                  }
                 />
               ),
             )
@@ -1544,6 +2178,7 @@ function CountCard({
 function OrderCard({
   order,
   seller,
+  shippingRates,
 }: {
   order: {
     id: string;
@@ -1574,6 +2209,18 @@ function OrderCard({
     shippingLabelUrl:
       string | null;
 
+    packageLengthInches:
+      number | null;
+
+    packageWidthInches:
+      number | null;
+
+    packageHeightInches:
+      number | null;
+
+    packageWeightOunces:
+      number | null;
+
     courierProvider:
       string | null;
 
@@ -1591,6 +2238,9 @@ function OrderCard({
     offersLocalDelivery:
       boolean;
   };
+
+  shippingRates:
+    HairGrabShippingRate[];
 }) {
   const ready =
     order.shopifyStatus ===
@@ -1978,23 +2628,314 @@ function OrderCard({
               HairGrab Shipping
             </div>
 
+
             <div
               style={
                 infoBox
               }
             >
-              HairGrab Shipping is selected for this order. The next phase will connect shipping rates and label purchasing so you can create and print the label here.
+              Enter the packed box or mailer size and weight. HairGrab will use your saved seller ship-from address and the customer's Shopify shipping address to request test rates from Shippo. No postage is purchased during this test step.
             </div>
 
-            <button
-              type="button"
-              disabled
-              style={
-                disabledButton
-              }
+
+            <Form
+              method="post"
+              style={{
+                marginTop:
+                  "12px",
+              }}
             >
-              Get HairGrab Shipping Label — API Setup Next
-            </button>
+              <input
+                type="hidden"
+                name="intent"
+                value="get-hairgrab-shipping-rates"
+              />
+
+              <input
+                type="hidden"
+                name="orderId"
+                value={
+                  order.id
+                }
+              />
+
+
+              <div
+                style={{
+                  display:
+                    "grid",
+
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(120px, 1fr))",
+
+                  gap:
+                    "9px",
+
+                  alignItems:
+                    "end",
+                }}
+              >
+                <label>
+                  <div
+                    style={
+                      miniLabel
+                    }
+                  >
+                    Length (in)
+                  </div>
+
+                  <input
+                    type="number"
+                    name="packageLength"
+                    min="0.1"
+                    step="0.1"
+                    required
+                    defaultValue={
+                      order.packageLengthInches ||
+                      12
+                    }
+                    style={
+                      field
+                    }
+                  />
+                </label>
+
+
+                <label>
+                  <div
+                    style={
+                      miniLabel
+                    }
+                  >
+                    Width (in)
+                  </div>
+
+                  <input
+                    type="number"
+                    name="packageWidth"
+                    min="0.1"
+                    step="0.1"
+                    required
+                    defaultValue={
+                      order.packageWidthInches ||
+                      9
+                    }
+                    style={
+                      field
+                    }
+                  />
+                </label>
+
+
+                <label>
+                  <div
+                    style={
+                      miniLabel
+                    }
+                  >
+                    Height (in)
+                  </div>
+
+                  <input
+                    type="number"
+                    name="packageHeight"
+                    min="0.1"
+                    step="0.1"
+                    required
+                    defaultValue={
+                      order.packageHeightInches ||
+                      3
+                    }
+                    style={
+                      field
+                    }
+                  />
+                </label>
+
+
+                <label>
+                  <div
+                    style={
+                      miniLabel
+                    }
+                  >
+                    Weight (oz)
+                  </div>
+
+                  <input
+                    type="number"
+                    name="packageWeight"
+                    min="0.1"
+                    step="0.1"
+                    required
+                    defaultValue={
+                      order.packageWeightOunces ||
+                      16
+                    }
+                    style={
+                      field
+                    }
+                  />
+                </label>
+
+
+                <button
+                  type="submit"
+                  style={
+                    primaryButton
+                  }
+                >
+                  Get Shipping Rates
+                </button>
+              </div>
+            </Form>
+
+
+            {shippingRates.length >
+              0 && (
+              <div
+                style={{
+                  marginTop:
+                    "14px",
+                }}
+              >
+                <div
+                  style={{
+                    ...sectionTitle,
+                    marginBottom:
+                      "7px",
+                  }}
+                >
+                  Shippo Test Rates
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      "grid",
+
+                    gap:
+                      "8px",
+                  }}
+                >
+                  {shippingRates.map(
+                    (
+                      rate,
+                    ) => (
+                      <div
+                        key={
+                          rate.id
+                        }
+                        style={{
+                          display:
+                            "flex",
+
+                          justifyContent:
+                            "space-between",
+
+                          alignItems:
+                            "center",
+
+                          gap:
+                            "12px",
+
+                          flexWrap:
+                            "wrap",
+
+                          border:
+                            "1px solid #e5dce9",
+
+                          borderRadius:
+                            "10px",
+
+                          padding:
+                            "11px 12px",
+
+                          background:
+                            "white",
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              color:
+                                "#21152a",
+
+                              fontWeight:
+                                "800",
+
+                              fontSize:
+                                "11px",
+                            }}
+                          >
+                            {rate.provider}
+                            {" · "}
+                            {rate.service}
+                          </div>
+
+                          <div
+                            style={{
+                              color:
+                                "#756b79",
+
+                              fontSize:
+                                "9px",
+
+                              marginTop:
+                                "3px",
+                            }}
+                          >
+                            {rate.estimatedDays !==
+                            null
+                              ? `${rate.estimatedDays} estimated day${rate.estimatedDays === 1 ? "" : "s"}`
+                              : rate.durationTerms ||
+                                "Delivery estimate not provided"}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            color:
+                              "#4B1678",
+
+                            fontSize:
+                              "14px",
+
+                            fontWeight:
+                              "900",
+                          }}
+                        >
+                          {new Intl.NumberFormat(
+                            "en-US",
+                            {
+                              style:
+                                "currency",
+                              currency:
+                                rate.currency ||
+                                "USD",
+                            },
+                          ).format(
+                            Number(
+                              rate.amount,
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    ...infoBox,
+                    marginTop:
+                      "9px",
+                  }}
+                >
+                  Test rates only. HairGrab has not purchased a label or charged postage. Once this rate test is working correctly, the next step is selecting a rate and generating the Shippo test label automatically.
+                </div>
+              </div>
+            )}
           </div>
         )}
 
