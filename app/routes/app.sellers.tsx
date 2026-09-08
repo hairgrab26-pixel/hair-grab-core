@@ -1394,7 +1394,7 @@ export default function SellersPage() {
                           }
                         >
                           <Link
-                            to={`/app/seller/${seller.sellerCode}`}
+                            to={`/app/sellers/${seller.sellerCode}`}
                             style={
                               sellerLinkStyle
                             }
@@ -1560,7 +1560,7 @@ export default function SellersPage() {
                           }
                         >
                           <Link
-                            to={`/app/seller/${seller.sellerCode}`}
+                            to={`/app/sellers/${seller.sellerCode}`}
                             style={
                               primarySmallButtonStyle
                             }
