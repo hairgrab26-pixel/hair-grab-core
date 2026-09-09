@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { Form, Link, redirect, useActionData, useLoaderData } from "react-router";
+import { useState } from "react";
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
@@ -1529,6 +1530,32 @@ function stripHtml(
     .trim();
 }
 
+
+const aiButtonStyle = {
+  border: "none",
+  borderRadius: "10px",
+  background: "#4B1678",
+  color: "white",
+  padding: "10px 14px",
+  fontSize: "12px",
+  fontWeight: "800",
+  cursor: "pointer",
+} as const;
+
+const aiSecondaryButtonStyle = {
+  ...aiButtonStyle,
+  background: "#f5eef9",
+  color: "#4B1678",
+  border: "1px solid #d9c5e6",
+} as const;
+
+const aiMessageStyle = {
+  marginTop: "8px",
+  color: "#6c5a74",
+  fontSize: "12px",
+  lineHeight: 1.45,
+} as const;
+
 export default function SellerEditProductPage() {
   const {
     product,
@@ -1543,6 +1570,71 @@ export default function SellerEditProductPage() {
     useActionData<
       typeof action
     >();
+
+  const [description, setDescription] = useState(
+    stripHtml(product.descriptionHtml),
+  );
+  const [aiWriting, setAiWriting] = useState(false);
+  const [aiMessage, setAiMessage] = useState("");
+
+  async function generateHairGrabDescription(
+    mode: "write" | "improve",
+    form: HTMLFormElement,
+  ) {
+    setAiWriting(true);
+    setAiMessage("");
+
+    try {
+      const formData = new FormData(form);
+      const details: Record<string, string | string[]> = {};
+
+      for (const [key, value] of formData.entries()) {
+        if (
+          typeof value !== "string" ||
+          ["intent", "variants"].includes(key) ||
+          !value.trim()
+        ) {
+          continue;
+        }
+
+        const current = details[key];
+        if (current) {
+          details[key] = Array.isArray(current)
+            ? [...current, value]
+            : [current, value];
+        } else {
+          details[key] = value;
+        }
+      }
+
+      details.description = description;
+
+      const response = await fetch("/seller/ai-generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          details,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result?.text) {
+        throw new Error(result?.message || "HairGrab AI is unavailable right now.");
+      }
+
+      setDescription(String(result.text).trim());
+      setAiMessage("HairGrab AI updated the description. Review it before saving.");
+    } catch (error) {
+      setAiMessage(
+        error instanceof Error
+          ? error.message
+          : "HairGrab AI is unavailable right now.",
+      );
+    } finally {
+      setAiWriting(false);
+    }
+  }
 
   const variants =
     product
@@ -1812,20 +1904,51 @@ export default function SellerEditProductPage() {
 
               <textarea
                 name="description"
-                defaultValue={
-                  stripHtml(
-                    product.descriptionHtml,
-                  )
-                }
-                rows={
-                  7
-                }
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                rows={7}
                 style={{
                   ...fieldStyle,
-                  resize:
-                    "vertical",
+                  resize: "vertical",
                 }}
               />
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                  marginTop: "10px",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={aiWriting}
+                  onClick={(event) => {
+                    const form = event.currentTarget.closest("form");
+                    if (form) void generateHairGrabDescription("improve", form);
+                  }}
+                  style={aiButtonStyle}
+                >
+                  {aiWriting ? "✨ HairGrab AI is writing..." : "✨ Improve with HairGrab AI"}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={aiWriting}
+                  onClick={(event) => {
+                    const form = event.currentTarget.closest("form");
+                    if (form) void generateHairGrabDescription("write", form);
+                  }}
+                  style={aiSecondaryButtonStyle}
+                >
+                  ✨ Write New
+                </button>
+              </div>
+
+              {aiMessage ? (
+                <div style={aiMessageStyle}>{aiMessage}</div>
+              ) : null}
             </Section>
 
             <Section

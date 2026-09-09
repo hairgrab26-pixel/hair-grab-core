@@ -3224,6 +3224,9 @@ export default function SellerAddProductPage() {
   ] =
     useState("");
 
+  const [aiWriting, setAiWriting] = useState(false);
+  const [aiMessage, setAiMessage] = useState("");
+
   const [
     productType,
     setProductType,
@@ -4029,6 +4032,57 @@ export default function SellerAddProductPage() {
 
     event.target.value =
       "";
+  }
+
+  async function generateHairGrabDescription() {
+    if (!productType) {
+      setAiMessage("Choose a Product Type first so HairGrab AI can write an accurate description.");
+      return;
+    }
+
+    setAiWriting(true);
+    setAiMessage("");
+
+    try {
+      const response = await fetch("/seller/ai-generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "write",
+          details: {
+            title,
+            productType,
+            material: resolvedMaterial,
+            colors: selectedColors,
+            texture,
+            lengths: [...selectedLengths, ...customLengths],
+            density,
+            laceSize,
+            laceType,
+            capSize,
+            bundleWeight,
+            classifications: searchClassifications,
+            options: selectedOptions,
+          },
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result?.text) {
+        throw new Error(result?.message || "HairGrab AI is unavailable right now.");
+      }
+
+      setDescription(String(result.text).trim());
+      setAiMessage("HairGrab AI created a description from the product details above. Review it before saving.");
+    } catch (error) {
+      setAiMessage(
+        error instanceof Error
+          ? error.message
+          : "HairGrab AI is unavailable right now.",
+      );
+    } finally {
+      setAiWriting(false);
+    }
   }
 
   const hasPrices =
@@ -4852,21 +4906,43 @@ export default function SellerAddProductPage() {
 
         <textarea
           rows={4}
-          value={
-            description
-          }
-          onChange={(
-            event,
-          ) =>
-            setDescription(
-              event.target
-                .value,
-            )
-          }
-          style={
-            fieldStyle
-          }
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          style={fieldStyle}
         />
+
+        <button
+          type="button"
+          disabled={aiWriting}
+          onClick={() => void generateHairGrabDescription()}
+          style={{
+            marginTop: "10px",
+            border: "none",
+            borderRadius: "10px",
+            background: "#4B1678",
+            color: "white",
+            padding: "10px 14px",
+            fontSize: "12px",
+            fontWeight: "800",
+            cursor: aiWriting ? "wait" : "pointer",
+            opacity: aiWriting ? 0.7 : 1,
+          }}
+        >
+          {aiWriting ? "✨ HairGrab AI is writing..." : "✨ Generate with HairGrab AI"}
+        </button>
+
+        {aiMessage ? (
+          <div
+            style={{
+              marginTop: "8px",
+              color: "#6c5a74",
+              fontSize: "12px",
+              lineHeight: 1.45,
+            }}
+          >
+            {aiMessage}
+          </div>
+        ) : null}
       </div>
 
       {/* TYPE */}
