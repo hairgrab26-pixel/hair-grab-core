@@ -3517,6 +3517,10 @@ export default function SellerAddProductPage() {
     installationMethod?: string;
     locType?: string;
     laceSize?: string;
+    density?: string;
+    laceType?: string;
+    capSize?: string;
+    bundleWeight?: string;
     excluded?: boolean;
     imported?: boolean;
     importError?: string;
@@ -4482,6 +4486,58 @@ export default function SellerAddProductPage() {
     return value.toLowerCase().replace(/[^a-z0-9]/g, "");
   }
 
+  function inferHairGrabDetails(title: string): Partial<CsvImportedProduct> {
+    const text = title.toLowerCase();
+    let productType: ProductType | undefined;
+    let productOption: string | undefined;
+    let texture: string | undefined;
+    let material: string | undefined;
+    let laceSize: string | undefined;
+
+    if (/wig/.test(text)) productType = "WIG";
+    else if (/closure|frontal/.test(text)) productType = "CLOSURE_FRONTAL";
+    else if (/bundle|weft/.test(text)) productType = "BUNDLE";
+    else if (/clip[ -]?in|tape[ -]?in|i[ -]?tip|micro.?link|ponytail|halo/.test(text)) productType = "EXTENSION";
+    else if (/braid|loc|marley|boho/.test(text)) productType = "BRAIDING_HAIR";
+
+    if (/human hair|virgin|raw hair|remy/.test(text)) material = "Human Hair";
+    if (/synthetic/.test(text)) material = "Synthetic Hair";
+
+    if (/body wave/.test(text)) texture = "Body Wave";
+    else if (/loose wave/.test(text)) texture = "Loose Wave";
+    else if (/deep wave/.test(text)) texture = "Deep Wave";
+    else if (/water wave/.test(text)) texture = "Water Wave";
+    else if (/deep curl/.test(text)) texture = "Deep Curly";
+    else if (/kinky curl/.test(text)) texture = "Kinky Curly";
+    else if (/kinky straight/.test(text)) texture = "Kinky Straight";
+    else if (/curly|curl/.test(text)) texture = "Curly";
+    else if (/straight/.test(text)) texture = "Straight";
+
+    if (productType === "WIG") {
+      if (/glueless/.test(text)) productOption = "GLUELESS";
+      else if (/closure/.test(text)) productOption = "CLOSURE_WIG";
+      else if (/frontal/.test(text)) productOption = "FRONTAL_WIG";
+      else if (/full lace/.test(text)) productOption = "FULL_LACE";
+      else if (/headband/.test(text)) productOption = "HEADBAND";
+    } else if (productType === "CLOSURE_FRONTAL") {
+      if (/360/.test(text)) productOption = "360_FRONTAL";
+      else if (/frontal/.test(text)) productOption = "FRONTAL";
+      else if (/closure/.test(text)) productOption = "CLOSURE";
+    } else if (productType === "EXTENSION") {
+      if (/clip[ -]?in/.test(text)) productOption = "CLIP_IN";
+      else if (/tape[ -]?in/.test(text)) productOption = "TAPE_IN";
+      else if (/i[ -]?tip|micro.?link/.test(text)) productOption = "I_TIP";
+      else if (/ponytail/.test(text)) productOption = "PONYTAIL";
+      else if (/halo/.test(text)) productOption = "HALO";
+    }
+
+    for (const size of laceSizes) {
+      if (text.includes(size.toLowerCase())) { laceSize = size; break; }
+    }
+
+    return { productType, productOption, texture, material, laceSize };
+  }
+
   async function handleCsvFile(
     event: ChangeEvent<HTMLInputElement>,
   ) {
@@ -4651,6 +4707,7 @@ export default function SellerAddProductPage() {
           imageUrls: Array.from(item.imageUrls).slice(0, 10),
           sourceOptionNames: item.sourceOptionNames.filter(Boolean),
           variants,
+          ...inferHairGrabDetails(item.title || ""),
         };
       });
 
@@ -4801,11 +4858,11 @@ export default function SellerAddProductPage() {
       searchClassifications: item.classification ? [item.classification] : [],
       installationMethods: item.installationMethod ? [item.installationMethod] : [],
       locType: item.locType || "",
-      density: "",
+      density: item.density || "",
       laceSize: item.laceSize || "",
-      laceType: "",
-      capSize: "",
-      bundleWeight: "100g",
+      laceType: item.laceType || "",
+      capSize: item.capSize || "",
+      bundleWeight: item.bundleWeight || "100g",
       shippingMethod: "Free Shipping",
       flatRateShipping: "",
       localPickupAvailable: false,
@@ -5645,14 +5702,14 @@ export default function SellerAddProductPage() {
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <div>
-            <div style={{ color: "#4B1678", fontSize: "15px", fontWeight: 900 }}>Bulk CSV Import</div>
+            <div style={{ color: "#4B1678", fontSize: "15px", fontWeight: 900 }}>Bulk Product Import</div>
             <div style={{ marginTop: "4px", color: "#6f6475", fontSize: "11px", lineHeight: 1.5, maxWidth: "650px" }}>
-              Upload your existing product CSV. HairGrab keeps variants together, checks what is actually importable, lets you bulk-complete HairGrab details, and creates the finished products as Shopify drafts only after you approve them.
+              Bring in an existing product catalog, then finish HairGrab-specific details without rebuilding every listing. HairGrab keeps variants together, carries over source data, suggests classifications from product names, and saves approved products to My Products as Shopify drafts.
             </div>
           </div>
 
           <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "10px", background: "#4B1678", color: "#fff", padding: "10px 14px", fontSize: "12px", fontWeight: 800, cursor: "pointer" }}>
-            Upload CSV
+            Import Catalog
             <input type="file" accept=".csv,text/csv" onChange={handleCsvFile} style={{ display: "none" }} />
           </label>
         </div>
@@ -5825,6 +5882,33 @@ export default function SellerAddProductPage() {
                               <select value={item.laceSize || ""} onChange={(event) => updateCsvProduct(item.key, { laceSize: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
                                 <option value="">Optional</option>
                                 {laceSizes.map((value) => <option key={value} value={value}>{value}</option>)}
+                              </select>
+                            </label>}
+
+                            {item.productType === "WIG" && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Density
+                              <select value={item.density || ""} onChange={(event) => updateCsvProduct(item.key, { density: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Optional</option>
+                                {densities.map((value) => <option key={value} value={value}>{value}</option>)}
+                              </select>
+                            </label>}
+
+                            {showLaceSize && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Lace Type
+                              <select value={item.laceType || ""} onChange={(event) => updateCsvProduct(item.key, { laceType: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Optional</option>
+                                {laceTypes.map((value) => <option key={value} value={value}>{value}</option>)}
+                              </select>
+                            </label>}
+
+                            {item.productType === "WIG" && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Cap Size
+                              <select value={item.capSize || ""} onChange={(event) => updateCsvProduct(item.key, { capSize: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Optional</option>
+                                {["Small", "Medium", "Large", "Adjustable"].map((value) => <option key={value} value={value}>{value}</option>)}
+                              </select>
+                            </label>}
+
+                            {item.productType === "BUNDLE" && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Bundle Weight
+                              <select value={item.bundleWeight || "100g"} onChange={(event) => updateCsvProduct(item.key, { bundleWeight: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                {["50g", "100g", "120g", "150g", "200g+"].map((value) => <option key={value} value={value}>{value}</option>)}
                               </select>
                             </label>}
                           </div>
