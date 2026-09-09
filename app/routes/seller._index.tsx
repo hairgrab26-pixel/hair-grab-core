@@ -1419,6 +1419,14 @@ export default function SellerDashboard() {
 
 
             <StoreTile
+              title="✨ HairGrab AI Assistant"
+              value="Create Better Listings"
+              text="Write product descriptions, improve titles, create social captions and get help selling on HairGrab."
+              to="/seller/ai-assistant"
+            />
+
+
+            <StoreTile
               title="Store Settings"
               value="Storefront & Fulfillment"
               text="Edit your storefront, business details, shipping and selling preferences."
