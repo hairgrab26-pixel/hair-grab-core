@@ -1364,6 +1364,19 @@ export const action =
         ) as ProductPayload;
 
       if (
+        payload.shippingMethod !==
+          "Free Shipping" &&
+        payload.shippingMethod !==
+          "Flat Rate Shipping"
+      ) {
+        return {
+          success: false,
+          message:
+            "Choose Free Shipping or Flat Rate Shipping.",
+        };
+      }
+
+      if (
         !payload.title?.trim()
       ) {
         return {
@@ -3343,7 +3356,7 @@ export default function SellerAddProductPage() {
     setShippingMethod,
   ] =
     useState(
-      "Calculated at Checkout",
+      "Free Shipping",
     );
 
   const [
@@ -6156,9 +6169,6 @@ export default function SellerAddProductPage() {
                 fieldStyle
               }
             >
-              <option value="Calculated at Checkout">
-                Calculated Shipping at Checkout
-              </option>
 
               <option value="Free Shipping">
                 Free Shipping — Seller Covers Shipping Cost
@@ -6168,27 +6178,6 @@ export default function SellerAddProductPage() {
                 Flat Rate Shipping — You Set the Rate
               </option>
             </select>
-
-            {shippingMethod ===
-              "Calculated at Checkout" && (
-              <div
-                style={{
-                  marginTop:
-                    "8px",
-
-                  color:
-                    "#6f6675",
-
-                  fontSize:
-                    "10px",
-
-                  lineHeight:
-                    "1.45",
-                }}
-              >
-                The shopper&apos;s shipping charge is calculated at checkout based on the delivery address and shipment details.
-              </div>
-            )}
 
             {shippingMethod ===
               "Free Shipping" && (

@@ -606,7 +606,7 @@ export const loader = async ({
       "shipping_charge_type",
     ) ||
     legacyShipping ||
-    "Calculated at Checkout";
+    "Free Shipping";
 
   if (
     shippingMethod.includes(
@@ -632,7 +632,7 @@ export const loader = async ({
     )
   ) {
     shippingMethod =
-      "Calculated at Checkout";
+      "Free Shipping";
   }
 
   return {
@@ -864,7 +864,7 @@ export const action = async ({
         formData.get(
           "shippingMethod",
         ) ||
-        "Calculated at Checkout",
+        "Free Shipping",
       ).trim();
 
     const flatRateShipping =
@@ -873,6 +873,19 @@ export const action = async ({
           "flatRateShipping",
         ) || "",
       ).trim();
+
+    if (
+      shippingMethod !==
+        "Free Shipping" &&
+      shippingMethod !==
+        "Flat Rate Shipping"
+    ) {
+      return {
+        success: false,
+        message:
+          "Choose Free Shipping or Flat Rate Shipping.",
+      };
+    }
 
     const shipsWithin =
       String(
@@ -1974,9 +1987,6 @@ export default function SellerEditProductPage() {
                   fieldStyle
                 }
               >
-                <option value="Calculated at Checkout">
-                  Calculated Shipping at Checkout
-                </option>
 
                 <option value="Free Shipping">
                   Free Shipping — Seller Covers Shipping Cost
