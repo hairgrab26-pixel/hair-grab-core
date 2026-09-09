@@ -85,6 +85,10 @@ type ProductPayload = {
   returnPolicy: string;
   showOnMap: string;
 
+  imageUrls?: string[];
+  sourceOptionNames?: string[];
+  csvSourceKey?: string;
+
   variants: Array<{
     label: string;
     length: string;
@@ -93,6 +97,7 @@ type ProductPayload = {
     price: string;
     inventory: string;
     sku: string;
+    sourceOptionValues?: string[];
   }>;
 };
 
@@ -1328,7 +1333,7 @@ async function stageFiles(
 export const action =
   async ({
     request,
-  }: ActionFunctionArgs) => {
+  }: ActionFunctionArgs): Promise<any> => {
     const seller =
       await getSellerFromRequest(
         request,
@@ -1345,6 +1350,67 @@ export const action =
     try {
       const formData =
         await request.formData();
+
+      const csvBatchRaw = String(formData.get("csvBatchPayload") || "");
+      if (csvBatchRaw) {
+        let batch: ProductPayload[] = [];
+        try {
+          const parsed = JSON.parse(csvBatchRaw);
+          batch = Array.isArray(parsed) ? parsed.slice(0, 100) : [];
+        } catch {
+          return {
+            success: false,
+            csvBatch: true,
+            message: "HairGrab could not read the CSV import batch.",
+            results: [],
+          };
+        }
+
+        if (batch.length === 0) {
+          return {
+            success: false,
+            csvBatch: true,
+            message: "No ready products were received for import.",
+            results: [],
+          };
+        }
+
+        const results: Array<{ key: string; title: string; success: boolean; message: string }> = [];
+        const cookie = request.headers.get("Cookie") || "";
+
+        for (const product of batch) {
+          const childForm = new FormData();
+          childForm.append("productPayload", JSON.stringify(product));
+          const childHeaders = new Headers();
+          if (cookie) childHeaders.set("Cookie", cookie);
+          const childRequest = new Request(request.url, {
+            method: "POST",
+            headers: childHeaders,
+            body: childForm,
+          });
+
+          const result = await action({ request: childRequest } as ActionFunctionArgs);
+          results.push({
+            key: String(product.csvSourceKey || product.title || ""),
+            title: String(product.title || "Untitled product"),
+            success: Boolean(result?.success),
+            message: String(result?.message || (result?.success ? "Imported" : "Import failed")),
+          });
+        }
+
+        const imported = results.filter((result) => result.success).length;
+        const failed = results.length - imported;
+        return {
+          success: failed === 0,
+          csvBatch: true,
+          message: failed === 0
+            ? `${imported} product${imported === 1 ? "" : "s"} imported successfully as Shopify drafts.`
+            : `${imported} imported · ${failed} need attention.`,
+          imported,
+          failed,
+          results,
+        };
+      }
 
       const payloadRaw =
         String(
@@ -1468,6 +1534,31 @@ export const action =
             10,
           );
 
+      // CSV imports can bring existing public image URLs with them.
+      // Download them server-side so Shopify receives the same staged
+      // upload format used by manual seller uploads.
+      const remoteImageFiles: File[] = [];
+      for (const [index, url] of (payload.imageUrls || []).slice(0, Math.max(0, 10 - imageFiles.length)).entries()) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) continue;
+          const contentType = response.headers.get("content-type") || "image/jpeg";
+          if (!contentType.toLowerCase().startsWith("image/")) continue;
+          const buffer = await response.arrayBuffer();
+          const extension =
+            contentType.includes("png") ? "png" :
+            contentType.includes("webp") ? "webp" :
+            contentType.includes("gif") ? "gif" : "jpg";
+          remoteImageFiles.push(
+            new File([buffer], `csv-image-${index + 1}.${extension}`, { type: contentType }),
+          );
+        } catch {
+          // A broken source image must not prevent the rest of the product from importing.
+        }
+      }
+
+      const allImageFiles = [...imageFiles, ...remoteImageFiles].slice(0, 10);
+
       const videoFiles =
         formData
           .getAll(
@@ -1504,7 +1595,7 @@ export const action =
       const uploadedImages =
         await stageFiles(
           admin,
-          imageFiles,
+          allImageFiles,
           "PRODUCT_IMAGE",
         );
 
@@ -1587,7 +1678,33 @@ export const action =
           }>;
         }> = [];
 
-      if (
+      const sourceOptionNames = (payload.sourceOptionNames || [])
+        .map((name) => String(name || "").trim())
+        .filter(Boolean);
+
+      const useSourceOptions =
+        sourceOptionNames.length > 0 &&
+        payload.variants.some(
+          (variant) => Array.isArray(variant.sourceOptionValues) && variant.sourceOptionValues.some(Boolean),
+        );
+
+      if (useSourceOptions) {
+        sourceOptionNames.forEach((optionName, optionIndex) => {
+          const values = Array.from(
+            new Set(
+              payload.variants
+                .map((variant) => String(variant.sourceOptionValues?.[optionIndex] || "").trim())
+                .filter(Boolean),
+            ),
+          );
+          if (values.length > 0) {
+            productOptionsInput.push({
+              name: optionName,
+              values: values.map((value) => ({ name: value })),
+            });
+          }
+        });
+      } else if (
         hairProduct &&
         uniqueLengths.length >
           0
@@ -1609,6 +1726,7 @@ export const action =
       }
 
       if (
+        !useSourceOptions &&
         payload.optionsAreVariants &&
         uniqueStyleOptions.length >
           0
@@ -1632,6 +1750,7 @@ export const action =
       }
 
       if (
+        !useSourceOptions &&
         Array.isArray(
           payload.colors,
         ) &&
@@ -1690,7 +1809,17 @@ export const action =
               }> =
               [];
 
-            if (
+            if (useSourceOptions) {
+              sourceOptionNames.forEach((optionName, optionIndex) => {
+                const value = String(variant.sourceOptionValues?.[optionIndex] || "").trim();
+                if (value) {
+                  optionValues.push({
+                    optionName,
+                    name: value,
+                  });
+                }
+              });
+            } else if (
               hairProduct &&
               variant.length
             ) {
@@ -1704,6 +1833,7 @@ export const action =
             }
 
             if (
+              !useSourceOptions &&
               payload.optionsAreVariants &&
               variant.option
             ) {
@@ -1719,6 +1849,7 @@ export const action =
             }
 
             if (
+              !useSourceOptions &&
               Array.isArray(
                 payload.colors,
               ) &&
@@ -3269,6 +3400,11 @@ export default function SellerAddProductPage() {
       typeof action
     >();
 
+  const csvImportFetcher =
+    useFetcher<
+      typeof action
+    >();
+
   const saving =
     saveFetcher.state !==
     "idle";
@@ -3352,16 +3488,30 @@ export default function SellerAddProductPage() {
   ] =
     useState("");
 
+  type CsvImportedVariant = {
+    key: string;
+    price: string;
+    inventory: string;
+    sku: string;
+    sourceOptionValues: string[];
+  };
+
   type CsvImportedProduct = {
     key: string;
     title: string;
+    description: string;
     rows: number;
     status: string;
     skuCount: number;
     variantCount: number;
+    imageUrls: string[];
+    sourceOptionNames: string[];
+    variants: CsvImportedVariant[];
     productType?: ProductType;
     material?: string;
     texture?: string;
+    imported?: boolean;
+    importError?: string;
   };
 
   const [
@@ -3381,6 +3531,14 @@ export default function SellerAddProductPage() {
   const [csvBulkProductType, setCsvBulkProductType] = useState<ProductType | "">("");
   const [csvBulkMaterial, setCsvBulkMaterial] = useState("");
   const [csvBulkTexture, setCsvBulkTexture] = useState("");
+  const [csvEditingKey, setCsvEditingKey] = useState<string | null>(null);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvImportProgress, setCsvImportProgress] = useState("");
+  const [csvImportSummary, setCsvImportSummary] = useState<{
+    imported: number;
+    failed: number;
+    failures: string[];
+  } | null>(null);
 
   // HairGrab keeps this dumb easy:
   // selecting 2+ product options automatically turns those
@@ -4267,31 +4425,53 @@ export default function SellerAddProductPage() {
       0 &&
     hasPrices;
 
-  function parseCsvLine(line: string) {
-    const values: string[] = [];
-    let current = "";
+  function parseCsvText(text: string) {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let cell = "";
     let quoted = false;
 
-    for (let index = 0; index < line.length; index++) {
-      const char = line[index];
+    for (let index = 0; index < text.length; index++) {
+      const char = text[index];
 
       if (char === '"') {
-        if (quoted && line[index + 1] === '"') {
-          current += '"';
+        if (quoted && text[index + 1] === '"') {
+          cell += '"';
           index++;
         } else {
           quoted = !quoted;
         }
-      } else if (char === "," && !quoted) {
-        values.push(current.trim());
-        current = "";
-      } else {
-        current += char;
+        continue;
       }
+
+      if (char === "," && !quoted) {
+        row.push(cell.trim());
+        cell = "";
+        continue;
+      }
+
+      if ((char === "\n" || char === "\r") && !quoted) {
+        if (char === "\r" && text[index + 1] === "\n") index++;
+        row.push(cell.trim());
+        cell = "";
+        if (row.some((value) => value.length > 0)) rows.push(row);
+        row = [];
+        continue;
+      }
+
+      cell += char;
     }
 
-    values.push(current.trim());
-    return values;
+    if (cell.length > 0 || row.length > 0) {
+      row.push(cell.trim());
+      if (row.some((value) => value.length > 0)) rows.push(row);
+    }
+
+    return rows;
+  }
+
+  function normalizeCsvHeader(value: string) {
+    return value.toLowerCase().replace(/[^a-z0-9]/g, "");
   }
 
   async function handleCsvFile(
@@ -4307,32 +4487,30 @@ export default function SellerAddProductPage() {
     }
 
     setCsvFileName(file.name);
+    setCsvImportSummary(null);
+    setCsvImportProgress("");
 
     const text = await file.text();
-    const lines = text
-      .split(/\r?\n/)
-      .filter((line) => line.trim().length > 0);
+    const csvRows = parseCsvText(text);
 
-    if (lines.length < 2) {
+    if (csvRows.length < 2) {
       setCsvPreview({ rows: 0, products: 0, recognized: [], ready: 0, needsDetails: 0, items: [] });
       setCsvReviewOpen(true);
       return;
     }
 
-    const headers = parseCsvLine(lines[0]);
-    const normalized = headers.map((header) =>
-      header.toLowerCase().replace(/[^a-z0-9]/g, ""),
-    );
+    const headers = csvRows[0];
+    const normalized = headers.map(normalizeCsvHeader);
 
     const commonColumns: Array<[string, string[]]> = [
       ["Title", ["title", "name", "productname"]],
       ["Description", ["bodyhtml", "description", "body"]],
       ["SKU", ["variantsku", "sku"]],
       ["Price", ["variantprice", "price"]],
-      ["Inventory", ["variantinventoryqty", "inventory", "quantity", "stock"]],
+      ["Inventory", ["variantinventoryqty", "inventory", "quantity", "stock", "available"]],
       ["Handle / Product ID", ["handle", "productid", "parentid"]],
       ["Status", ["status", "published"]],
-      ["Image", ["imagesrc", "imageurl", "image"]],
+      ["Image", ["imagesrc", "imageurl", "image", "src"]],
       ["Option / Variant", ["option1value", "variant", "variation"]],
     ];
 
@@ -4345,69 +4523,184 @@ export default function SellerAddProductPage() {
 
     const handleIndex = findColumn(["handle", "productid", "parentid"]);
     const titleIndex = findColumn(["title", "name", "productname"]);
+    const descriptionIndex = findColumn(["bodyhtml", "description", "body"]);
     const statusIndex = findColumn(["status", "published"]);
     const skuIndex = findColumn(["variantsku", "sku"]);
     const priceIndex = findColumn(["variantprice", "price"]);
-    const optionIndex = findColumn(["option1value", "variant", "variation"]);
+    const inventoryIndex = findColumn(["variantinventoryqty", "inventory", "quantity", "stock", "available"]);
+    const imageIndex = findColumn(["imagesrc", "imageurl", "image", "src"]);
 
-    const grouped = new Map<string, { title: string; rows: number; status: string; skus: Set<string>; variants: Set<string>; hasPrice: boolean }>();
+    const optionNameIndexes = [
+      findColumn(["option1name"]),
+      findColumn(["option2name"]),
+      findColumn(["option3name"]),
+    ];
+    const optionValueIndexes = [
+      findColumn(["option1value", "variant", "variation"]),
+      findColumn(["option2value"]),
+      findColumn(["option3value"]),
+    ];
 
-    for (let index = 1; index < lines.length; index++) {
-      const row = parseCsvLine(lines[index]);
-      const key = (handleIndex >= 0 ? row[handleIndex] : "") || (titleIndex >= 0 ? row[titleIndex] : "") || `row-${index}`;
+    type Group = {
+      key: string;
+      title: string;
+      description: string;
+      rows: number;
+      status: string;
+      imageUrls: Set<string>;
+      sourceOptionNames: string[];
+      variants: CsvImportedVariant[];
+    };
+
+    const grouped = new Map<string, Group>();
+    let lastParentKey = "";
+
+    for (let index = 1; index < csvRows.length; index++) {
+      const row = csvRows[index];
+      const rawHandle = handleIndex >= 0 ? String(row[handleIndex] || "").trim() : "";
+      const rawTitle = titleIndex >= 0 ? String(row[titleIndex] || "").trim() : "";
+
+      // Shopify variant/image continuation rows commonly repeat the handle while
+      // leaving the title blank. If a source omits both, keep it with the most
+      // recent parent rather than silently turning the row into a new product.
+      const key = rawHandle || rawTitle || lastParentKey || `row-${index}`;
+      lastParentKey = key;
+
       const current = grouped.get(key) || {
-        title: (titleIndex >= 0 ? row[titleIndex] : "") || key,
+        key,
+        title: rawTitle || key,
+        description: "",
         rows: 0,
-        status: (statusIndex >= 0 ? row[statusIndex] : "") || "Unknown",
-        skus: new Set<string>(),
-        variants: new Set<string>(),
-        hasPrice: false,
+        status: statusIndex >= 0 ? String(row[statusIndex] || "Unknown") : "Unknown",
+        imageUrls: new Set<string>(),
+        sourceOptionNames: [],
+        variants: [],
       };
+
       current.rows += 1;
-      if (!current.title && titleIndex >= 0) current.title = row[titleIndex] || key;
-      if (skuIndex >= 0 && row[skuIndex]) current.skus.add(row[skuIndex]);
-      if (optionIndex >= 0 && row[optionIndex]) current.variants.add(row[optionIndex]);
-      if (priceIndex >= 0 && Number(row[priceIndex]) > 0) current.hasPrice = true;
+      if (rawTitle) current.title = rawTitle;
+      if (descriptionIndex >= 0 && row[descriptionIndex] && !current.description) {
+        current.description = String(row[descriptionIndex]).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      }
+      if (statusIndex >= 0 && row[statusIndex]) current.status = String(row[statusIndex]);
+      if (imageIndex >= 0 && /^https?:\/\//i.test(String(row[imageIndex] || "").trim())) {
+        current.imageUrls.add(String(row[imageIndex]).trim());
+      }
+
+      const optionNames = optionNameIndexes.map((columnIndex, optionIndex) => {
+        const supplied = columnIndex >= 0 ? String(row[columnIndex] || "").trim() : "";
+        if (supplied) return supplied;
+        const hasValue = optionValueIndexes[optionIndex] >= 0 && String(row[optionValueIndexes[optionIndex]] || "").trim();
+        return hasValue ? `Option ${optionIndex + 1}` : "";
+      });
+
+      optionNames.forEach((name, optionIndex) => {
+        if (name && !current.sourceOptionNames[optionIndex]) current.sourceOptionNames[optionIndex] = name;
+      });
+
+      const sourceOptionValues = optionValueIndexes.map((columnIndex) =>
+        columnIndex >= 0 ? String(row[columnIndex] || "").trim() : "",
+      );
+      const sku = skuIndex >= 0 ? String(row[skuIndex] || "").trim() : "";
+      const price = priceIndex >= 0 ? String(row[priceIndex] || "").replace(/[$,]/g, "").trim() : "";
+      const inventory = inventoryIndex >= 0 ? String(row[inventoryIndex] || "").replace(/,/g, "").trim() : "";
+
+      const hasVariantData = Boolean(
+        sku || price || inventory || sourceOptionValues.some(Boolean),
+      );
+
+      if (hasVariantData) {
+        current.variants.push({
+          key: `${key}::${index}`,
+          price,
+          inventory,
+          sku,
+          sourceOptionValues,
+        });
+      }
+
       grouped.set(key, current);
     }
 
-    const items: CsvImportedProduct[] = Array.from(grouped.entries()).map(([key, item]) => ({
-      key,
-      title: item.title || "Untitled product",
-      rows: item.rows,
-      status: item.status,
-      skuCount: item.skus.size,
-      variantCount: Math.max(item.variants.size, item.rows > 1 ? item.rows : 1),
-    }));
+    const items: CsvImportedProduct[] = Array.from(grouped.values())
+      .filter((item) => {
+        const status = item.status.toLowerCase().trim();
+        return status !== "draft" && status !== "archived";
+      })
+      .map((item) => {
+        const variants = item.variants.length > 0
+          ? item.variants
+          : [{ key: `${item.key}::standard`, price: "", inventory: "", sku: "", sourceOptionValues: [] }];
+        const skus = new Set(variants.map((variant) => variant.sku).filter(Boolean));
+        return {
+          key: item.key,
+          title: item.title || "Untitled product",
+          description: item.description,
+          rows: item.rows,
+          status: item.status || "Unknown",
+          skuCount: skus.size,
+          variantCount: variants.length,
+          imageUrls: Array.from(item.imageUrls).slice(0, 10),
+          sourceOptionNames: item.sourceOptionNames.filter(Boolean),
+          variants,
+        };
+      });
 
-    // Common commerce data can be read from the CSV, but every imported product
-    // still needs HairGrab-specific classification before publishing.
-    const needsDetails = items.length;
+    const counts = refreshCsvCounts(items);
 
     setCsvPreview({
-      rows: Math.max(0, lines.length - 1),
+      rows: Math.max(0, csvRows.length - 1),
       products: items.length,
       recognized,
-      ready: 0,
-      needsDetails,
+      ...counts,
       items,
     });
     setCsvSelectedKeys(items.map((item) => item.key));
     setCsvBulkProductType("");
     setCsvBulkMaterial("");
     setCsvBulkTexture("");
+    setCsvEditingKey(null);
     setCsvReviewOpen(true);
+    event.target.value = "";
+  }
+
+  function csvMissingDetails(item: CsvImportedProduct) {
+    const missing: string[] = [];
+    if (!item.title.trim()) missing.push("product name");
+    if (!item.productType) missing.push("product type");
+    if (item.productType && item.productType !== "HAIR_ESSENTIAL") {
+      if (!item.material) missing.push("hair material");
+      if (!item.texture) missing.push("texture");
+    }
+    const pricedVariants = item.variants.filter((variant) => {
+      const price = Number(variant.price);
+      return Number.isFinite(price) && price >= 0 && String(variant.price).trim() !== "";
+    }).length;
+    if (pricedVariants !== item.variants.length) {
+      missing.push(
+        item.variants.length === 1 ? "price" : `${item.variants.length - pricedVariants} variant price${item.variants.length - pricedVariants === 1 ? "" : "s"}`,
+      );
+    }
+    return missing;
+  }
+
+  function csvWarnings(item: CsvImportedProduct) {
+    const warnings: string[] = [];
+    if (!item.description.trim()) warnings.push("no description in source CSV");
+    if (item.imageUrls.length === 0) warnings.push("no product images in source CSV");
+    if (item.status.toLowerCase() === "unknown") warnings.push("source status not provided");
+    return warnings;
   }
 
   function csvItemReady(item: CsvImportedProduct) {
-    if (!item.productType) return false;
-    if (item.productType === "HAIR_ESSENTIAL") return true;
-    return Boolean(item.material && item.texture);
+    return !item.imported && csvMissingDetails(item).length === 0;
   }
 
   function refreshCsvCounts(items: CsvImportedProduct[]) {
-    const ready = items.filter(csvItemReady).length;
-    return { ready, needsDetails: items.length - ready };
+    const notImported = items.filter((item) => !item.imported);
+    const ready = notImported.filter(csvItemReady).length;
+    const needsDetails = notImported.filter((item) => !csvItemReady(item)).length;
+    return { ready, needsDetails };
   }
 
   function applyCsvBulkDetails() {
@@ -4415,8 +4708,8 @@ export default function SellerAddProductPage() {
 
     const selected = new Set(csvSelectedKeys);
     const items = csvPreview.items.map((item) => {
-      if (!selected.has(item.key)) return item;
-      const next = { ...item };
+      if (!selected.has(item.key) || item.imported) return item;
+      const next = { ...item, importError: undefined };
       if (csvBulkProductType) next.productType = csvBulkProductType;
       if (csvBulkMaterial) next.material = csvBulkMaterial;
       if (csvBulkTexture) next.texture = csvBulkTexture;
@@ -4431,6 +4724,137 @@ export default function SellerAddProductPage() {
       current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
     );
   }
+
+  function updateCsvProduct(key: string, changes: Partial<CsvImportedProduct>) {
+    if (!csvPreview) return;
+    const items = csvPreview.items.map((item) =>
+      item.key === key ? { ...item, ...changes, importError: undefined } : item,
+    );
+    setCsvPreview({ ...csvPreview, items, ...refreshCsvCounts(items) });
+  }
+
+  function updateCsvVariant(productKey: string, variantKey: string, field: "price" | "inventory" | "sku", value: string) {
+    if (!csvPreview) return;
+    const items = csvPreview.items.map((item) => {
+      if (item.key !== productKey) return item;
+      return {
+        ...item,
+        importError: undefined,
+        variants: item.variants.map((variant) =>
+          variant.key === variantKey ? { ...variant, [field]: value } : variant,
+        ),
+      };
+    });
+    setCsvPreview({ ...csvPreview, items, ...refreshCsvCounts(items) });
+  }
+
+  function csvProductPayload(item: CsvImportedProduct): ProductPayload {
+    const colorOptionIndex = item.sourceOptionNames.findIndex((name) => /color|colour/i.test(name));
+    const lengthOptionIndex = item.sourceOptionNames.findIndex((name) => /length|size/i.test(name));
+    const colors = colorOptionIndex >= 0
+      ? Array.from(new Set(item.variants.map((variant) => variant.sourceOptionValues[colorOptionIndex]).filter(Boolean)))
+      : ["Natural / 1B"];
+
+    return {
+      title: item.title.trim(),
+      description: item.description.trim() || `${item.title.trim()} — imported from the seller's existing catalog. Review this description before publishing.`,
+      productType: item.productType as ProductType,
+      material: item.productType === "HAIR_ESSENTIAL" ? "Not Applicable" : String(item.material || ""),
+      colors: colors.length > 0 ? colors : ["Natural / 1B"],
+      texture: item.productType === "HAIR_ESSENTIAL" ? "Not Applicable" : String(item.texture || ""),
+      selectedOptions: [],
+      optionsAreVariants: false,
+      searchClassifications: [],
+      installationMethods: [],
+      locType: "",
+      density: "",
+      laceSize: "",
+      laceType: "",
+      capSize: "",
+      bundleWeight: "100g",
+      shippingMethod: "Free Shipping",
+      flatRateShipping: "",
+      localPickupAvailable: false,
+      localDeliveryAvailable: false,
+      shipsWithin: "48 Hours",
+      returnPolicy: "14-Day Returns",
+      showOnMap: "Yes",
+      imageUrls: item.imageUrls,
+      sourceOptionNames: item.sourceOptionNames,
+      variants: item.variants.map((variant, index) => {
+        const rawLength = lengthOptionIndex >= 0 ? variant.sourceOptionValues[lengthOptionIndex] || "" : "";
+        const numericLength = rawLength.match(/\d+(?:\.\d+)?/)?.[0] || "";
+        return {
+          label: variant.sourceOptionValues.filter(Boolean).join(" / ") || `Variant ${index + 1}`,
+          length: numericLength,
+          option: "",
+          color: colorOptionIndex >= 0 ? variant.sourceOptionValues[colorOptionIndex] || colors[0] || "Natural / 1B" : colors[0] || "Natural / 1B",
+          price: variant.price,
+          inventory: variant.inventory,
+          sku: variant.sku,
+          sourceOptionValues: variant.sourceOptionValues,
+        };
+      }),
+    };
+  }
+
+  function importReadyCsvProducts() {
+    if (!csvPreview || csvImporting) return;
+    const readyItems = csvPreview.items.filter(csvItemReady);
+    if (readyItems.length === 0) return;
+
+    const payloads = readyItems.map((item) => ({
+      ...csvProductPayload(item),
+      csvSourceKey: item.key,
+    }));
+
+    const formData = new FormData();
+    formData.append("csvBatchPayload", JSON.stringify(payloads));
+    setCsvImporting(true);
+    setCsvImportSummary(null);
+    setCsvImportProgress(`Importing ${readyItems.length} ready product${readyItems.length === 1 ? "" : "s"}...`);
+    csvImportFetcher.submit(formData, { method: "post" });
+  }
+
+  useEffect(() => {
+    const result = csvImportFetcher.data as any;
+    if (!result?.csvBatch || !csvPreview) return;
+
+    const resultByKey = new Map<string, any>(
+      Array.isArray(result.results)
+        ? result.results.map((entry: any) => [String(entry.key || ""), entry])
+        : [],
+    );
+
+    const items = csvPreview.items.map((item) => {
+      const entry = resultByKey.get(item.key);
+      if (!entry) return item;
+      return entry.success
+        ? { ...item, imported: true, importError: undefined }
+        : { ...item, importError: String(entry.message || "Import failed") };
+    });
+
+    const failures = Array.isArray(result.results)
+      ? result.results
+          .filter((entry: any) => !entry.success)
+          .map((entry: any) => `${entry.title}: ${entry.message}`)
+      : [];
+
+    setCsvPreview({ ...csvPreview, items, ...refreshCsvCounts(items) });
+    setCsvImportSummary({
+      imported: Number(result.imported || 0),
+      failed: Number(result.failed || failures.length || 0),
+      failures,
+    });
+    setCsvSelectedKeys((current) =>
+      current.filter((key) => !items.find((item) => item.key === key)?.imported),
+    );
+    setCsvImportProgress("");
+    setCsvImporting(false);
+  // We intentionally react only when the batch fetcher receives a new result.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [csvImportFetcher.data]);
+
 
   function saveProduct() {
     if (
@@ -5185,119 +5609,75 @@ export default function SellerAddProductPage() {
           background: "#fbf8fd",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: "12px",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <div>
-            <div
-              style={{
-                color: "#4B1678",
-                fontSize: "15px",
-                fontWeight: "900",
-              }}
-            >
-              Bulk CSV Import
-            </div>
-            <div
-              style={{
-                marginTop: "4px",
-                color: "#6f6475",
-                fontSize: "11px",
-                lineHeight: 1.5,
-                maxWidth: "620px",
-              }}
-            >
-              Already have products in another store? Upload the CSV you already have. HairGrab will recognize common product fields and keep variant rows grouped under one product.
+            <div style={{ color: "#4B1678", fontSize: "15px", fontWeight: 900 }}>Bulk CSV Import</div>
+            <div style={{ marginTop: "4px", color: "#6f6475", fontSize: "11px", lineHeight: 1.5, maxWidth: "650px" }}>
+              Upload your existing product CSV. HairGrab keeps variants together, checks what is actually importable, lets you bulk-complete HairGrab details, and creates the finished products as Shopify drafts only after you approve them.
             </div>
           </div>
 
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: "10px",
-              background: "#4B1678",
-              color: "#ffffff",
-              padding: "10px 14px",
-              fontSize: "12px",
-              fontWeight: "800",
-              cursor: "pointer",
-            }}
-          >
+          <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "10px", background: "#4B1678", color: "#fff", padding: "10px 14px", fontSize: "12px", fontWeight: 800, cursor: "pointer" }}>
             Upload CSV
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={handleCsvFile}
-              style={{ display: "none" }}
-            />
+            <input type="file" accept=".csv,text/csv" onChange={handleCsvFile} style={{ display: "none" }} />
           </label>
         </div>
 
-        {csvFileName && (
-          <div
-            style={{
-              marginTop: "12px",
-              padding: "11px 12px",
-              borderRadius: "10px",
-              background: "#ffffff",
-              border: "1px solid #eee4f2",
-              fontSize: "11px",
-              color: "#4b3f50",
-            }}
-          >
+        {csvFileName && csvPreview && (
+          <div style={{ marginTop: "12px", padding: "12px", borderRadius: "10px", background: "#fff", border: "1px solid #eee4f2", fontSize: "11px", color: "#4b3f50" }}>
             <strong>{csvFileName}</strong>
-            {csvPreview && (
-              <div style={{ marginTop: "6px", lineHeight: 1.6 }}>
-                {csvPreview.products} product{csvPreview.products === 1 ? "" : "s"} found · {csvPreview.rows} CSV row{csvPreview.rows === 1 ? "" : "s"}
-                <br />
-                Recognized: {csvPreview.recognized.length > 0 ? csvPreview.recognized.join(", ") : "No common product columns recognized yet"}
-                <br />
-                <span style={{ color: "#7d7480" }}>
-                  HairGrab-specific details such as product type, texture, loc type, and fulfillment will be completed before anything is published.
-                </span>
-                <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#eef8f0", color: "#276236", fontWeight: 800 }}>
-                    {csvPreview.ready} ready
-                  </span>
-                  <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#fff5df", color: "#7a5410", fontWeight: 800 }}>
-                    {csvPreview.needsDetails} need HairGrab details
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCsvReviewOpen((current) => !current)}
-                  style={{ marginTop: "10px", border: 0, borderRadius: "9px", background: "#4B1678", color: "white", padding: "9px 12px", fontWeight: 800, cursor: "pointer" }}
-                >
-                  {csvReviewOpen ? "Hide Product Review" : "Review & Complete Products"}
-                </button>
+            <div style={{ marginTop: "5px", lineHeight: 1.6 }}>
+              {csvPreview.products} product{csvPreview.products === 1 ? "" : "s"} found · {csvPreview.rows} CSV row{csvPreview.rows === 1 ? "" : "s"}
+              <br />
+              Recognized: {csvPreview.recognized.length > 0 ? csvPreview.recognized.join(", ") : "No common product columns recognized"}
+            </div>
+
+            {!csvPreview.recognized.includes("Price") && (
+              <div style={{ marginTop: "10px", padding: "10px", borderRadius: "9px", background: "#fff4e5", color: "#7a4d00", lineHeight: 1.5 }}>
+                <strong>This CSV does not include product prices.</strong> HairGrab will not call a product ready until every variant has a price. You can enter missing prices below, or upload a full product export. Shopify Inventory Export files often contain inventory/SKUs but not the product price, description, or images.
               </div>
             )}
+
+            <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#eef8f0", color: "#276236", fontWeight: 800 }}>
+                {csvPreview.ready} ready to import
+              </span>
+              <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#fff5df", color: "#7a5410", fontWeight: 800 }}>
+                {csvPreview.needsDetails} need information
+              </span>
+              <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#f3eef6", color: "#4B1678", fontWeight: 800 }}>
+                {csvPreview.items.filter((item) => item.imported).length} imported
+              </span>
+            </div>
+
+            <button type="button" onClick={() => setCsvReviewOpen((current) => !current)} style={{ marginTop: "10px", border: 0, borderRadius: "9px", background: "#4B1678", color: "white", padding: "9px 12px", fontWeight: 800, cursor: "pointer" }}>
+              {csvReviewOpen ? "Hide Product Review" : "Review & Complete Products"}
+            </button>
           </div>
         )}
 
         {csvPreview && csvReviewOpen && (
           <div style={{ marginTop: "12px", background: "white", border: "1px solid #e8deec", borderRadius: "12px", padding: "12px" }}>
-            <div style={{ color: "#4B1678", fontWeight: 900, fontSize: "14px" }}>Review & complete imported products</div>
+            <div style={{ color: "#4B1678", fontWeight: 900, fontSize: "14px" }}>1. Review source data → 2. Bulk-complete HairGrab details → 3. Import</div>
             <div style={{ marginTop: "4px", fontSize: "11px", color: "#6f6475", lineHeight: 1.5 }}>
-              Select products, then apply the same HairGrab details to all of them at once. Variants stay grouped under their parent product.
+              “Ready to import” now means HairGrab has a product name, all required HairGrab classification, and a valid price for every variant. Images and descriptions are shown as warnings instead of being silently assumed.
             </div>
 
             <div style={{ marginTop: "12px", padding: "12px", borderRadius: "11px", background: "#faf7fb", border: "1px solid #eee4f2" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                <strong style={{ color: "#4B1678", fontSize: "12px" }}>Bulk Complete HairGrab Details</strong>
-                <button type="button" onClick={() => setCsvSelectedKeys(csvSelectedKeys.length === csvPreview.items.length ? [] : csvPreview.items.map((item) => item.key))} style={{ border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "8px", padding: "7px 10px", fontWeight: 800, cursor: "pointer", fontSize: "11px" }}>
-                  {csvSelectedKeys.length === csvPreview.items.length ? "Clear All" : "Select All"}
+                <strong style={{ color: "#4B1678", fontSize: "12px" }}>Bulk Complete Similar Products</strong>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const available = csvPreview.items.filter((item) => !item.imported).map((item) => item.key);
+                    setCsvSelectedKeys(csvSelectedKeys.length === available.length ? [] : available);
+                  }}
+                  style={{ border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "8px", padding: "7px 10px", fontWeight: 800, cursor: "pointer", fontSize: "11px" }}
+                >
+                  {csvSelectedKeys.length === csvPreview.items.filter((item) => !item.imported).length ? "Clear All" : "Select All"}
                 </button>
               </div>
-              <div style={{ marginTop: "8px", fontSize: "10px", color: "#766b79" }}>{csvSelectedKeys.length} product{csvSelectedKeys.length === 1 ? "" : "s"} selected</div>
+              <div style={{ marginTop: "8px", fontSize: "10px", color: "#766b79" }}>{csvSelectedKeys.length} selected. Select only products that share the same details.</div>
 
               <div style={{ marginTop: "10px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "10px" }}>
                 <label style={{ fontSize: "11px", fontWeight: 800, color: "#4B1678" }}>Product Type
@@ -5324,33 +5704,99 @@ export default function SellerAddProductPage() {
               </button>
             </div>
 
-            <div style={{ marginTop: "10px", display: "grid", gap: "8px", maxHeight: "360px", overflowY: "auto" }}>
+            <div style={{ marginTop: "10px", display: "grid", gap: "8px", maxHeight: "540px", overflowY: "auto" }}>
               {csvPreview.items.map((item) => {
-                const ready = csvItemReady(item);
+                const missing = csvMissingDetails(item);
+                const warnings = csvWarnings(item);
+                const readyToImport = csvItemReady(item);
+                const priced = item.variants.filter((variant) => String(variant.price).trim() !== "" && Number.isFinite(Number(variant.price))).length;
+                const editing = csvEditingKey === item.key;
+
                 return (
-                  <label key={item.key} style={{ border: "1px solid #eee4f2", borderRadius: "10px", padding: "10px 11px", display: "flex", gap: "10px", alignItems: "center", cursor: "pointer" }}>
-                    <input type="checkbox" checked={csvSelectedKeys.includes(item.key)} onChange={() => toggleCsvProduct(item.key)} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: 850, color: "#2e2432" }}>{item.title}</div>
-                      <div style={{ marginTop: "3px", fontSize: "10px", color: "#766b79" }}>
-                        {item.variantCount} variant{item.variantCount === 1 ? "" : "s"}{item.skuCount > 0 ? ` · ${item.skuCount} SKU${item.skuCount === 1 ? "" : "s"}` : ""}
+                  <div key={item.key} style={{ border: item.importError ? "1px solid #e9b9b9" : "1px solid #eee4f2", borderRadius: "10px", padding: "10px 11px", background: item.imported ? "#f5fbf6" : "white" }}>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
+                      <input type="checkbox" disabled={Boolean(item.imported)} checked={csvSelectedKeys.includes(item.key)} onChange={() => toggleCsvProduct(item.key)} style={{ marginTop: "3px" }} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 850, color: "#2e2432" }}>{item.title}</div>
+                        <div style={{ marginTop: "3px", fontSize: "10px", color: "#766b79", lineHeight: 1.45 }}>
+                          {item.variantCount} variant{item.variantCount === 1 ? "" : "s"} · {priced}/{item.variantCount} priced · {item.skuCount} SKU{item.skuCount === 1 ? "" : "s"} · {item.imageUrls.length} image{item.imageUrls.length === 1 ? "" : "s"} · Source status: {item.status}
+                        </div>
+                        {(item.productType || item.material || item.texture) && (
+                          <div style={{ marginTop: "4px", fontSize: "10px", color: "#4B1678" }}>
+                            {[productTypes.find((type) => type.value === item.productType)?.label, item.material, item.texture].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
+                        {missing.length > 0 && <div style={{ marginTop: "4px", fontSize: "10px", color: "#8a5d09" }}>Still needed: {missing.join(", ")}</div>}
+                        {warnings.length > 0 && <div style={{ marginTop: "3px", fontSize: "10px", color: "#7d7480" }}>Review warning: {warnings.join(" · ")}</div>}
+                        {item.importError && <div style={{ marginTop: "4px", fontSize: "10px", color: "#a22727" }}>Import failed: {item.importError}</div>}
                       </div>
-                      {(item.productType || item.material || item.texture) && <div style={{ marginTop: "4px", fontSize: "10px", color: "#4B1678" }}>
-                        {[productTypes.find((type) => type.value === item.productType)?.label, item.material, item.texture].filter(Boolean).join(" · ")}
-                      </div>}
+
+                      <div style={{ display: "grid", gap: "6px", justifyItems: "end" }}>
+                        <span style={{ whiteSpace: "nowrap", padding: "5px 8px", borderRadius: "999px", background: item.imported ? "#e7f5ea" : readyToImport ? "#eef8f0" : "#fff5df", color: item.imported ? "#276236" : readyToImport ? "#276236" : "#7a5410", fontSize: "10px", fontWeight: 850 }}>
+                          {item.imported ? "✓ Imported" : readyToImport ? "Ready to import" : "Needs information"}
+                        </span>
+                        {!item.imported && (
+                          <button type="button" onClick={() => setCsvEditingKey(editing ? null : item.key)} style={{ border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "7px", padding: "6px 8px", fontSize: "10px", fontWeight: 800, cursor: "pointer" }}>
+                            {editing ? "Close" : "Review / Edit"}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <span style={{ whiteSpace: "nowrap", padding: "5px 8px", borderRadius: "999px", background: ready ? "#eef8f0" : "#fff5df", color: ready ? "#276236" : "#7a5410", fontSize: "10px", fontWeight: 850 }}>
-                      {ready ? "Ready" : "Needs HairGrab details"}
-                    </span>
-                  </label>
+
+                    {editing && !item.imported && (
+                      <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #eee4f2" }}>
+                        <label style={{ fontSize: "10px", fontWeight: 800, color: "#4B1678" }}>Product Name
+                          <input value={item.title} onChange={(event) => updateCsvProduct(item.key, { title: event.target.value })} style={{ ...fieldStyle, marginTop: "4px" }} />
+                        </label>
+                        <label style={{ display: "block", marginTop: "8px", fontSize: "10px", fontWeight: 800, color: "#4B1678" }}>Description
+                          <textarea rows={3} value={item.description} onChange={(event) => updateCsvProduct(item.key, { description: event.target.value })} placeholder="Optional during import; HairGrab will keep this product as a draft for final review." style={{ ...fieldStyle, marginTop: "4px" }} />
+                        </label>
+
+                        <div style={{ marginTop: "10px", fontSize: "10px", fontWeight: 850, color: "#4B1678" }}>Variants — every variant needs a price before import</div>
+                        <div style={{ marginTop: "6px", display: "grid", gap: "6px" }}>
+                          {item.variants.map((variant, variantIndex) => (
+                            <div key={variant.key} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1.4fr) repeat(3, minmax(80px, 1fr))", gap: "6px", alignItems: "center", fontSize: "10px" }}>
+                              <div style={{ color: "#5f5364" }}>
+                                {variant.sourceOptionValues.filter(Boolean).join(" / ") || `Variant ${variantIndex + 1}`}
+                              </div>
+                              <input aria-label="Price" placeholder="Price" inputMode="decimal" value={variant.price} onChange={(event) => updateCsvVariant(item.key, variant.key, "price", event.target.value.replace(/[^0-9.]/g, ""))} style={{ ...fieldStyle, padding: "8px" }} />
+                              <input aria-label="Inventory" placeholder="Qty" inputMode="numeric" value={variant.inventory} onChange={(event) => updateCsvVariant(item.key, variant.key, "inventory", event.target.value.replace(/[^0-9-]/g, ""))} style={{ ...fieldStyle, padding: "8px" }} />
+                              <input aria-label="SKU" placeholder="SKU" value={variant.sku} onChange={(event) => updateCsvVariant(item.key, variant.key, "sku", event.target.value)} style={{ ...fieldStyle, padding: "8px" }} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
 
-            <div style={{ marginTop: "12px", padding: "10px", borderRadius: "10px", background: csvPreview.needsDetails === 0 ? "#eef8f0" : "#faf7fb", fontSize: "11px", color: csvPreview.needsDetails === 0 ? "#276236" : "#5f5364", lineHeight: 1.5 }}>
-              {csvPreview.needsDetails === 0
-                ? `✓ All ${csvPreview.ready} products have the basic HairGrab classification. Next: final validation and Import Products.`
-                : `${csvPreview.ready} ready · ${csvPreview.needsDetails} still need HairGrab details. Group similar products, apply their details once, then move to the next group.`}
+            <div style={{ marginTop: "12px", padding: "12px", borderRadius: "10px", background: "#faf7fb", border: "1px solid #eee4f2" }}>
+              <div style={{ fontSize: "11px", color: "#5f5364", lineHeight: 1.5 }}>
+                <strong style={{ color: "#4B1678" }}>Final validation:</strong> {csvPreview.ready} ready to import · {csvPreview.needsDetails} still need information. Imported products are created as <strong>Shopify drafts</strong>, so nothing goes live before you review it.
+              </div>
+
+              <button
+                type="button"
+                disabled={csvImporting || csvPreview.ready === 0}
+                onClick={() => void importReadyCsvProducts()}
+                style={{ marginTop: "10px", width: "100%", border: 0, borderRadius: "10px", background: "#4B1678", color: "white", padding: "12px 14px", fontWeight: 900, cursor: csvImporting || csvPreview.ready === 0 ? "not-allowed" : "pointer", opacity: csvImporting || csvPreview.ready === 0 ? 0.55 : 1 }}
+              >
+                {csvImporting ? "Importing Products..." : `Import ${csvPreview.ready} Ready Product${csvPreview.ready === 1 ? "" : "s"}`}
+              </button>
+
+              {csvImportProgress && <div style={{ marginTop: "8px", fontSize: "10px", color: "#4B1678" }}>{csvImportProgress}</div>}
+
+              {csvImportSummary && (
+                <div style={{ marginTop: "10px", padding: "10px", borderRadius: "9px", background: csvImportSummary.failed === 0 ? "#eef8f0" : "#fff4e5", color: csvImportSummary.failed === 0 ? "#276236" : "#7a4d00", fontSize: "11px", lineHeight: 1.5 }}>
+                  <strong>{csvImportSummary.imported} product{csvImportSummary.imported === 1 ? "" : "s"} imported successfully.</strong>
+                  {csvImportSummary.failed > 0 && <> {csvImportSummary.failed} failed and remain available to fix/retry.</>}
+                  {csvImportSummary.failures.length > 0 && (
+                    <div style={{ marginTop: "6px" }}>{csvImportSummary.failures.slice(0, 5).map((failure) => <div key={failure}>• {failure}</div>)}</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
