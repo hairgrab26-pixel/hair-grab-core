@@ -3510,6 +3510,12 @@ export default function SellerAddProductPage() {
     productType?: ProductType;
     material?: string;
     texture?: string;
+    productOption?: string;
+    classification?: string;
+    installationMethod?: string;
+    locType?: string;
+    laceSize?: string;
+    excluded?: boolean;
     imported?: boolean;
     importError?: string;
   };
@@ -4655,7 +4661,7 @@ export default function SellerAddProductPage() {
       ...counts,
       items,
     });
-    setCsvSelectedKeys(items.map((item) => item.key));
+    setCsvSelectedKeys([]);
     setCsvBulkProductType("");
     setCsvBulkMaterial("");
     setCsvBulkTexture("");
@@ -4666,11 +4672,15 @@ export default function SellerAddProductPage() {
 
   function csvMissingDetails(item: CsvImportedProduct) {
     const missing: string[] = [];
+    if (item.excluded) return missing;
     if (!item.title.trim()) missing.push("product name");
     if (!item.productType) missing.push("product type");
     if (item.productType && item.productType !== "HAIR_ESSENTIAL") {
       if (!item.material) missing.push("hair material");
       if (!item.texture) missing.push("texture");
+    }
+    if (item.classification === "LOCS" && !item.locType) {
+      missing.push("loc type");
     }
     const pricedVariants = item.variants.filter((variant) => {
       const price = Number(variant.price);
@@ -4686,6 +4696,7 @@ export default function SellerAddProductPage() {
 
   function csvWarnings(item: CsvImportedProduct) {
     const warnings: string[] = [];
+    if (item.excluded) return warnings;
     if (!item.description.trim()) warnings.push("no description in source CSV");
     if (item.imageUrls.length === 0) warnings.push("no product images in source CSV");
     if (item.status.toLowerCase() === "unknown") warnings.push("source status not provided");
@@ -4693,13 +4704,13 @@ export default function SellerAddProductPage() {
   }
 
   function csvItemReady(item: CsvImportedProduct) {
-    return !item.imported && csvMissingDetails(item).length === 0;
+    return !item.imported && !item.excluded && csvMissingDetails(item).length === 0;
   }
 
   function refreshCsvCounts(items: CsvImportedProduct[]) {
-    const notImported = items.filter((item) => !item.imported);
-    const ready = notImported.filter(csvItemReady).length;
-    const needsDetails = notImported.filter((item) => !csvItemReady(item)).length;
+    const active = items.filter((item) => !item.imported && !item.excluded);
+    const ready = active.filter(csvItemReady).length;
+    const needsDetails = active.filter((item) => !csvItemReady(item)).length;
     return { ready, needsDetails };
   }
 
@@ -4710,7 +4721,14 @@ export default function SellerAddProductPage() {
     const items = csvPreview.items.map((item) => {
       if (!selected.has(item.key) || item.imported) return item;
       const next = { ...item, importError: undefined };
-      if (csvBulkProductType) next.productType = csvBulkProductType;
+      if (csvBulkProductType) {
+        next.productType = csvBulkProductType;
+        next.productOption = undefined;
+        next.classification = undefined;
+        next.installationMethod = undefined;
+        next.locType = undefined;
+        next.laceSize = undefined;
+      }
       if (csvBulkMaterial) next.material = csvBulkMaterial;
       if (csvBulkTexture) next.texture = csvBulkTexture;
       return next;
@@ -4723,6 +4741,27 @@ export default function SellerAddProductPage() {
     setCsvSelectedKeys((current) =>
       current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
     );
+  }
+
+  function toggleCsvExclude(key: string) {
+    if (!csvPreview) return;
+    const items = csvPreview.items.map((item) =>
+      item.key === key
+        ? { ...item, excluded: !item.excluded, importError: undefined }
+        : item,
+    );
+    setCsvSelectedKeys((current) => current.filter((itemKey) => itemKey !== key));
+    setCsvPreview({ ...csvPreview, items, ...refreshCsvCounts(items) });
+  }
+
+  function clearCsvImport() {
+    setCsvFileName("");
+    setCsvPreview(null);
+    setCsvReviewOpen(false);
+    setCsvSelectedKeys([]);
+    setCsvEditingKey(null);
+    setCsvImportSummary(null);
+    setCsvImportProgress("");
   }
 
   function updateCsvProduct(key: string, changes: Partial<CsvImportedProduct>) {
@@ -4762,13 +4801,13 @@ export default function SellerAddProductPage() {
       material: item.productType === "HAIR_ESSENTIAL" ? "Not Applicable" : String(item.material || ""),
       colors: colors.length > 0 ? colors : ["Natural / 1B"],
       texture: item.productType === "HAIR_ESSENTIAL" ? "Not Applicable" : String(item.texture || ""),
-      selectedOptions: [],
+      selectedOptions: item.productOption ? [item.productOption] : [],
       optionsAreVariants: false,
-      searchClassifications: [],
-      installationMethods: [],
-      locType: "",
+      searchClassifications: item.classification ? [item.classification] : [],
+      installationMethods: item.installationMethod ? [item.installationMethod] : [],
+      locType: item.locType || "",
       density: "",
-      laceSize: "",
+      laceSize: item.laceSize || "",
       laceType: "",
       capSize: "",
       bundleWeight: "100g",
@@ -5653,6 +5692,9 @@ export default function SellerAddProductPage() {
             <button type="button" onClick={() => setCsvReviewOpen((current) => !current)} style={{ marginTop: "10px", border: 0, borderRadius: "9px", background: "#4B1678", color: "white", padding: "9px 12px", fontWeight: 800, cursor: "pointer" }}>
               {csvReviewOpen ? "Hide Product Review" : "Review & Complete Products"}
             </button>
+            <button type="button" onClick={clearCsvImport} style={{ marginLeft: "8px", border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "8px", padding: "8px 10px", fontSize: "10px", fontWeight: 800, cursor: "pointer" }}>
+              Exit CSV Import
+            </button>
           </div>
         )}
 
@@ -5669,15 +5711,15 @@ export default function SellerAddProductPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const available = csvPreview.items.filter((item) => !item.imported).map((item) => item.key);
+                    const available = csvPreview.items.filter((item) => !item.imported && !item.excluded).map((item) => item.key);
                     setCsvSelectedKeys(csvSelectedKeys.length === available.length ? [] : available);
                   }}
                   style={{ border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "8px", padding: "7px 10px", fontWeight: 800, cursor: "pointer", fontSize: "11px" }}
                 >
-                  {csvSelectedKeys.length === csvPreview.items.filter((item) => !item.imported).length ? "Clear All" : "Select All"}
+                  {csvSelectedKeys.length === csvPreview.items.filter((item) => !item.imported && !item.excluded).length ? "Clear All" : "Select All"}
                 </button>
               </div>
-              <div style={{ marginTop: "8px", fontSize: "10px", color: "#766b79" }}>{csvSelectedKeys.length} selected. Select only products that share the same details.</div>
+              <div style={{ marginTop: "8px", fontSize: "10px", color: "#766b79" }}>{csvSelectedKeys.length} selected. Optional shortcut: use this only for products that truly share the same details. You can classify every product individually below.</div>
 
               <div style={{ marginTop: "10px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "10px" }}>
                 <label style={{ fontSize: "11px", fontWeight: 800, color: "#4B1678" }}>Product Type
@@ -5711,54 +5753,124 @@ export default function SellerAddProductPage() {
                 const readyToImport = csvItemReady(item);
                 const priced = item.variants.filter((variant) => String(variant.price).trim() !== "" && Number.isFinite(Number(variant.price))).length;
                 const editing = csvEditingKey === item.key;
+                const itemOptions = item.productType ? productOptions[item.productType] || [] : [];
+                const itemClassifications = item.productType ? productClassifications[item.productType] || [] : [];
+                const isLocs = item.classification === "LOCS";
+                const showLaceSize = item.productType === "WIG" || item.productType === "CLOSURE_FRONTAL";
 
                 return (
-                  <div key={item.key} style={{ border: item.importError ? "1px solid #e9b9b9" : "1px solid #eee4f2", borderRadius: "10px", padding: "10px 11px", background: item.imported ? "#f5fbf6" : "white" }}>
-                    <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                      <input type="checkbox" disabled={Boolean(item.imported)} checked={csvSelectedKeys.includes(item.key)} onChange={() => toggleCsvProduct(item.key)} style={{ marginTop: "3px" }} />
+                  <div key={item.key} style={{ border: item.importError ? "1px solid #e9b9b9" : item.excluded ? "1px solid #e2dce5" : "1px solid #eee4f2", borderRadius: "10px", padding: "11px", background: item.imported ? "#f5fbf6" : item.excluded ? "#fafafa" : "white", opacity: item.excluded ? 0.72 : 1 }}>
+                    <div style={{ display: "flex", gap: "9px", alignItems: "flex-start" }}>
+                      <input type="checkbox" disabled={Boolean(item.imported) || Boolean(item.excluded)} checked={csvSelectedKeys.includes(item.key)} onChange={() => toggleCsvProduct(item.key)} style={{ marginTop: "4px" }} />
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 850, color: "#2e2432" }}>{item.title}</div>
-                        <div style={{ marginTop: "3px", fontSize: "10px", color: "#766b79", lineHeight: 1.45 }}>
-                          {item.variantCount} variant{item.variantCount === 1 ? "" : "s"} · {priced}/{item.variantCount} priced · {item.skuCount} SKU{item.skuCount === 1 ? "" : "s"} · {item.imageUrls.length} image{item.imageUrls.length === 1 ? "" : "s"} · Source status: {item.status}
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "flex-start" }}>
+                          <div>
+                            <div style={{ fontWeight: 850, color: "#2e2432" }}>{item.title}</div>
+                            <div style={{ marginTop: "3px", fontSize: "10px", color: "#766b79", lineHeight: 1.45 }}>
+                              {item.variantCount} variant{item.variantCount === 1 ? "" : "s"} · {priced}/{item.variantCount} priced · {item.skuCount} SKU{item.skuCount === 1 ? "" : "s"} · {item.imageUrls.length} image{item.imageUrls.length === 1 ? "" : "s"} · Source: {item.status}
+                            </div>
+                          </div>
+                          <span style={{ whiteSpace: "nowrap", padding: "5px 8px", borderRadius: "999px", background: item.imported ? "#e7f5ea" : item.excluded ? "#f0edf2" : readyToImport ? "#eef8f0" : "#fff5df", color: item.imported ? "#276236" : item.excluded ? "#6c6370" : readyToImport ? "#276236" : "#7a5410", fontSize: "10px", fontWeight: 850 }}>
+                            {item.imported ? "✓ Imported" : item.excluded ? "Excluded" : readyToImport ? "✓ Ready to import" : "Needs information"}
+                          </span>
                         </div>
-                        {(item.productType || item.material || item.texture) && (
-                          <div style={{ marginTop: "4px", fontSize: "10px", color: "#4B1678" }}>
-                            {[productTypes.find((type) => type.value === item.productType)?.label, item.material, item.texture].filter(Boolean).join(" · ")}
+
+                        {!item.imported && !item.excluded && (
+                          <div style={{ marginTop: "10px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: "7px" }}>
+                            <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Product Type *
+                              <select value={item.productType || ""} onChange={(event) => updateCsvProduct(item.key, { productType: (event.target.value || undefined) as ProductType | undefined, productOption: undefined, classification: undefined, installationMethod: undefined, locType: undefined, laceSize: undefined })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Select</option>
+                                {productTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+                              </select>
+                            </label>
+
+                            {item.productType && item.productType !== "HAIR_ESSENTIAL" && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Hair Material *
+                              <select value={item.material || ""} onChange={(event) => updateCsvProduct(item.key, { material: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Select</option>
+                                {materials.filter((value) => value !== "Not Applicable").map((value) => <option key={value} value={value}>{value}</option>)}
+                              </select>
+                            </label>}
+
+                            {item.productType && item.productType !== "HAIR_ESSENTIAL" && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Texture *
+                              <select value={item.texture || ""} onChange={(event) => updateCsvProduct(item.key, { texture: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Select</option>
+                                {textures.map((value) => <option key={value} value={value}>{value}</option>)}
+                              </select>
+                            </label>}
+
+                            {itemOptions.length > 0 && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Type / Style
+                              <select value={item.productOption || ""} onChange={(event) => updateCsvProduct(item.key, { productOption: event.target.value || undefined })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Optional</option>
+                                {itemOptions.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+                              </select>
+                            </label>}
+
+                            {itemClassifications.length > 0 && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Classification
+                              <select value={item.classification || ""} onChange={(event) => updateCsvProduct(item.key, { classification: event.target.value || undefined, locType: undefined, installationMethod: undefined })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Optional</option>
+                                {itemClassifications.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+                              </select>
+                            </label>}
+
+                            {isLocs && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Loc Type *
+                              <select value={item.locType || ""} onChange={(event) => updateCsvProduct(item.key, { locType: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Select</option>
+                                {locTypeChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+                              </select>
+                            </label>}
+
+                            {(item.productType === "BRAIDING_HAIR" || isLocs) && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Installation
+                              <select value={item.installationMethod || ""} onChange={(event) => updateCsvProduct(item.key, { installationMethod: event.target.value || undefined })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Optional</option>
+                                {installationMethodChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+                              </select>
+                            </label>}
+
+                            {showLaceSize && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Lace Size
+                              <select value={item.laceSize || ""} onChange={(event) => updateCsvProduct(item.key, { laceSize: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
+                                <option value="">Optional</option>
+                                {laceSizes.map((value) => <option key={value} value={value}>{value}</option>)}
+                              </select>
+                            </label>}
                           </div>
                         )}
-                        {missing.length > 0 && <div style={{ marginTop: "4px", fontSize: "10px", color: "#8a5d09" }}>Still needed: {missing.join(", ")}</div>}
-                        {warnings.length > 0 && <div style={{ marginTop: "3px", fontSize: "10px", color: "#7d7480" }}>Review warning: {warnings.join(" · ")}</div>}
-                        {item.importError && <div style={{ marginTop: "4px", fontSize: "10px", color: "#a22727" }}>Import failed: {item.importError}</div>}
-                      </div>
 
-                      <div style={{ display: "grid", gap: "6px", justifyItems: "end" }}>
-                        <span style={{ whiteSpace: "nowrap", padding: "5px 8px", borderRadius: "999px", background: item.imported ? "#e7f5ea" : readyToImport ? "#eef8f0" : "#fff5df", color: item.imported ? "#276236" : readyToImport ? "#276236" : "#7a5410", fontSize: "10px", fontWeight: 850 }}>
-                          {item.imported ? "✓ Imported" : readyToImport ? "Ready to import" : "Needs information"}
-                        </span>
-                        {!item.imported && (
-                          <button type="button" onClick={() => setCsvEditingKey(editing ? null : item.key)} style={{ border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "7px", padding: "6px 8px", fontSize: "10px", fontWeight: 800, cursor: "pointer" }}>
-                            {editing ? "Close" : "Review / Edit"}
+                        {!item.excluded && missing.length > 0 && <div style={{ marginTop: "6px", fontSize: "10px", color: "#8a5d09" }}>Still needed: {missing.join(", ")}</div>}
+                        {!item.excluded && warnings.length > 0 && <div style={{ marginTop: "3px", fontSize: "10px", color: "#7d7480" }}>Review warning: {warnings.join(" · ")}</div>}
+                        {item.importError && <div style={{ marginTop: "4px", fontSize: "10px", color: "#a22727" }}>Import failed: {item.importError}</div>}
+
+                        {!item.imported && !item.excluded && (
+                          <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                            <button type="button" onClick={() => setCsvEditingKey(editing ? null : item.key)} style={{ border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "7px", padding: "6px 8px", fontSize: "10px", fontWeight: 800, cursor: "pointer" }}>
+                              {editing ? "Close Details" : `Review ${item.variantCount} Variant${item.variantCount === 1 ? "" : "s"} / Details`}
+                            </button>
+                            <button type="button" onClick={() => toggleCsvExclude(item.key)} style={{ border: "1px solid #d8cce0", background: "white", color: "#6c6370", borderRadius: "7px", padding: "6px 8px", fontSize: "10px", fontWeight: 800, cursor: "pointer" }}>
+                              Exclude from Import
+                            </button>
+                          </div>
+                        )}
+                        {!item.imported && item.excluded && (
+                          <button type="button" onClick={() => toggleCsvExclude(item.key)} style={{ marginTop: "8px", border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "7px", padding: "6px 8px", fontSize: "10px", fontWeight: 800, cursor: "pointer" }}>
+                            Include Again
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {editing && !item.imported && (
+                    {editing && !item.imported && !item.excluded && (
                       <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #eee4f2" }}>
                         <label style={{ fontSize: "10px", fontWeight: 800, color: "#4B1678" }}>Product Name
                           <input value={item.title} onChange={(event) => updateCsvProduct(item.key, { title: event.target.value })} style={{ ...fieldStyle, marginTop: "4px" }} />
                         </label>
                         <label style={{ display: "block", marginTop: "8px", fontSize: "10px", fontWeight: 800, color: "#4B1678" }}>Description
-                          <textarea rows={3} value={item.description} onChange={(event) => updateCsvProduct(item.key, { description: event.target.value })} placeholder="Optional during import; HairGrab will keep this product as a draft for final review." style={{ ...fieldStyle, marginTop: "4px" }} />
+                          <textarea rows={3} value={item.description} onChange={(event) => updateCsvProduct(item.key, { description: event.target.value })} placeholder="Optional during import. This product stays a Shopify draft until you publish it." style={{ ...fieldStyle, marginTop: "4px" }} />
                         </label>
 
-                        <div style={{ marginTop: "10px", fontSize: "10px", fontWeight: 850, color: "#4B1678" }}>Variants — every variant needs a price before import</div>
+                        <div style={{ marginTop: "10px", fontSize: "10px", fontWeight: 850, color: "#4B1678" }}>Variants — price is required for every variant</div>
                         <div style={{ marginTop: "6px", display: "grid", gap: "6px" }}>
                           {item.variants.map((variant, variantIndex) => (
                             <div key={variant.key} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1.4fr) repeat(3, minmax(80px, 1fr))", gap: "6px", alignItems: "center", fontSize: "10px" }}>
-                              <div style={{ color: "#5f5364" }}>
-                                {variant.sourceOptionValues.filter(Boolean).join(" / ") || `Variant ${variantIndex + 1}`}
-                              </div>
+                              <div style={{ color: "#5f5364" }}>{variant.sourceOptionValues.filter(Boolean).join(" / ") || `Variant ${variantIndex + 1}`}</div>
                               <input aria-label="Price" placeholder="Price" inputMode="decimal" value={variant.price} onChange={(event) => updateCsvVariant(item.key, variant.key, "price", event.target.value.replace(/[^0-9.]/g, ""))} style={{ ...fieldStyle, padding: "8px" }} />
                               <input aria-label="Inventory" placeholder="Qty" inputMode="numeric" value={variant.inventory} onChange={(event) => updateCsvVariant(item.key, variant.key, "inventory", event.target.value.replace(/[^0-9-]/g, ""))} style={{ ...fieldStyle, padding: "8px" }} />
                               <input aria-label="SKU" placeholder="SKU" value={variant.sku} onChange={(event) => updateCsvVariant(item.key, variant.key, "sku", event.target.value)} style={{ ...fieldStyle, padding: "8px" }} />
@@ -5774,7 +5886,7 @@ export default function SellerAddProductPage() {
 
             <div style={{ marginTop: "12px", padding: "12px", borderRadius: "10px", background: "#faf7fb", border: "1px solid #eee4f2" }}>
               <div style={{ fontSize: "11px", color: "#5f5364", lineHeight: 1.5 }}>
-                <strong style={{ color: "#4B1678" }}>Final validation:</strong> {csvPreview.ready} ready to import · {csvPreview.needsDetails} still need information. Imported products are created as <strong>Shopify drafts</strong>, so nothing goes live before you review it.
+                <strong style={{ color: "#4B1678" }}>Final validation:</strong> {csvPreview.ready} ready to import · {csvPreview.needsDetails} still need information · {csvPreview.items.filter((item) => item.excluded).length} excluded. Imported products are created as <strong>Shopify drafts</strong>, so nothing goes live before you review it.
               </div>
 
               <button
@@ -5802,6 +5914,7 @@ export default function SellerAddProductPage() {
         )}
       </div>
 
+      {!csvPreview && (<>
       {/* PRODUCT INFO */}
 
       <div
@@ -8147,6 +8260,7 @@ export default function SellerAddProductPage() {
           Review Product
         </button>
       </div>
+      </>)}
     </PageShell>
   );
 }
