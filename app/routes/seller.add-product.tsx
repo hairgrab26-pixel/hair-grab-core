@@ -1781,12 +1781,12 @@ export const action =
           name:
             "Option",
 
-          values: [
-            {
-              name:
-                "Standard",
-            },
-          ],
+          values:
+            payload.variants.length > 1
+              ? payload.variants.map((variant, index) => ({
+                  name: String(variant.label || `Variant ${index + 1}`).trim() || `Variant ${index + 1}`,
+                }))
+              : [{ name: "Standard" }],
         });
       }
 
@@ -1875,7 +1875,9 @@ export const action =
                   "Option",
 
                 name:
-                  "Standard",
+                  payload.variants.length > 1
+                    ? String(variant.label || `Variant ${index + 1}`).trim() || `Variant ${index + 1}`
+                    : "Standard",
               });
             }
 
@@ -4682,15 +4684,6 @@ export default function SellerAddProductPage() {
     if (item.classification === "LOCS" && !item.locType) {
       missing.push("loc type");
     }
-    const pricedVariants = item.variants.filter((variant) => {
-      const price = Number(variant.price);
-      return Number.isFinite(price) && price >= 0 && String(variant.price).trim() !== "";
-    }).length;
-    if (pricedVariants !== item.variants.length) {
-      missing.push(
-        item.variants.length === 1 ? "price" : `${item.variants.length - pricedVariants} variant price${item.variants.length - pricedVariants === 1 ? "" : "s"}`,
-      );
-    }
     return missing;
   }
 
@@ -4699,6 +4692,8 @@ export default function SellerAddProductPage() {
     if (item.excluded) return warnings;
     if (!item.description.trim()) warnings.push("no description in source CSV");
     if (item.imageUrls.length === 0) warnings.push("no product images in source CSV");
+    const missingPriceCount = item.variants.filter((variant) => String(variant.price || "").trim() === "").length;
+    if (missingPriceCount > 0) warnings.push("price not included in source CSV — HairGrab will save a draft with a $0 placeholder until price is synced or updated");
     if (item.status.toLowerCase() === "unknown") warnings.push("source status not provided");
     return warnings;
   }
@@ -4828,7 +4823,7 @@ export default function SellerAddProductPage() {
           length: numericLength,
           option: "",
           color: colorOptionIndex >= 0 ? variant.sourceOptionValues[colorOptionIndex] || colors[0] || "Natural / 1B" : colors[0] || "Natural / 1B",
-          price: variant.price,
+          price: String(variant.price || "").trim() || "0",
           inventory: variant.inventory,
           sku: variant.sku,
           sourceOptionValues: variant.sourceOptionValues,
@@ -5673,7 +5668,7 @@ export default function SellerAddProductPage() {
 
             {!csvPreview.recognized.includes("Price") && (
               <div style={{ marginTop: "10px", padding: "10px", borderRadius: "9px", background: "#fff4e5", color: "#7a4d00", lineHeight: 1.5 }}>
-                <strong>This CSV does not include product prices.</strong> HairGrab will not call a product ready until every variant has a price. You can enter missing prices below, or upload a full product export. Shopify Inventory Export files often contain inventory/SKUs but not the product price, description, or images.
+                <strong>This looks like an inventory-only CSV.</strong> HairGrab can still save these products to <strong>My Products</strong> as incomplete Shopify drafts without making you type prices or quantities here. Missing prices are stored as a temporary $0 draft value and nothing can go live until the product is completed. For a hands-off import of price, description, images, and inventory, use a full product export or the Shopify connection when enabled.
               </div>
             )}
 
@@ -5700,9 +5695,9 @@ export default function SellerAddProductPage() {
 
         {csvPreview && csvReviewOpen && (
           <div style={{ marginTop: "12px", background: "white", border: "1px solid #e8deec", borderRadius: "12px", padding: "12px" }}>
-            <div style={{ color: "#4B1678", fontWeight: 900, fontSize: "14px" }}>1. Review source data → 2. Bulk-complete HairGrab details → 3. Import</div>
+            <div style={{ color: "#4B1678", fontWeight: 900, fontSize: "14px" }}>1. Review source data → 2. Add HairGrab details → 3. Save to My Products</div>
             <div style={{ marginTop: "4px", fontSize: "11px", color: "#6f6475", lineHeight: 1.5 }}>
-              “Ready to import” now means HairGrab has a product name, all required HairGrab classification, and a valid price for every variant. Images and descriptions are shown as warnings instead of being silently assumed.
+              “Ready to save” means HairGrab has the product name and required HairGrab classification. Source price, quantity, SKU, images, and description are carried over when present. Missing commerce details no longer block saving because the product is created as an incomplete draft, never live.
             </div>
 
             <div style={{ marginTop: "12px", padding: "12px", borderRadius: "11px", background: "#faf7fb", border: "1px solid #eee4f2" }}>
@@ -5835,8 +5830,8 @@ export default function SellerAddProductPage() {
                           </div>
                         )}
 
-                        {!item.imported && !item.excluded && (
-                          <div style={{ marginTop: "10px", padding: "10px", borderRadius: "9px", background: missing.some((value) => value.includes("price")) ? "#fffaf0" : "#faf7fb", border: "1px solid #eee4f2" }}>
+                        {false && !item.imported && !item.excluded && (
+                          <div style={{ marginTop: "10px", padding: "10px", borderRadius: "9px", background: "#faf7fb", border: "1px solid #eee4f2" }}>
                             <div style={{ fontSize: "10px", fontWeight: 850, color: "#4B1678" }}>
                               {item.variantCount === 1 ? "Price & inventory" : `Variant prices & inventory (${item.variantCount})`}
                             </div>
@@ -5910,7 +5905,7 @@ export default function SellerAddProductPage() {
 
             <div style={{ marginTop: "12px", padding: "12px", borderRadius: "10px", background: "#faf7fb", border: "1px solid #eee4f2" }}>
               <div style={{ fontSize: "11px", color: "#5f5364", lineHeight: 1.5 }}>
-                <strong style={{ color: "#4B1678" }}>Ready to save:</strong> {csvPreview.ready} ready to add · {csvPreview.needsDetails} still need required information · {csvPreview.items.filter((item) => item.excluded).length} excluded. Products added here are saved to <strong>My Products</strong> as Shopify drafts, so nothing goes live before you review it.
+                <strong style={{ color: "#4B1678" }}>Ready to save:</strong> {csvPreview.ready} ready · {csvPreview.needsDetails} still need HairGrab classification · {csvPreview.items.filter((item) => item.excluded).length} excluded. Price and quantity are <strong>not required</strong> to save an imported product to My Products. Missing commerce details stay draft-only until completed or synced.
               </div>
 
               <button
@@ -5919,7 +5914,7 @@ export default function SellerAddProductPage() {
                 onClick={() => void importReadyCsvProducts()}
                 style={{ marginTop: "10px", width: "100%", border: 0, borderRadius: "10px", background: "#4B1678", color: "white", padding: "12px 14px", fontWeight: 900, cursor: csvImporting || csvPreview.ready === 0 ? "not-allowed" : "pointer", opacity: csvImporting || csvPreview.ready === 0 ? 0.55 : 1 }}
               >
-                {csvImporting ? "Adding Products..." : `Add ${csvPreview.ready} Ready Product${csvPreview.ready === 1 ? "" : "s"} to My Products`}
+                {csvImporting ? "Adding Products..." : `Save ${csvPreview.ready} Product${csvPreview.ready === 1 ? "" : "s"} to My Products`}
               </button>
 
               {csvImportProgress && <div style={{ marginTop: "8px", fontSize: "10px", color: "#4B1678" }}>{csvImportProgress}</div>}
