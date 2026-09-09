@@ -3352,6 +3352,15 @@ export default function SellerAddProductPage() {
   ] =
     useState("");
 
+  type CsvImportedProduct = {
+    key: string;
+    title: string;
+    rows: number;
+    status: string;
+    skuCount: number;
+    variantCount: number;
+  };
+
   const [
     csvPreview,
     setCsvPreview,
@@ -3359,7 +3368,12 @@ export default function SellerAddProductPage() {
     rows: number;
     products: number;
     recognized: string[];
+    ready: number;
+    needsDetails: number;
+    items: CsvImportedProduct[];
   } | null>(null);
+
+  const [csvReviewOpen, setCsvReviewOpen] = useState(false);
 
   // HairGrab keeps this dumb easy:
   // selecting 2+ product options automatically turns those
@@ -4281,6 +4295,7 @@ export default function SellerAddProductPage() {
     if (!file) {
       setCsvFileName("");
       setCsvPreview(null);
+      setCsvReviewOpen(false);
       return;
     }
 
@@ -4292,7 +4307,8 @@ export default function SellerAddProductPage() {
       .filter((line) => line.trim().length > 0);
 
     if (lines.length < 2) {
-      setCsvPreview({ rows: 0, products: 0, recognized: [] });
+      setCsvPreview({ rows: 0, products: 0, recognized: [], ready: 0, needsDetails: 0, items: [] });
+      setCsvReviewOpen(true);
       return;
     }
 
@@ -4314,33 +4330,62 @@ export default function SellerAddProductPage() {
     ];
 
     const recognized = commonColumns
-      .filter(([, aliases]) =>
-        aliases.some((alias) => normalized.includes(alias)),
-      )
+      .filter(([, aliases]) => aliases.some((alias) => normalized.includes(alias)))
       .map(([label]) => label);
 
-    const handleIndex = normalized.findIndex((header) =>
-      ["handle", "productid", "parentid"].includes(header),
-    );
-    const titleIndex = normalized.findIndex((header) =>
-      ["title", "name", "productname"].includes(header),
-    );
+    const findColumn = (aliases: string[]) =>
+      normalized.findIndex((header) => aliases.includes(header));
 
-    const productKeys = new Set<string>();
+    const handleIndex = findColumn(["handle", "productid", "parentid"]);
+    const titleIndex = findColumn(["title", "name", "productname"]);
+    const statusIndex = findColumn(["status", "published"]);
+    const skuIndex = findColumn(["variantsku", "sku"]);
+    const priceIndex = findColumn(["variantprice", "price"]);
+    const optionIndex = findColumn(["option1value", "variant", "variation"]);
+
+    const grouped = new Map<string, { title: string; rows: number; status: string; skus: Set<string>; variants: Set<string>; hasPrice: boolean }>();
+
     for (let index = 1; index < lines.length; index++) {
       const row = parseCsvLine(lines[index]);
-      const key =
-        (handleIndex >= 0 ? row[handleIndex] : "") ||
-        (titleIndex >= 0 ? row[titleIndex] : "") ||
-        `row-${index}`;
-      productKeys.add(key);
+      const key = (handleIndex >= 0 ? row[handleIndex] : "") || (titleIndex >= 0 ? row[titleIndex] : "") || `row-${index}`;
+      const current = grouped.get(key) || {
+        title: (titleIndex >= 0 ? row[titleIndex] : "") || key,
+        rows: 0,
+        status: (statusIndex >= 0 ? row[statusIndex] : "") || "Unknown",
+        skus: new Set<string>(),
+        variants: new Set<string>(),
+        hasPrice: false,
+      };
+      current.rows += 1;
+      if (!current.title && titleIndex >= 0) current.title = row[titleIndex] || key;
+      if (skuIndex >= 0 && row[skuIndex]) current.skus.add(row[skuIndex]);
+      if (optionIndex >= 0 && row[optionIndex]) current.variants.add(row[optionIndex]);
+      if (priceIndex >= 0 && Number(row[priceIndex]) > 0) current.hasPrice = true;
+      grouped.set(key, current);
     }
+
+    const items: CsvImportedProduct[] = Array.from(grouped.entries()).map(([key, item]) => ({
+      key,
+      title: item.title || "Untitled product",
+      rows: item.rows,
+      status: item.status,
+      skuCount: item.skus.size,
+      variantCount: Math.max(item.variants.size, item.rows > 1 ? item.rows : 1),
+    }));
+
+    // Common commerce data can be read from the CSV, but every imported product
+    // still needs HairGrab-specific classification before publishing.
+    const needsDetails = items.length;
 
     setCsvPreview({
       rows: Math.max(0, lines.length - 1),
-      products: productKeys.size,
+      products: items.length,
       recognized,
+      ready: 0,
+      needsDetails,
+      items,
     });
+    setCsvReviewOpen(true);
   }
 
   function saveProduct() {
@@ -5174,8 +5219,48 @@ export default function SellerAddProductPage() {
                 <span style={{ color: "#7d7480" }}>
                   HairGrab-specific details such as product type, texture, loc type, and fulfillment will be completed before anything is published.
                 </span>
+                <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#eef8f0", color: "#276236", fontWeight: 800 }}>
+                    {csvPreview.ready} ready
+                  </span>
+                  <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#fff5df", color: "#7a5410", fontWeight: 800 }}>
+                    {csvPreview.needsDetails} need HairGrab details
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCsvReviewOpen((current) => !current)}
+                  style={{ marginTop: "10px", border: 0, borderRadius: "9px", background: "#4B1678", color: "white", padding: "9px 12px", fontWeight: 800, cursor: "pointer" }}
+                >
+                  {csvReviewOpen ? "Hide Product Review" : "Review & Complete Products"}
+                </button>
               </div>
             )}
+          </div>
+        )}
+
+        {csvPreview && csvReviewOpen && (
+          <div style={{ marginTop: "12px", background: "white", border: "1px solid #e8deec", borderRadius: "12px", padding: "12px" }}>
+            <div style={{ color: "#4B1678", fontWeight: 900, fontSize: "14px" }}>Review imported products</div>
+            <div style={{ marginTop: "4px", fontSize: "11px", color: "#6f6475", lineHeight: 1.5 }}>
+              Your CSV has been read and grouped into products. Variants stay under their parent product. Complete HairGrab details before publishing.
+            </div>
+            <div style={{ marginTop: "10px", display: "grid", gap: "8px", maxHeight: "340px", overflowY: "auto" }}>
+              {csvPreview.items.map((item) => (
+                <div key={item.key} style={{ border: "1px solid #eee4f2", borderRadius: "10px", padding: "10px 11px", display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 850, color: "#2e2432" }}>{item.title}</div>
+                    <div style={{ marginTop: "3px", fontSize: "10px", color: "#766b79" }}>
+                      {item.variantCount} variant{item.variantCount === 1 ? "" : "s"}{item.skuCount > 0 ? ` · ${item.skuCount} SKU${item.skuCount === 1 ? "" : "s"}` : ""} · Source status: {item.status}
+                    </div>
+                  </div>
+                  <span style={{ whiteSpace: "nowrap", padding: "5px 8px", borderRadius: "999px", background: "#fff5df", color: "#7a5410", fontSize: "10px", fontWeight: 850 }}>Needs HairGrab details</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: "12px", padding: "10px", borderRadius: "10px", background: "#faf7fb", fontSize: "11px", color: "#5f5364", lineHeight: 1.5 }}>
+              Next: bulk-apply Product Type, Texture, Hair Material and fulfillment to selected products, then import them into HairGrab/Shopify. Nothing is published from this preview.
+            </div>
           </div>
         )}
       </div>
