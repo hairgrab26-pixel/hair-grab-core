@@ -68,6 +68,7 @@ type ProductPayload = {
   selectedOptions: string[];
   optionsAreVariants: boolean;
   searchClassifications: string[];
+  installationMethods: string[];
 
   density: string;
   laceSize: string;
@@ -2306,6 +2307,38 @@ export const action =
               choice.label,
           );
 
+      const installationTags =
+        installationMethodChoices
+          .filter(
+            (choice) =>
+              payload.installationMethods
+                ?.includes(
+                  choice.value,
+                ),
+          )
+          .map(
+            (choice) =>
+              choice.label,
+          );
+
+      if (
+        installationTags.length >
+        0
+      ) {
+        metafields.push({
+          namespace:
+            "hairgrab",
+          key:
+            "installation_methods",
+          type:
+            "list.single_line_text_field",
+          value:
+            JSON.stringify(
+              installationTags,
+            ),
+        });
+      }
+
 
       const productSetResponse =
         await admin.graphql(
@@ -2384,6 +2417,7 @@ export const action =
                   productTypeDisplay,
                   ...selectedOptionTags,
                   ...classificationTags,
+                  ...installationTags,
                 ],
 
                 productOptions:
@@ -2869,19 +2903,27 @@ const productClassifications:
   BRAIDING_HAIR: [
     {
       value:
-        "CROCHET_HAIR",
+        "LOCS",
       label:
-        "Crochet Hair",
-    },
-
-    {
-      value:
-        "LOCS_LOCKS",
-      label:
-        "Locs / Locks",
+        "Locs",
     },
   ],
 };
+
+const installationMethodChoices: Choice[] = [
+  {
+    value:
+      "CROCHET",
+    label:
+      "Crochet",
+  },
+  {
+    value:
+      "PRE_LOOPED",
+    label:
+      "Pre-Looped",
+  },
+];
 
 
 const materials = [
@@ -3254,6 +3296,14 @@ export default function SellerAddProductPage() {
   const [
     searchClassifications,
     setSearchClassifications,
+  ] =
+    useState<string[]>(
+      [],
+    );
+
+  const [
+    installationMethods,
+    setInstallationMethods,
   ] =
     useState<string[]>(
       [],
@@ -4170,6 +4220,8 @@ export default function SellerAddProductPage() {
 
         searchClassifications,
 
+        installationMethods,
+
         density,
 
         laceSize,
@@ -4471,6 +4523,29 @@ export default function SellerAddProductPage() {
                 "—"
               }
             />
+
+            {productType ===
+              "BRAIDING_HAIR" && (
+              <ReviewValue
+                label="Installation"
+                value={
+                  installationMethods.length >
+                  0
+                    ? installationMethodChoices
+                        .filter((choice) =>
+                          installationMethods.includes(
+                            choice.value,
+                          ),
+                        )
+                        .map(
+                          (choice) =>
+                            choice.label,
+                        )
+                        .join(", ")
+                    : "—"
+                }
+              />
+            )}
 
             <ReviewValue
               label="Photos"
@@ -5489,7 +5564,7 @@ export default function SellerAddProductPage() {
                       "10px",
                   }}
                 >
-                  Select every classification that applies. These are discovery labels, not separate price variants, and help shoppers find specialized products more easily.
+                  Optional. Choose Locs only when this product is a loc product. It stays one product and does not create extra variants.
                 </div>
 
                 <div
@@ -5525,6 +5600,99 @@ export default function SellerAddProductPage() {
                             (
                               current,
                             ) =>
+                              toggleValue(
+                                current,
+                                item.value,
+                              ),
+                          )
+                        }
+                      />
+                    ),
+                  )}
+                </div>
+              </div>
+            )}
+
+
+            {productType ===
+              "BRAIDING_HAIR" && (
+              <div
+                style={{
+                  marginTop:
+                    "18px",
+
+                  paddingTop:
+                    "16px",
+
+                  borderTop:
+                    "1px solid #eee7f2",
+                }}
+              >
+                <div
+                  style={{
+                    color:
+                      "#4B1678",
+
+                    fontSize:
+                      "13px",
+
+                    fontWeight:
+                      "800",
+
+                    marginBottom:
+                      "5px",
+                  }}
+                >
+                  Installation
+                </div>
+
+                <div
+                  style={{
+                    color:
+                      "#7d7480",
+
+                    fontSize:
+                      "10px",
+
+                    lineHeight:
+                      1.5,
+
+                    marginBottom:
+                      "10px",
+                  }}
+                >
+                  Optional. Tap Crochet or Pre-Looped only when it applies. These help shoppers find the product and never create extra variants.
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+
+                    flexWrap:
+                      "wrap",
+
+                    gap:
+                      "8px",
+                  }}
+                >
+                  {installationMethodChoices.map(
+                    (item) => (
+                      <ChoiceButton
+                        key={
+                          item.value
+                        }
+                        label={
+                          item.label
+                        }
+                        selected={
+                          installationMethods.includes(
+                            item.value,
+                          )
+                        }
+                        onClick={() =>
+                          setInstallationMethods(
+                            (current) =>
                               toggleValue(
                                 current,
                                 item.value,
@@ -6872,6 +7040,23 @@ export default function SellerAddProductPage() {
           </h2>
 
           <div
+            style={{
+              color:
+                "#7d7480",
+              fontSize:
+                "10px",
+              lineHeight:
+                1.5,
+              marginTop:
+                "-7px",
+              marginBottom:
+                "12px",
+            }}
+          >
+            Add your photos once, then arrange them visually. The first image becomes the HairGrab product-card image and the saved order is sent to Shopify.
+          </div>
+
+          <div
             style={
               gridTwo
             }
@@ -6903,8 +7088,7 @@ export default function SellerAddProductPage() {
 
           {images.length >
             0 && (
-            <FileList
-              title="Photos"
+            <ImageFileGrid
               files={
                 images
               }
@@ -6912,17 +7096,50 @@ export default function SellerAddProductPage() {
                 index,
               ) =>
                 setImages(
-                  (
-                    current,
-                  ) =>
+                  (current) =>
                     current.filter(
-                      (
-                        _,
-                        i,
-                      ) =>
+                      (_, i) =>
                         i !==
                         index,
                     ),
+                )
+              }
+              onMove={(
+                fromIndex,
+                toIndex,
+              ) =>
+                setImages(
+                  (current) => {
+                    if (
+                      fromIndex ===
+                        toIndex ||
+                      fromIndex < 0 ||
+                      toIndex < 0 ||
+                      fromIndex >=
+                        current.length ||
+                      toIndex >=
+                        current.length
+                    ) {
+                      return current;
+                    }
+
+                    const next =
+                      [...current];
+
+                    const [moved] =
+                      next.splice(
+                        fromIndex,
+                        1,
+                      );
+
+                    next.splice(
+                      toIndex,
+                      0,
+                      moved,
+                    );
+
+                    return next;
+                  },
                 )
               }
             />
@@ -7416,6 +7633,406 @@ function UploadBox({
           }}
         />
       </label>
+    </div>
+  );
+}
+
+function ImageFileGrid({
+  files,
+  onRemove,
+  onMove,
+}: {
+  files:
+    File[];
+
+  onRemove:
+    (
+      index:
+        number,
+    ) => void;
+
+  onMove:
+    (
+      fromIndex:
+        number,
+      toIndex:
+        number,
+    ) => void;
+}) {
+  const [
+    draggingIndex,
+    setDraggingIndex,
+  ] =
+    useState<number | null>(
+      null,
+    );
+
+  const previewUrls =
+    useMemo(
+      () =>
+        files.map(
+          (file) =>
+            URL.createObjectURL(
+              file,
+            ),
+        ),
+      [files],
+    );
+
+  useEffect(
+    () => () => {
+      for (
+        const url of
+        previewUrls
+      ) {
+        URL.revokeObjectURL(
+          url,
+        );
+      }
+    },
+    [previewUrls],
+  );
+
+  return (
+    <div
+      style={{
+        marginTop:
+          "14px",
+      }}
+    >
+      <div
+        style={{
+          display:
+            "flex",
+          justifyContent:
+            "space-between",
+          gap:
+            "12px",
+          alignItems:
+            "baseline",
+          flexWrap:
+            "wrap",
+          marginBottom:
+            "9px",
+        }}
+      >
+        <strong
+          style={{
+            color:
+              "#4B1678",
+          }}
+        >
+          Product Photos
+        </strong>
+
+        <span
+          style={{
+            color:
+              "#7d7480",
+            fontSize:
+              "10px",
+          }}
+        >
+          First photo = product card image. Drag to reorder or use the arrows.
+        </span>
+      </div>
+
+      <div
+        style={{
+          display:
+            "grid",
+          gridTemplateColumns:
+            "repeat(auto-fill, minmax(125px, 1fr))",
+          gap:
+            "10px",
+        }}
+      >
+        {files.map(
+          (
+            file,
+            index,
+          ) => (
+            <div
+              key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+              draggable
+              onDragStart={() =>
+                setDraggingIndex(
+                  index,
+                )
+              }
+              onDragOver={(event) =>
+                event.preventDefault()
+              }
+              onDrop={() => {
+                if (
+                  draggingIndex !==
+                    null
+                ) {
+                  onMove(
+                    draggingIndex,
+                    index,
+                  );
+                }
+
+                setDraggingIndex(
+                  null,
+                );
+              }}
+              onDragEnd={() =>
+                setDraggingIndex(
+                  null,
+                )
+              }
+              style={{
+                border:
+                  index === 0
+                    ? "2px solid #4B1678"
+                    : "1px solid #ded3e5",
+                borderRadius:
+                  "11px",
+                overflow:
+                  "hidden",
+                background:
+                  "#ffffff",
+                boxShadow:
+                  "0 2px 8px rgba(75,22,120,0.06)",
+              }}
+            >
+              <div
+                style={{
+                  position:
+                    "relative",
+                  aspectRatio:
+                    "1 / 1",
+                  background:
+                    "#faf7fc",
+                }}
+              >
+                <img
+                  src={
+                    previewUrls[index]
+                  }
+                  alt={
+                    file.name
+                  }
+                  style={{
+                    width:
+                      "100%",
+                    height:
+                      "100%",
+                    objectFit:
+                      "cover",
+                    display:
+                      "block",
+                  }}
+                />
+
+                {index ===
+                  0 && (
+                  <div
+                    style={{
+                      position:
+                        "absolute",
+                      left:
+                        "7px",
+                      top:
+                        "7px",
+                      background:
+                        "#4B1678",
+                      color:
+                        "#ffffff",
+                      borderRadius:
+                        "999px",
+                      padding:
+                        "4px 7px",
+                      fontSize:
+                        "9px",
+                      fontWeight:
+                        "800",
+                    }}
+                  >
+                    Primary
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  padding:
+                    "8px",
+                }}
+              >
+                <div
+                  title={
+                    file.name
+                  }
+                  style={{
+                    overflow:
+                      "hidden",
+                    textOverflow:
+                      "ellipsis",
+                    whiteSpace:
+                      "nowrap",
+                    color:
+                      "#35263e",
+                    fontSize:
+                      "10px",
+                    marginBottom:
+                      "7px",
+                  }}
+                >
+                  {file.name}
+                </div>
+
+                {index > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onMove(
+                        index,
+                        0,
+                      )
+                    }
+                    style={{
+                      width:
+                        "100%",
+                      border:
+                        "1px solid #d8cce0",
+                      background:
+                        "#f7f0fb",
+                      color:
+                        "#4B1678",
+                      borderRadius:
+                        "7px",
+                      padding:
+                        "6px",
+                      fontSize:
+                        "10px",
+                      fontWeight:
+                        "800",
+                      cursor:
+                        "pointer",
+                      marginBottom:
+                        "6px",
+                    }}
+                  >
+                    Make Primary
+                  </button>
+                )}
+
+                <div
+                  style={{
+                    display:
+                      "grid",
+                    gridTemplateColumns:
+                      "1fr 1fr 1fr",
+                    gap:
+                      "5px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={
+                      index === 0
+                    }
+                    onClick={() =>
+                      onMove(
+                        index,
+                        index - 1,
+                      )
+                    }
+                    aria-label="Move photo left"
+                    style={{
+                      border:
+                        "1px solid #ded3e5",
+                      background:
+                        "#ffffff",
+                      borderRadius:
+                        "7px",
+                      padding:
+                        "6px",
+                      cursor:
+                        index === 0
+                          ? "default"
+                          : "pointer",
+                      opacity:
+                        index === 0
+                          ? 0.4
+                          : 1,
+                    }}
+                  >
+                    ←
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      index ===
+                      files.length -
+                        1
+                    }
+                    onClick={() =>
+                      onMove(
+                        index,
+                        index + 1,
+                      )
+                    }
+                    aria-label="Move photo right"
+                    style={{
+                      border:
+                        "1px solid #ded3e5",
+                      background:
+                        "#ffffff",
+                      borderRadius:
+                        "7px",
+                      padding:
+                        "6px",
+                      cursor:
+                        index ===
+                        files.length -
+                          1
+                          ? "default"
+                          : "pointer",
+                      opacity:
+                        index ===
+                        files.length -
+                          1
+                          ? 0.4
+                          : 1,
+                    }}
+                  >
+                    →
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onRemove(
+                        index,
+                      )
+                    }
+                    aria-label="Remove photo"
+                    style={{
+                      border:
+                        "1px solid #ead9e0",
+                      background:
+                        "#ffffff",
+                      borderRadius:
+                        "7px",
+                      padding:
+                        "6px",
+                      cursor:
+                        "pointer",
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
     </div>
   );
 }
