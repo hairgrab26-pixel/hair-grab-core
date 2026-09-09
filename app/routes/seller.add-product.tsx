@@ -3359,6 +3359,9 @@ export default function SellerAddProductPage() {
     status: string;
     skuCount: number;
     variantCount: number;
+    productType?: ProductType;
+    material?: string;
+    texture?: string;
   };
 
   const [
@@ -3374,6 +3377,10 @@ export default function SellerAddProductPage() {
   } | null>(null);
 
   const [csvReviewOpen, setCsvReviewOpen] = useState(false);
+  const [csvSelectedKeys, setCsvSelectedKeys] = useState<string[]>([]);
+  const [csvBulkProductType, setCsvBulkProductType] = useState<ProductType | "">("");
+  const [csvBulkMaterial, setCsvBulkMaterial] = useState("");
+  const [csvBulkTexture, setCsvBulkTexture] = useState("");
 
   // HairGrab keeps this dumb easy:
   // selecting 2+ product options automatically turns those
@@ -4385,7 +4392,44 @@ export default function SellerAddProductPage() {
       needsDetails,
       items,
     });
+    setCsvSelectedKeys(items.map((item) => item.key));
+    setCsvBulkProductType("");
+    setCsvBulkMaterial("");
+    setCsvBulkTexture("");
     setCsvReviewOpen(true);
+  }
+
+  function csvItemReady(item: CsvImportedProduct) {
+    if (!item.productType) return false;
+    if (item.productType === "HAIR_ESSENTIAL") return true;
+    return Boolean(item.material && item.texture);
+  }
+
+  function refreshCsvCounts(items: CsvImportedProduct[]) {
+    const ready = items.filter(csvItemReady).length;
+    return { ready, needsDetails: items.length - ready };
+  }
+
+  function applyCsvBulkDetails() {
+    if (!csvPreview || csvSelectedKeys.length === 0) return;
+
+    const selected = new Set(csvSelectedKeys);
+    const items = csvPreview.items.map((item) => {
+      if (!selected.has(item.key)) return item;
+      const next = { ...item };
+      if (csvBulkProductType) next.productType = csvBulkProductType;
+      if (csvBulkMaterial) next.material = csvBulkMaterial;
+      if (csvBulkTexture) next.texture = csvBulkTexture;
+      return next;
+    });
+    const counts = refreshCsvCounts(items);
+    setCsvPreview({ ...csvPreview, items, ...counts });
+  }
+
+  function toggleCsvProduct(key: string) {
+    setCsvSelectedKeys((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
+    );
   }
 
   function saveProduct() {
@@ -5241,25 +5285,72 @@ export default function SellerAddProductPage() {
 
         {csvPreview && csvReviewOpen && (
           <div style={{ marginTop: "12px", background: "white", border: "1px solid #e8deec", borderRadius: "12px", padding: "12px" }}>
-            <div style={{ color: "#4B1678", fontWeight: 900, fontSize: "14px" }}>Review imported products</div>
+            <div style={{ color: "#4B1678", fontWeight: 900, fontSize: "14px" }}>Review & complete imported products</div>
             <div style={{ marginTop: "4px", fontSize: "11px", color: "#6f6475", lineHeight: 1.5 }}>
-              Your CSV has been read and grouped into products. Variants stay under their parent product. Complete HairGrab details before publishing.
+              Select products, then apply the same HairGrab details to all of them at once. Variants stay grouped under their parent product.
             </div>
-            <div style={{ marginTop: "10px", display: "grid", gap: "8px", maxHeight: "340px", overflowY: "auto" }}>
-              {csvPreview.items.map((item) => (
-                <div key={item.key} style={{ border: "1px solid #eee4f2", borderRadius: "10px", padding: "10px 11px", display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 850, color: "#2e2432" }}>{item.title}</div>
-                    <div style={{ marginTop: "3px", fontSize: "10px", color: "#766b79" }}>
-                      {item.variantCount} variant{item.variantCount === 1 ? "" : "s"}{item.skuCount > 0 ? ` · ${item.skuCount} SKU${item.skuCount === 1 ? "" : "s"}` : ""} · Source status: {item.status}
+
+            <div style={{ marginTop: "12px", padding: "12px", borderRadius: "11px", background: "#faf7fb", border: "1px solid #eee4f2" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                <strong style={{ color: "#4B1678", fontSize: "12px" }}>Bulk Complete HairGrab Details</strong>
+                <button type="button" onClick={() => setCsvSelectedKeys(csvSelectedKeys.length === csvPreview.items.length ? [] : csvPreview.items.map((item) => item.key))} style={{ border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "8px", padding: "7px 10px", fontWeight: 800, cursor: "pointer", fontSize: "11px" }}>
+                  {csvSelectedKeys.length === csvPreview.items.length ? "Clear All" : "Select All"}
+                </button>
+              </div>
+              <div style={{ marginTop: "8px", fontSize: "10px", color: "#766b79" }}>{csvSelectedKeys.length} product{csvSelectedKeys.length === 1 ? "" : "s"} selected</div>
+
+              <div style={{ marginTop: "10px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "10px" }}>
+                <label style={{ fontSize: "11px", fontWeight: 800, color: "#4B1678" }}>Product Type
+                  <select value={csvBulkProductType} onChange={(event) => setCsvBulkProductType(event.target.value as ProductType | "")} style={{ ...fieldStyle, marginTop: "5px" }}>
+                    <option value="">Leave unchanged</option>
+                    {productTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                </label>
+                <label style={{ fontSize: "11px", fontWeight: 800, color: "#4B1678" }}>Hair Material
+                  <select value={csvBulkMaterial} onChange={(event) => setCsvBulkMaterial(event.target.value)} style={{ ...fieldStyle, marginTop: "5px" }}>
+                    <option value="">Leave unchanged</option>
+                    {materials.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </label>
+                <label style={{ fontSize: "11px", fontWeight: 800, color: "#4B1678" }}>Texture
+                  <select value={csvBulkTexture} onChange={(event) => setCsvBulkTexture(event.target.value)} style={{ ...fieldStyle, marginTop: "5px" }}>
+                    <option value="">Leave unchanged</option>
+                    {textures.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </label>
+              </div>
+              <button type="button" disabled={csvSelectedKeys.length === 0 || (!csvBulkProductType && !csvBulkMaterial && !csvBulkTexture)} onClick={applyCsvBulkDetails} style={{ marginTop: "11px", border: 0, borderRadius: "9px", background: "#4B1678", color: "white", padding: "10px 13px", fontWeight: 850, cursor: "pointer", opacity: csvSelectedKeys.length === 0 || (!csvBulkProductType && !csvBulkMaterial && !csvBulkTexture) ? 0.5 : 1 }}>
+                Apply to {csvSelectedKeys.length || 0} Selected
+              </button>
+            </div>
+
+            <div style={{ marginTop: "10px", display: "grid", gap: "8px", maxHeight: "360px", overflowY: "auto" }}>
+              {csvPreview.items.map((item) => {
+                const ready = csvItemReady(item);
+                return (
+                  <label key={item.key} style={{ border: "1px solid #eee4f2", borderRadius: "10px", padding: "10px 11px", display: "flex", gap: "10px", alignItems: "center", cursor: "pointer" }}>
+                    <input type="checkbox" checked={csvSelectedKeys.includes(item.key)} onChange={() => toggleCsvProduct(item.key)} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 850, color: "#2e2432" }}>{item.title}</div>
+                      <div style={{ marginTop: "3px", fontSize: "10px", color: "#766b79" }}>
+                        {item.variantCount} variant{item.variantCount === 1 ? "" : "s"}{item.skuCount > 0 ? ` · ${item.skuCount} SKU${item.skuCount === 1 ? "" : "s"}` : ""}
+                      </div>
+                      {(item.productType || item.material || item.texture) && <div style={{ marginTop: "4px", fontSize: "10px", color: "#4B1678" }}>
+                        {[productTypes.find((type) => type.value === item.productType)?.label, item.material, item.texture].filter(Boolean).join(" · ")}
+                      </div>}
                     </div>
-                  </div>
-                  <span style={{ whiteSpace: "nowrap", padding: "5px 8px", borderRadius: "999px", background: "#fff5df", color: "#7a5410", fontSize: "10px", fontWeight: 850 }}>Needs HairGrab details</span>
-                </div>
-              ))}
+                    <span style={{ whiteSpace: "nowrap", padding: "5px 8px", borderRadius: "999px", background: ready ? "#eef8f0" : "#fff5df", color: ready ? "#276236" : "#7a5410", fontSize: "10px", fontWeight: 850 }}>
+                      {ready ? "Ready" : "Needs HairGrab details"}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
-            <div style={{ marginTop: "12px", padding: "10px", borderRadius: "10px", background: "#faf7fb", fontSize: "11px", color: "#5f5364", lineHeight: 1.5 }}>
-              Next: bulk-apply Product Type, Texture, Hair Material and fulfillment to selected products, then import them into HairGrab/Shopify. Nothing is published from this preview.
+
+            <div style={{ marginTop: "12px", padding: "10px", borderRadius: "10px", background: csvPreview.needsDetails === 0 ? "#eef8f0" : "#faf7fb", fontSize: "11px", color: csvPreview.needsDetails === 0 ? "#276236" : "#5f5364", lineHeight: 1.5 }}>
+              {csvPreview.needsDetails === 0
+                ? `✓ All ${csvPreview.ready} products have the basic HairGrab classification. Next: final validation and Import Products.`
+                : `${csvPreview.ready} ready · ${csvPreview.needsDetails} still need HairGrab details. Group similar products, apply their details once, then move to the next group.`}
             </div>
           </div>
         )}
