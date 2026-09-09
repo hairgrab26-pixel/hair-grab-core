@@ -100,7 +100,7 @@ function normalizeShopifyOrderId(
 
 
 // ==========================================================
-// SHIPPO TEST RATE HELPERS
+// SHIPPO SHIPPING HELPERS
 // ==========================================================
 
 type HairGrabShippingRate = {
@@ -834,7 +834,7 @@ export const action = async ({
 
 
     // ========================================================
-    // HAIRGRAB SHIPPING - GET SHIPPO TEST RATES
+    // HAIRGRAB SHIPPING - GET SHIPPO RATES
     // No postage is purchased in this step.
     // ========================================================
 
@@ -1323,7 +1323,7 @@ export const action = async ({
         success: true,
 
         message:
-          `Shippo returned ${rates.length} test shipping rate${rates.length === 1 ? "" : "s"}. No postage has been purchased.`,
+          `Shippo returned ${rates.length} shipping rate${rates.length === 1 ? "" : "s"}. No postage has been purchased.`,
 
         ratesOrderId:
           orderId,
@@ -1334,8 +1334,8 @@ export const action = async ({
 
 
     // ========================================================
-    // HAIRGRAB SHIPPING - CREATE SHIPPO TEST LABEL
-    // Test token only: no real postage is purchased.
+    // HAIRGRAB SHIPPING - CREATE SHIPPO LABEL
+    // Live Shippo transaction: creating a label can purchase real postage.
     // ========================================================
 
     if (
@@ -1452,7 +1452,7 @@ export const action = async ({
         const errorMessage =
           shippoErrorMessage(
             transactionJson,
-            "Shippo could not create the test shipping label.",
+            "Shippo could not create the shipping label.",
           );
 
         await db.sellerOrderFulfillment.update({
@@ -1515,7 +1515,7 @@ export const action = async ({
         !transactionId
       ) {
         throw new Error(
-          "Shippo created the transaction but did not return a printable test label.",
+          "Shippo created the transaction but did not return a printable shipping label.",
         );
       }
 
@@ -1599,7 +1599,7 @@ export const action = async ({
         success: true,
 
         message:
-          "Shippo test label created. No real postage was charged. Use Print Test Label below to verify the PDF.",
+          "Shipping label created through Shippo. Postage has been purchased. Use Print Label below to open the PDF.",
 
         labelOrderId:
           orderId,
@@ -3043,7 +3043,9 @@ function OrderCard({
       {/* METHOD NOT CHOSEN */}
 
       {ready &&
-        !order.fulfillmentMethod && (
+        !order.shippingLabelUrl &&
+        order.fulfillmentStatus !==
+          "READY_FOR_PICKUP" && (
           <Form
             method="post"
             style={{
@@ -3087,7 +3089,9 @@ function OrderCard({
                   "7px",
               }}
             >
-              Choose fulfillment method
+              {order.fulfillmentMethod
+                ? "Change fulfillment method"
+                : "Choose fulfillment method"}
             </div>
 
 
@@ -3106,7 +3110,7 @@ function OrderCard({
                   "9px",
               }}
             >
-              Select how this particular order will reach the shopper.
+              Choose how you want to fulfill this order. You can change this until a shipping label is purchased or the order is marked ready for pickup.
             </div>
 
 
@@ -3137,6 +3141,7 @@ function OrderCard({
                 <select
                   name="fulfillmentMethod"
                   defaultValue={
+                    order.fulfillmentMethod ||
                     seller.nationwideShippingMethod
                   }
                   style={
@@ -3172,7 +3177,9 @@ function OrderCard({
                   primaryButton
                 }
               >
-                Continue
+                {order.fulfillmentMethod
+                  ? "Update Method"
+                  : "Continue"}
               </button>
             </div>
           </Form>
@@ -3210,7 +3217,7 @@ function OrderCard({
                 sectionTitle
               }
             >
-              Seller Managed Shipping
+              Fulfill On My Own
             </div>
 
 
@@ -3325,7 +3332,7 @@ function OrderCard({
                 infoBox
               }
             >
-              Enter the packed box or mailer size and weight. HairGrab will use your saved seller ship-from address and the customer's Shopify shipping address to request test rates from Shippo. No postage is purchased during this test step.
+              Enter the packed box or mailer size and weight. HairGrab will use your saved seller ship-from address and the customer's Shopify shipping address to request live rates from Shippo. Getting rates does not purchase postage. Postage is purchased only when you choose a rate and create the label.
             </div>
 
 
@@ -3497,7 +3504,7 @@ function OrderCard({
                       "7px",
                   }}
                 >
-                  Shippo Test Rates
+                  Shipping Rates
                 </div>
 
                 <div
@@ -3647,7 +3654,7 @@ function OrderCard({
                           type="submit"
                           style={primaryButton}
                         >
-                          Choose & Create Test Label
+                          Buy Label
                         </button>
                       </Form>
                     ),
@@ -3661,7 +3668,7 @@ function OrderCard({
                       "9px",
                   }}
                 >
-                  Test mode only. Choose a rate above to generate a Shippo test label. The test token does not purchase real postage.
+                  Choose a rate above to purchase and generate a shipping label through Shippo. Creating the label can charge real postage.
                 </div>
               </div>
             )}
@@ -3683,7 +3690,7 @@ function OrderCard({
                       "8px",
                   }}
                 >
-                  ✓ Shippo Test Label Ready
+                  ✓ Shipping Label Ready
                 </div>
 
                 {order.trackingNumber && (
@@ -3728,7 +3735,7 @@ function OrderCard({
                         "none",
                     }}
                   >
-                    Print Test Label ↗
+                    Print Label ↗
                   </a>
 
                   <Form method="post">
@@ -3764,7 +3771,7 @@ function OrderCard({
                       "9px",
                   }}
                 >
-                  Test label verified? Use Mark Shipped & Notify Customer to fulfill only this seller's items in Shopify and send the Shopify shipping notification.
+                  Label ready? Use Mark Shipped & Notify Customer to fulfill only this seller's items in Shopify and send the Shopify shipping notification.
                 </div>
               </div>
             )}
