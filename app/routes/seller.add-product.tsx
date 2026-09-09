@@ -1394,7 +1394,7 @@ export const action =
             key: String(product.csvSourceKey || product.title || ""),
             title: String(product.title || "Untitled product"),
             success: Boolean(result?.success),
-            message: String(result?.message || (result?.success ? "Imported" : "Import failed")),
+            message: String(result?.message || (result?.success ? "Imported" : "Add failed")),
           });
         }
 
@@ -1404,7 +1404,7 @@ export const action =
           success: failed === 0,
           csvBatch: true,
           message: failed === 0
-            ? `${imported} product${imported === 1 ? "" : "s"} imported successfully as Shopify drafts.`
+            ? `${imported} product${imported === 1 ? "" : "s"} added successfully to My Products as Shopify drafts.`
             : `${imported} imported · ${failed} need attention.`,
           imported,
           failed,
@@ -4851,7 +4851,7 @@ export default function SellerAddProductPage() {
     formData.append("csvBatchPayload", JSON.stringify(payloads));
     setCsvImporting(true);
     setCsvImportSummary(null);
-    setCsvImportProgress(`Importing ${readyItems.length} ready product${readyItems.length === 1 ? "" : "s"}...`);
+    setCsvImportProgress(`Adding ${readyItems.length} ready product${readyItems.length === 1 ? "" : "s"} to My Products...`);
     csvImportFetcher.submit(formData, { method: "post" });
   }
 
@@ -4870,7 +4870,7 @@ export default function SellerAddProductPage() {
       if (!entry) return item;
       return entry.success
         ? { ...item, imported: true, importError: undefined }
-        : { ...item, importError: String(entry.message || "Import failed") };
+        : { ...item, importError: String(entry.message || "Add failed") };
     });
 
     const failures = Array.isArray(result.results)
@@ -5679,7 +5679,7 @@ export default function SellerAddProductPage() {
 
             <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
               <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#eef8f0", color: "#276236", fontWeight: 800 }}>
-                {csvPreview.ready} ready to import
+                {csvPreview.ready} ready to add
               </span>
               <span style={{ padding: "5px 9px", borderRadius: "999px", background: "#fff5df", color: "#7a5410", fontWeight: 800 }}>
                 {csvPreview.needsDetails} need information
@@ -5771,7 +5771,7 @@ export default function SellerAddProductPage() {
                             </div>
                           </div>
                           <span style={{ whiteSpace: "nowrap", padding: "5px 8px", borderRadius: "999px", background: item.imported ? "#e7f5ea" : item.excluded ? "#f0edf2" : readyToImport ? "#eef8f0" : "#fff5df", color: item.imported ? "#276236" : item.excluded ? "#6c6370" : readyToImport ? "#276236" : "#7a5410", fontSize: "10px", fontWeight: 850 }}>
-                            {item.imported ? "✓ Imported" : item.excluded ? "Excluded" : readyToImport ? "✓ Ready to import" : "Needs information"}
+                            {item.imported ? "✓ Imported" : item.excluded ? "Excluded" : readyToImport ? "✓ Ready to add" : "Needs information"}
                           </span>
                         </div>
 
@@ -5835,14 +5835,49 @@ export default function SellerAddProductPage() {
                           </div>
                         )}
 
-                        {!item.excluded && missing.length > 0 && <div style={{ marginTop: "6px", fontSize: "10px", color: "#8a5d09" }}>Still needed: {missing.join(", ")}</div>}
+                        {!item.imported && !item.excluded && (
+                          <div style={{ marginTop: "10px", padding: "10px", borderRadius: "9px", background: missing.some((value) => value.includes("price")) ? "#fffaf0" : "#faf7fb", border: "1px solid #eee4f2" }}>
+                            <div style={{ fontSize: "10px", fontWeight: 850, color: "#4B1678" }}>
+                              {item.variantCount === 1 ? "Price & inventory" : `Variant prices & inventory (${item.variantCount})`}
+                            </div>
+                            {item.variantCount === 1 ? (
+                              <div style={{ marginTop: "6px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(95px, 1fr))", gap: "6px" }}>
+                                <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Price *
+                                  <input aria-label="Price" placeholder="$0.00" inputMode="decimal" value={item.variants[0]?.price || ""} onChange={(event) => item.variants[0] && updateCsvVariant(item.key, item.variants[0].key, "price", event.target.value.replace(/[^0-9.]/g, ""))} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }} />
+                                </label>
+                                <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Inventory
+                                  <input aria-label="Inventory" placeholder="Qty" inputMode="numeric" value={item.variants[0]?.inventory || ""} onChange={(event) => item.variants[0] && updateCsvVariant(item.key, item.variants[0].key, "inventory", event.target.value.replace(/[^0-9-]/g, ""))} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }} />
+                                </label>
+                                <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>SKU
+                                  <input aria-label="SKU" placeholder="Optional" value={item.variants[0]?.sku || ""} onChange={(event) => item.variants[0] && updateCsvVariant(item.key, item.variants[0].key, "sku", event.target.value)} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }} />
+                                </label>
+                              </div>
+                            ) : (
+                              <div style={{ marginTop: "7px", display: "grid", gap: "6px" }}>
+                                {item.variants.map((variant, variantIndex) => (
+                                  <div key={variant.key} style={{ display: "grid", gridTemplateColumns: "minmax(95px, 1.25fr) repeat(3, minmax(72px, 1fr))", gap: "6px", alignItems: "center", fontSize: "10px" }}>
+                                    <div style={{ color: "#5f5364", fontWeight: 700 }}>{variant.sourceOptionValues.filter(Boolean).join(" / ") || `Variant ${variantIndex + 1}`}</div>
+                                    <input aria-label="Price" placeholder="$ Price *" inputMode="decimal" value={variant.price} onChange={(event) => updateCsvVariant(item.key, variant.key, "price", event.target.value.replace(/[^0-9.]/g, ""))} style={{ ...fieldStyle, padding: "8px" }} />
+                                    <input aria-label="Inventory" placeholder="Qty" inputMode="numeric" value={variant.inventory} onChange={(event) => updateCsvVariant(item.key, variant.key, "inventory", event.target.value.replace(/[^0-9-]/g, ""))} style={{ ...fieldStyle, padding: "8px" }} />
+                                    <input aria-label="SKU" placeholder="SKU" value={variant.sku} onChange={(event) => updateCsvVariant(item.key, variant.key, "sku", event.target.value)} style={{ ...fieldStyle, padding: "8px" }} />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {missing.some((value) => value.includes("price")) && (
+                              <div style={{ marginTop: "6px", fontSize: "9px", color: "#8a5d09" }}>Enter the missing price{item.variantCount === 1 ? "" : "s"} here. You do not need to open another screen.</div>
+                            )}
+                          </div>
+                        )}
+
+                        {!item.excluded && missing.length > 0 && <div style={{ marginTop: "6px", fontSize: "10px", color: "#8a5d09" }}>Still needed before this can be added: {missing.join(", ")}</div>}
                         {!item.excluded && warnings.length > 0 && <div style={{ marginTop: "3px", fontSize: "10px", color: "#7d7480" }}>Review warning: {warnings.join(" · ")}</div>}
-                        {item.importError && <div style={{ marginTop: "4px", fontSize: "10px", color: "#a22727" }}>Import failed: {item.importError}</div>}
+                        {item.importError && <div style={{ marginTop: "4px", fontSize: "10px", color: "#a22727" }}>Could not add to My Products: {item.importError}</div>}
 
                         {!item.imported && !item.excluded && (
                           <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
                             <button type="button" onClick={() => setCsvEditingKey(editing ? null : item.key)} style={{ border: "1px solid #d8cce0", background: "white", color: "#4B1678", borderRadius: "7px", padding: "6px 8px", fontSize: "10px", fontWeight: 800, cursor: "pointer" }}>
-                              {editing ? "Close Details" : `Review ${item.variantCount} Variant${item.variantCount === 1 ? "" : "s"} / Details`}
+                              {editing ? "Close Extra Details" : "Edit Name / Description"}
                             </button>
                             <button type="button" onClick={() => toggleCsvExclude(item.key)} style={{ border: "1px solid #d8cce0", background: "white", color: "#6c6370", borderRadius: "7px", padding: "6px 8px", fontSize: "10px", fontWeight: 800, cursor: "pointer" }}>
                               Exclude from Import
@@ -5866,17 +5901,6 @@ export default function SellerAddProductPage() {
                           <textarea rows={3} value={item.description} onChange={(event) => updateCsvProduct(item.key, { description: event.target.value })} placeholder="Optional during import. This product stays a Shopify draft until you publish it." style={{ ...fieldStyle, marginTop: "4px" }} />
                         </label>
 
-                        <div style={{ marginTop: "10px", fontSize: "10px", fontWeight: 850, color: "#4B1678" }}>Variants — price is required for every variant</div>
-                        <div style={{ marginTop: "6px", display: "grid", gap: "6px" }}>
-                          {item.variants.map((variant, variantIndex) => (
-                            <div key={variant.key} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1.4fr) repeat(3, minmax(80px, 1fr))", gap: "6px", alignItems: "center", fontSize: "10px" }}>
-                              <div style={{ color: "#5f5364" }}>{variant.sourceOptionValues.filter(Boolean).join(" / ") || `Variant ${variantIndex + 1}`}</div>
-                              <input aria-label="Price" placeholder="Price" inputMode="decimal" value={variant.price} onChange={(event) => updateCsvVariant(item.key, variant.key, "price", event.target.value.replace(/[^0-9.]/g, ""))} style={{ ...fieldStyle, padding: "8px" }} />
-                              <input aria-label="Inventory" placeholder="Qty" inputMode="numeric" value={variant.inventory} onChange={(event) => updateCsvVariant(item.key, variant.key, "inventory", event.target.value.replace(/[^0-9-]/g, ""))} style={{ ...fieldStyle, padding: "8px" }} />
-                              <input aria-label="SKU" placeholder="SKU" value={variant.sku} onChange={(event) => updateCsvVariant(item.key, variant.key, "sku", event.target.value)} style={{ ...fieldStyle, padding: "8px" }} />
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     )}
                   </div>
@@ -5886,7 +5910,7 @@ export default function SellerAddProductPage() {
 
             <div style={{ marginTop: "12px", padding: "12px", borderRadius: "10px", background: "#faf7fb", border: "1px solid #eee4f2" }}>
               <div style={{ fontSize: "11px", color: "#5f5364", lineHeight: 1.5 }}>
-                <strong style={{ color: "#4B1678" }}>Final validation:</strong> {csvPreview.ready} ready to import · {csvPreview.needsDetails} still need information · {csvPreview.items.filter((item) => item.excluded).length} excluded. Imported products are created as <strong>Shopify drafts</strong>, so nothing goes live before you review it.
+                <strong style={{ color: "#4B1678" }}>Ready to save:</strong> {csvPreview.ready} ready to add · {csvPreview.needsDetails} still need required information · {csvPreview.items.filter((item) => item.excluded).length} excluded. Products added here are saved to <strong>My Products</strong> as Shopify drafts, so nothing goes live before you review it.
               </div>
 
               <button
@@ -5895,14 +5919,14 @@ export default function SellerAddProductPage() {
                 onClick={() => void importReadyCsvProducts()}
                 style={{ marginTop: "10px", width: "100%", border: 0, borderRadius: "10px", background: "#4B1678", color: "white", padding: "12px 14px", fontWeight: 900, cursor: csvImporting || csvPreview.ready === 0 ? "not-allowed" : "pointer", opacity: csvImporting || csvPreview.ready === 0 ? 0.55 : 1 }}
               >
-                {csvImporting ? "Importing Products..." : `Import ${csvPreview.ready} Ready Product${csvPreview.ready === 1 ? "" : "s"}`}
+                {csvImporting ? "Adding Products..." : `Add ${csvPreview.ready} Ready Product${csvPreview.ready === 1 ? "" : "s"} to My Products`}
               </button>
 
               {csvImportProgress && <div style={{ marginTop: "8px", fontSize: "10px", color: "#4B1678" }}>{csvImportProgress}</div>}
 
               {csvImportSummary && (
                 <div style={{ marginTop: "10px", padding: "10px", borderRadius: "9px", background: csvImportSummary.failed === 0 ? "#eef8f0" : "#fff4e5", color: csvImportSummary.failed === 0 ? "#276236" : "#7a4d00", fontSize: "11px", lineHeight: 1.5 }}>
-                  <strong>{csvImportSummary.imported} product{csvImportSummary.imported === 1 ? "" : "s"} imported successfully.</strong>
+                  <strong>{csvImportSummary.imported} product{csvImportSummary.imported === 1 ? "" : "s"} added to My Products successfully.</strong>
                   {csvImportSummary.failed > 0 && <> {csvImportSummary.failed} failed and remain available to fix/retry.</>}
                   {csvImportSummary.failures.length > 0 && (
                     <div style={{ marginTop: "6px" }}>{csvImportSummary.failures.slice(0, 5).map((failure) => <div key={failure}>• {failure}</div>)}</div>
