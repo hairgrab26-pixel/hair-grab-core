@@ -52,8 +52,6 @@ model SellerApplication {
   email            String
   phone            String?
 
-  
-
   address1   String?
   address2   String?
   city       String?
@@ -65,9 +63,9 @@ model SellerApplication {
   productCountRange String?
   canImportCsv      Boolean?
 
-  sellsNationwide     Boolean @default(true)
-  offersLocalPickup   Boolean @default(false)
-  offersLocalDelivery Boolean @default(false)
+  sellsNationwide       Boolean @default(true)
+  offersLocalPickup     Boolean @default(false)
+  offersLocalDelivery   Boolean @default(false)
   offersSameDayDelivery Boolean @default(false)
 
   notes            String?
@@ -108,8 +106,6 @@ model Seller {
   email            String?
   phone            String?
 
-  
-
   storeSlug        String? @unique
   storeDescription String?
   logoUrl          String?
@@ -129,8 +125,8 @@ model Seller {
   nationwideShippingMethod String @default("SELLER_MANAGED")
 
   // Additional fulfillment options
-  offersLocalPickup   Boolean @default(false)
-  offersLocalDelivery Boolean @default(false)
+  offersLocalPickup     Boolean @default(false)
+  offersLocalDelivery   Boolean @default(false)
   offersSameDayDelivery Boolean @default(false)
 
   returnPolicy String @default("14_DAY_RETURNS")
@@ -182,7 +178,8 @@ model Seller {
   announcementReads AnnouncementRead[]
   notifications     SellerNotification[]
 
-  onboarding SellerOnboarding?
+  onboarding        SellerOnboarding?
+  shopifyConnection SellerShopifyConnection?
 
   approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
 
@@ -193,6 +190,42 @@ model Seller {
   @@index([email])
   @@index([businessName])
   @@index([payoutTier])
+}
+
+// ==========================================================
+// SELLER SHOPIFY CONNECTION
+//
+// Connects one HairGrab seller to the seller's own Shopify store.
+// This is separate from HairGrab's marketplace Shopify store.
+// ==========================================================
+
+model SellerShopifyConnection {
+  id String @id @default(cuid())
+
+  sellerId String @unique
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  shopDomain String  @unique
+  shopName   String?
+
+  // Encrypted offline Admin API access token.
+  accessTokenEncrypted String?
+
+  // CONNECTED / DISCONNECTED / ERROR
+  status String @default("CONNECTED")
+
+  scopes    String?
+  lastError String?
+
+  connectedAt    DateTime  @default(now())
+  lastSyncAt     DateTime?
+  disconnectedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([shopDomain])
 }
 
 // ==========================================================
