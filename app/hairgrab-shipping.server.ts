@@ -172,6 +172,7 @@ async function createProfile(
                   countries: [
                     {
                       code: "US",
+                      includeAllProvinces: true,
                     },
                   ],
                   methodDefinitionsToCreate: [
