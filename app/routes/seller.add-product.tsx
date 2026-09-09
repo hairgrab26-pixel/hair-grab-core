@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
+import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
 
 
 // ==========================================================
@@ -2434,6 +2435,20 @@ export const action =
           "Shopify did not return a product after saving.",
         );
       }
+
+      // ====================================================
+      // SYNC SHOPIFY CHECKOUT SHIPPING PROFILE
+      // ====================================================
+
+      await syncHairGrabShippingProfile({
+        admin,
+        locationId,
+        variantIds: (shopifyProduct.variants?.nodes || []).map(
+          (variant: { id?: string }) => String(variant.id || ""),
+        ),
+        shippingMethod: payload.shippingMethod,
+        flatRateShipping: payload.flatRateShipping,
+      });
 
       // ====================================================
       // WRITE EXISTING SHOPIFY METAFIELDS SAFELY

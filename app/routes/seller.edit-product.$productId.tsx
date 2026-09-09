@@ -4,6 +4,7 @@ import { Form, Link, redirect, useActionData, useLoaderData } from "react-router
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
+import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
 
 type ShopifyMetafieldDefinition = {
   name: string;
@@ -1447,6 +1448,24 @@ export const action = async ({
         coreProduct
           .shopifyProductId,
       metafields,
+    });
+
+    const shippingLocationId =
+      await getPrimaryLocationId(
+        admin,
+      );
+
+    await syncHairGrabShippingProfile({
+      admin,
+      locationId:
+        shippingLocationId,
+      variantIds:
+        variants.map(
+          (variant) =>
+            variant.id,
+        ),
+      shippingMethod,
+      flatRateShipping,
     });
 
     await db.sellerProduct.update({
