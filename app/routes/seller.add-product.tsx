@@ -69,6 +69,7 @@ type ProductPayload = {
   optionsAreVariants: boolean;
   searchClassifications: string[];
   installationMethods: string[];
+  locType: string;
 
   density: string;
   laceSize: string;
@@ -2339,6 +2340,22 @@ export const action =
         });
       }
 
+      const locTypeLabel =
+        locTypeChoices.find(
+          (choice) =>
+            choice.value ===
+            payload.locType,
+        )?.label || "";
+
+      if (locTypeLabel) {
+        metafields.push({
+          namespace: "hairgrab",
+          key: "loc_type",
+          type: "single_line_text_field",
+          value: locTypeLabel,
+        });
+      }
+
 
       const productSetResponse =
         await admin.graphql(
@@ -2418,6 +2435,7 @@ export const action =
                   ...selectedOptionTags,
                   ...classificationTags,
                   ...installationTags,
+                  ...(locTypeLabel ? [locTypeLabel] : []),
                 ],
 
                 productOptions:
@@ -2925,6 +2943,19 @@ const installationMethodChoices: Choice[] = [
   },
 ];
 
+const locTypeChoices: Choice[] = [
+  { value: "BUTTERFLY_LOCS", label: "Butterfly Locs" },
+  { value: "FAUX_LOCS", label: "Faux Locs" },
+  { value: "GODDESS_LOCS", label: "Goddess Locs" },
+  { value: "SOFT_LOCS", label: "Soft Locs" },
+  { value: "DISTRESSED_LOCS", label: "Distressed Locs" },
+  { value: "BOHO_LOCS", label: "Boho Locs" },
+  { value: "MARLEY_LOCS", label: "Marley Locs" },
+  { value: "WAVY_CURLY_LOCS", label: "Wavy / Curly Locs" },
+  { value: "TRADITIONAL_LOCS", label: "Traditional Locs" },
+  { value: "OTHER_LOCS", label: "Other" },
+];
+
 
 const materials = [
   "Human Hair",
@@ -3309,6 +3340,27 @@ export default function SellerAddProductPage() {
       [],
     );
 
+  const [
+    locType,
+    setLocType,
+  ] =
+    useState("");
+
+  const [
+    csvFileName,
+    setCsvFileName,
+  ] =
+    useState("");
+
+  const [
+    csvPreview,
+    setCsvPreview,
+  ] = useState<{
+    rows: number;
+    products: number;
+    recognized: string[];
+  } | null>(null);
+
   // HairGrab keeps this dumb easy:
   // selecting 2+ product options automatically turns those
   // options into separate variants. No hidden checkbox needed.
@@ -3322,6 +3374,13 @@ export default function SellerAddProductPage() {
       selectedOptions.length,
     ],
   );
+
+
+  useEffect(() => {
+    if (!searchClassifications.includes("LOCS")) {
+      setLocType("");
+    }
+  }, [searchClassifications]);
 
   const [
     material,
@@ -4187,6 +4246,103 @@ export default function SellerAddProductPage() {
       0 &&
     hasPrices;
 
+  function parseCsvLine(line: string) {
+    const values: string[] = [];
+    let current = "";
+    let quoted = false;
+
+    for (let index = 0; index < line.length; index++) {
+      const char = line[index];
+
+      if (char === '"') {
+        if (quoted && line[index + 1] === '"') {
+          current += '"';
+          index++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char === "," && !quoted) {
+        values.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+
+    values.push(current.trim());
+    return values;
+  }
+
+  async function handleCsvFile(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      setCsvFileName("");
+      setCsvPreview(null);
+      return;
+    }
+
+    setCsvFileName(file.name);
+
+    const text = await file.text();
+    const lines = text
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+
+    if (lines.length < 2) {
+      setCsvPreview({ rows: 0, products: 0, recognized: [] });
+      return;
+    }
+
+    const headers = parseCsvLine(lines[0]);
+    const normalized = headers.map((header) =>
+      header.toLowerCase().replace(/[^a-z0-9]/g, ""),
+    );
+
+    const commonColumns: Array<[string, string[]]> = [
+      ["Title", ["title", "name", "productname"]],
+      ["Description", ["bodyhtml", "description", "body"]],
+      ["SKU", ["variantsku", "sku"]],
+      ["Price", ["variantprice", "price"]],
+      ["Inventory", ["variantinventoryqty", "inventory", "quantity", "stock"]],
+      ["Handle / Product ID", ["handle", "productid", "parentid"]],
+      ["Status", ["status", "published"]],
+      ["Image", ["imagesrc", "imageurl", "image"]],
+      ["Option / Variant", ["option1value", "variant", "variation"]],
+    ];
+
+    const recognized = commonColumns
+      .filter(([, aliases]) =>
+        aliases.some((alias) => normalized.includes(alias)),
+      )
+      .map(([label]) => label);
+
+    const handleIndex = normalized.findIndex((header) =>
+      ["handle", "productid", "parentid"].includes(header),
+    );
+    const titleIndex = normalized.findIndex((header) =>
+      ["title", "name", "productname"].includes(header),
+    );
+
+    const productKeys = new Set<string>();
+    for (let index = 1; index < lines.length; index++) {
+      const row = parseCsvLine(lines[index]);
+      const key =
+        (handleIndex >= 0 ? row[handleIndex] : "") ||
+        (titleIndex >= 0 ? row[titleIndex] : "") ||
+        `row-${index}`;
+      productKeys.add(key);
+    }
+
+    setCsvPreview({
+      rows: Math.max(0, lines.length - 1),
+      products: productKeys.size,
+      recognized,
+    });
+  }
+
   function saveProduct() {
     if (
       !ready ||
@@ -4221,6 +4377,8 @@ export default function SellerAddProductPage() {
         searchClassifications,
 
         installationMethods,
+
+        locType,
 
         density,
 
@@ -4929,6 +5087,99 @@ export default function SellerAddProductPage() {
       </div>
 
 
+      <div
+        style={{
+          marginTop: "18px",
+          padding: "16px",
+          border: "1px solid #e3d6ea",
+          borderRadius: "14px",
+          background: "#fbf8fd",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "12px",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                color: "#4B1678",
+                fontSize: "15px",
+                fontWeight: "900",
+              }}
+            >
+              Bulk CSV Import
+            </div>
+            <div
+              style={{
+                marginTop: "4px",
+                color: "#6f6475",
+                fontSize: "11px",
+                lineHeight: 1.5,
+                maxWidth: "620px",
+              }}
+            >
+              Already have products in another store? Upload the CSV you already have. HairGrab will recognize common product fields and keep variant rows grouped under one product.
+            </div>
+          </div>
+
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: "10px",
+              background: "#4B1678",
+              color: "#ffffff",
+              padding: "10px 14px",
+              fontSize: "12px",
+              fontWeight: "800",
+              cursor: "pointer",
+            }}
+          >
+            Upload CSV
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleCsvFile}
+              style={{ display: "none" }}
+            />
+          </label>
+        </div>
+
+        {csvFileName && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "11px 12px",
+              borderRadius: "10px",
+              background: "#ffffff",
+              border: "1px solid #eee4f2",
+              fontSize: "11px",
+              color: "#4b3f50",
+            }}
+          >
+            <strong>{csvFileName}</strong>
+            {csvPreview && (
+              <div style={{ marginTop: "6px", lineHeight: 1.6 }}>
+                {csvPreview.products} product{csvPreview.products === 1 ? "" : "s"} found · {csvPreview.rows} CSV row{csvPreview.rows === 1 ? "" : "s"}
+                <br />
+                Recognized: {csvPreview.recognized.length > 0 ? csvPreview.recognized.join(", ") : "No common product columns recognized yet"}
+                <br />
+                <span style={{ color: "#7d7480" }}>
+                  HairGrab-specific details such as product type, texture, loc type, and fulfillment will be completed before anything is published.
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* PRODUCT INFO */}
 
       <div
@@ -5088,6 +5339,14 @@ export default function SellerAddProductPage() {
 
                   setSearchClassifications(
                     [],
+                  );
+
+                  setInstallationMethods(
+                    [],
+                  );
+
+                  setLocType(
+                    "",
                   );
 
                   setOptionsAreVariants(
@@ -5609,6 +5868,63 @@ export default function SellerAddProductPage() {
                       />
                     ),
                   )}
+                </div>
+              </div>
+            )}
+
+
+            {productType === "BRAIDING_HAIR" &&
+              searchClassifications.includes("LOCS") && (
+              <div
+                style={{
+                  marginTop: "18px",
+                  paddingTop: "16px",
+                  borderTop: "1px solid #eee7f2",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#4B1678",
+                    fontSize: "13px",
+                    fontWeight: "800",
+                    marginBottom: "5px",
+                  }}
+                >
+                  Loc Type
+                </div>
+
+                <div
+                  style={{
+                    color: "#7d7480",
+                    fontSize: "10px",
+                    lineHeight: 1.5,
+                    marginBottom: "10px",
+                  }}
+                >
+                  Tap the closest style. One tap only — this helps shoppers search for the exact loc style without creating another product or variant.
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "8px",
+                  }}
+                >
+                  {locTypeChoices.map((item) => (
+                    <ChoiceButton
+                      key={item.value}
+                      label={item.label}
+                      selected={locType === item.value}
+                      onClick={() =>
+                        setLocType(
+                          locType === item.value
+                            ? ""
+                            : item.value,
+                        )
+                      }
+                    />
+                  ))}
                 </div>
               </div>
             )}
