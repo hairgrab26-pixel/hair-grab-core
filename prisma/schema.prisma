@@ -356,11 +356,37 @@ model SellerProduct {
   homepagePicks    SellerHomepagePick[]
   homepageFeatured HomepageFeaturedProduct?
 
+  // Shopper favorites
+  customerFavorites CustomerFavorite[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([sellerId])
   @@index([status])
+}
+
+// ==========================================================
+// CUSTOMER FAVORITES
+// Shopify customer favorites saved against HairGrab products.
+// Customer identity comes from Shopify's signed app proxy request.
+// ==========================================================
+
+model CustomerFavorite {
+  id String @id @default(cuid())
+
+  shop              String
+  shopifyCustomerId String
+
+  sellerProductId String
+  sellerProduct   SellerProduct @relation(fields: [sellerProductId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([shop, shopifyCustomerId, sellerProductId])
+  @@index([shopifyCustomerId])
+  @@index([sellerProductId])
+  @@index([createdAt])
 }
 
 // ==========================================================
@@ -760,67 +786,4 @@ model Announcement {
 //
 // For SELECTED announcements these rows also identify the
 // sellers who should receive the announcement.
-// ==========================================================
-
-model AnnouncementRead {
-  id String @id @default(cuid())
-
-  announcementId String
-  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  deliveredAt DateTime  @default(now())
-  readAt      DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@unique([announcementId, sellerId])
-  @@index([announcementId])
-  @@index([sellerId])
-  @@index([readAt])
-}
-
-// ==========================================================
-// SELLER NOTIFICATION
-//
-// System-generated alerts shown in the seller portal.
-// Examples:
-// NEW_ORDER
-// PRODUCT_APPROVED
-// PRODUCT_REJECTED
-// PAYOUT_READY
-// PAYOUT_SENT
-// NEW_MESSAGE
-// ANNOUNCEMENT
-// SHIPPING
-// ACCOUNT
-// ==========================================================
-
-model SellerNotification {
-  id String @id @default(cuid())
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  type String
-
-  title   String
-  message String
-
-  // Optional seller portal destination
-  linkUrl String?
-
-  // Optional unique key prevents duplicate webhook notifications.
-  dedupeKey String? @unique
-
-  readAt DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([sellerId])
-  @@index([type])
-  @@index([readAt])
-  @@index([createdAt])
-}
+// ========================================================
