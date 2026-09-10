@@ -1,0 +1,15 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "HairGrab Favorites"
+handle = "hairgrab-favorites"
+type = "ui_extension"
+uid = "361dd2cd-f37e-a83a-de9f-e7ab207009b9f9dfaa5e"
+
+[[extensions.targeting]]
+module = "./src/FavoritesPage.jsx"
+target = "customer-account.page.render"
+
+[extensions.capabilities]
+api_access = true
+network_access = true
