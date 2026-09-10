@@ -1041,6 +1041,292 @@ function OrderAlertController() {
 
 
 // ==========================================================
+// HELP & UPDATES MENU
+// ==========================================================
+
+function HelpUpdatesMenu({
+  unreadMessages,
+  unreadNotifications,
+}: {
+  unreadMessages: number;
+  unreadNotifications: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleOutside(event: MouseEvent) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
+  const totalUnread = unreadMessages + unreadNotifications;
+
+  return (
+    <div
+      ref={menuRef}
+      style={{
+        position: "relative",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title="Help, messages and notifications"
+        style={{
+          border: "1px solid rgba(255,255,255,.55)",
+          background: open ? "white" : "rgba(255,255,255,.13)",
+          color: open ? "#4B1678" : "white",
+          borderRadius: "9px",
+          minHeight: "38px",
+          padding: "8px 11px",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "7px",
+          cursor: "pointer",
+          fontWeight: 800,
+          fontSize: "11px",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: "20px",
+            height: "20px",
+            borderRadius: "50%",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "1.5px solid currentColor",
+            fontSize: "13px",
+            fontWeight: 900,
+          }}
+        >
+          ?
+        </span>
+        Help & Updates
+        {totalUnread > 0 && (
+          <span
+            style={{
+              minWidth: "19px",
+              height: "19px",
+              padding: "0 5px",
+              borderRadius: "20px",
+              background: "#D4AF37",
+              color: "#2b1b35",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "10px",
+              fontWeight: 900,
+            }}
+          >
+            {totalUnread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "calc(100% + 8px)",
+            width: "min(330px, calc(100vw - 32px))",
+            background: "white",
+            border: "1px solid #e5dce9",
+            borderRadius: "13px",
+            boxShadow: "0 14px 35px rgba(39,20,52,.18)",
+            overflow: "hidden",
+            zIndex: 1000,
+            color: "#21152a",
+          }}
+        >
+          <div
+            style={{
+              padding: "13px 15px 10px",
+              background: "#faf8fc",
+              borderBottom: "1px solid #eee5f1",
+            }}
+          >
+            <div
+              style={{
+                color: "#4B1678",
+                fontSize: "12px",
+                fontWeight: 900,
+              }}
+            >
+              Help & Updates
+            </div>
+            <div
+              style={{
+                color: "#756b79",
+                fontSize: "10px",
+                lineHeight: 1.45,
+                marginTop: "3px",
+              }}
+            >
+              Quick help and your HairGrab communications in one place.
+            </div>
+          </div>
+
+          <HelpMenuLink
+            to="/seller/help"
+            icon="?"
+            title="How to Use Your Dashboard"
+            text="A short seller guide for products, orders, financials and settings."
+          />
+
+          <HelpMenuLink
+            to="/seller/messages"
+            icon="✉"
+            title="Messages"
+            text="Private communication with HairGrab support."
+            badge={unreadMessages > 0 ? String(unreadMessages) : undefined}
+          />
+
+          <HelpMenuLink
+            to="/seller/notifications"
+            icon="🔔"
+            title="Notifications"
+            text="Order, shipping, payout and marketplace alerts."
+            badge={
+              unreadNotifications > 0
+                ? String(unreadNotifications)
+                : undefined
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HelpMenuLink({
+  to,
+  icon,
+  title,
+  text,
+  badge,
+}: {
+  to: string;
+  icon: string;
+  title: string;
+  text: string;
+  badge?: string;
+}) {
+  return (
+    <Link
+      to={to}
+      role="menuitem"
+      style={{
+        display: "flex",
+        gap: "11px",
+        alignItems: "flex-start",
+        padding: "13px 15px",
+        textDecoration: "none",
+        color: "inherit",
+        borderBottom: "1px solid #f0e9f2",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: "28px",
+          height: "28px",
+          borderRadius: "8px",
+          background: "#f2eafa",
+          color: "#4B1678",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "13px",
+          fontWeight: 900,
+          flex: "0 0 auto",
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "8px",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              color: "#4B1678",
+              fontSize: "12px",
+              fontWeight: 900,
+            }}
+          >
+            {title}
+          </span>
+          {badge && (
+            <span
+              style={{
+                minWidth: "20px",
+                height: "20px",
+                padding: "0 6px",
+                borderRadius: "20px",
+                background: "#4B1678",
+                color: "white",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "10px",
+                fontWeight: 900,
+              }}
+            >
+              {badge}
+            </span>
+          )}
+        </span>
+        <span
+          style={{
+            display: "block",
+            color: "#756b79",
+            fontSize: "10px",
+            lineHeight: 1.45,
+            marginTop: "3px",
+          }}
+        >
+          {text}
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+// ==========================================================
 // DASHBOARD
 // ==========================================================
 
@@ -1106,38 +1392,67 @@ export default function SellerDashboard() {
               "wrap",
           }}
         >
-          <div>
-            <div
+          <Link
+            to="/seller"
+            aria-label="HairGrab Seller Dashboard home"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "12px",
+              textDecoration: "none",
+              color: "white",
+              minWidth: 0,
+            }}
+          >
+            <span
               style={{
-                fontSize:
-                  "10px",
-
-                fontWeight:
-                  "800",
-
-                letterSpacing:
-                  "1px",
-
-                opacity:
-                  0.8,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "white",
+                borderRadius: "10px",
+                padding: "5px 8px",
+                flex: "0 0 auto",
               }}
             >
-              HAIRGRAB SELLER
-            </div>
+              <img
+                src="/hairgrab-logo.png"
+                alt="HairGrab"
+                style={{
+                  width: "150px",
+                  maxWidth: "38vw",
+                  height: "44px",
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
+            </span>
 
-
-            <div
-              style={{
-                fontSize:
-                  "23px",
-
-                fontWeight:
-                  "800",
-              }}
-            >
-              Seller Dashboard
-            </div>
-          </div>
+            <span style={{ minWidth: 0 }}>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "9px",
+                  fontWeight: 800,
+                  letterSpacing: "1px",
+                  opacity: 0.82,
+                }}
+              >
+                SELLER PORTAL
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "20px",
+                  fontWeight: 800,
+                  marginTop: "2px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Seller Dashboard
+              </span>
+            </span>
+          </Link>
 
 
           <div
@@ -1160,6 +1475,10 @@ export default function SellerDashboard() {
           >
             <OrderAlertController />
 
+            <HelpUpdatesMenu
+              unreadMessages={stats.unreadMessages}
+              unreadNotifications={stats.unreadNotifications}
+            />
 
             <Link
               to="/seller/add-product"
@@ -1363,10 +1682,9 @@ export default function SellerDashboard() {
             <StoreTile
               title="Products"
               value={`${stats.activeProducts} Active`}
-              text="Edit listings, inventory, pricing and store view."
+              text="Add, edit and manage your HairGrab product listings."
               to="/seller/products"
             />
-
 
             <StoreTile
               title="Orders & Shipping"
@@ -1375,48 +1693,12 @@ export default function SellerDashboard() {
               to="/seller/orders"
             />
 
-
             <StoreTile
-              title="Messages"
-              value={
-                stats.unreadMessages >
-                0
-                  ? `${stats.unreadMessages} Unread`
-                  : "HairGrab Support"
-              }
-              text="Private communication between your store and HairGrab."
-              to="/seller/messages"
-              badge={
-                stats.unreadMessages >
-                0
-                  ? String(
-                      stats.unreadMessages,
-                    )
-                  : undefined
-              }
+              title="Shopify Catalog"
+              value="Connect or Review"
+              text="Connect a Shopify store and review products available for HairGrab import."
+              to="/seller/shopify"
             />
-
-
-            <StoreTile
-              title="Notifications"
-              value={
-                stats.unreadNotifications >
-                0
-                  ? `${stats.unreadNotifications} Unread`
-                  : "Marketplace Alerts"
-              }
-              text="Order, shipping, payout and HairGrab message alerts."
-              to="/seller/notifications"
-              badge={
-                stats.unreadNotifications >
-                0
-                  ? String(
-                      stats.unreadNotifications,
-                    )
-                  : undefined
-              }
-            />
-
 
             <StoreTile
               title="Store Settings"
@@ -1446,20 +1728,49 @@ export default function SellerDashboard() {
               "20px",
           }}
         >
-          <h2
+          <div
             style={{
-              margin:
-                "0 0 15px",
-
-              color:
-                "#4B1678",
-
-              fontSize:
-                "19px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginBottom: "15px",
             }}
           >
-            Financials
-          </h2>
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  color: "#4B1678",
+                  fontSize: "19px",
+                }}
+              >
+                Financials
+              </h2>
+              <div
+                style={{
+                  color: "#756b79",
+                  fontSize: "11px",
+                  marginTop: "4px",
+                }}
+              >
+                Your HairGrab sales, marketplace fees, earnings and payout-ready balance.
+              </div>
+            </div>
+
+            <Link
+              to="/seller/help"
+              style={{
+                color: "#4B1678",
+                fontSize: "11px",
+                fontWeight: 800,
+                textDecoration: "none",
+              }}
+            >
+              What do these mean? →
+            </Link>
+          </div>
 
 
           <div
