@@ -1410,8 +1410,8 @@ export default function SellerDashboard() {
                 alignItems: "center",
                 justifyContent: "center",
                 background: "white",
-                borderRadius: "10px",
-                padding: "5px 8px",
+                borderRadius: "14px",
+                padding: "10px 14px",
                 flex: "0 0 auto",
               }}
             >
@@ -1419,9 +1419,9 @@ export default function SellerDashboard() {
                 src="/hairgrab-logo.png"
                 alt="HairGrab"
                 style={{
-                  width: "150px",
-                  maxWidth: "38vw",
-                  height: "44px",
+                  width: "280px",
+                  maxWidth: "62vw",
+                  height: "92px",
                   objectFit: "contain",
                   display: "block",
                 }}
@@ -1701,6 +1701,13 @@ export default function SellerDashboard() {
             />
 
             <StoreTile
+              title="Seller Picks"
+              value="Choose up to 5"
+              text="Select the products you want eligible for HairGrab homepage rotation."
+              to="/seller/picks"
+            />
+
+            <StoreTile
               title="Store Settings"
               value="Storefront & Fulfillment"
               text="Edit your storefront, business details, shipping and selling preferences."
@@ -1759,17 +1766,40 @@ export default function SellerDashboard() {
               </div>
             </div>
 
-            <Link
-              to="/seller/help"
+            <div
               style={{
-                color: "#4B1678",
-                fontSize: "11px",
-                fontWeight: 800,
-                textDecoration: "none",
+                display: "flex",
+                gap: "12px",
+                alignItems: "center",
+                flexWrap: "wrap",
               }}
             >
-              What do these mean? →
-            </Link>
+              <Link
+                to="/seller/financials"
+                style={{
+                  background: "#4B1678",
+                  color: "white",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  textDecoration: "none",
+                  padding: "9px 12px",
+                  borderRadius: "8px",
+                }}
+              >
+                View / Export Financial Report
+              </Link>
+              <Link
+                to="/seller/help"
+                style={{
+                  color: "#4B1678",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  textDecoration: "none",
+                }}
+              >
+                What do these mean? →
+              </Link>
+            </div>
           </div>
 
 
