@@ -356,11 +356,36 @@ model SellerProduct {
   homepagePicks    SellerHomepagePick[]
   homepageFeatured HomepageFeaturedProduct?
 
+  // Shopper favorites
+  customerFavorites CustomerFavorite[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([sellerId])
   @@index([status])
+}
+
+// ==========================================================
+// CUSTOMER FAVORITES
+// Persistent shopper favorites stored by Shopify customer.
+// ==========================================================
+
+model CustomerFavorite {
+  id String @id
+
+  shop              String
+  shopifyCustomerId String
+
+  sellerProductId String
+  sellerProduct   SellerProduct @relation(fields: [sellerProductId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([shop, shopifyCustomerId, sellerProductId])
+  @@index([shopifyCustomerId])
+  @@index([sellerProductId])
+  @@index([createdAt])
 }
 
 // ==========================================================
