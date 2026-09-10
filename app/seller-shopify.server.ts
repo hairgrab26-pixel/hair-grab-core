@@ -7,7 +7,7 @@ const SHOPIFY_SCOPES = [
 
 const SHOPIFY_API_VERSION = "2026-07";
 const CALLBACK_URL =
-  "https://hairgrab.com/seller/shopify/callback";
+  "https://seller.hairgrab.com/seller/shopify/callback";
 
 type StatePayload = {
   sellerId: string;
