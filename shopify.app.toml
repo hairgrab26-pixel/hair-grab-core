@@ -3,7 +3,7 @@
 
 client_id = "4079667916c09d8b2bc3a10df6c992c5"
 name = "HairGrab Core"
-application_url = "https://hair-grab-core-production.up.railway.app"
+application_url = "https://seller.hairgrab.com"
 embedded = true
 
 [build]
@@ -49,11 +49,16 @@ api_version = "2026-07"
   compliance_topics = [ "shop/redact" ]
 
 [access_scopes]
-scopes = "read_orders,write_orders,read_products,write_products,read_shopify_payments_payouts,read_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_locations,read_inventory,write_inventory,write_files,read_shipping,write_shipping"
+scopes = "read_orders,write_orders,read_products,write_products,read_shopify_payments_payouts,read_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_locations,read_inventory,write_inventory,write_files,read_shipping,write_shipping,write_app_proxy"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://hair-grab-core-production.up.railway.app/auth/callback"
+  "https://seller.hairgrab.com/auth/callback"
 ]
+
+[app_proxy]
+url = "/favorites-proxy"
+prefix = "apps"
+subpath = "hairgrab-favorites"
