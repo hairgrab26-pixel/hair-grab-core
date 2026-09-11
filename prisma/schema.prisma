@@ -183,6 +183,9 @@ model Seller {
 
   // Homepage merchandising
   homepagePicks SellerHomepagePick[]
+  // Homepage boutique merchandising
+  homepageFeatured     Boolean @default(false)
+  homepageFeaturedRank Int?
 
   approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
 
