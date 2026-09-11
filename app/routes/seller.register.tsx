@@ -1507,7 +1507,6 @@ export default function SellerRegistrationPage() {
                 </div>
 
 
-                </div>
 
               </div>
 
