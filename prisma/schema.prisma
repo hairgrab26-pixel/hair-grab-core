@@ -63,6 +63,12 @@ model SellerApplication {
   productCountRange String?
   canImportCsv      Boolean?
 
+  // STOCKED_SELF / OWNED_3PL / DROPSHIP / MIXED
+  inventoryFulfillmentType String?
+
+  // Seller certification that inventory/fulfillment information is accurate.
+  inventoryCertificationAccepted Boolean @default(false)
+
   sellsNationwide       Boolean @default(true)
   offersLocalPickup     Boolean @default(false)
   offersLocalDelivery   Boolean @default(false)

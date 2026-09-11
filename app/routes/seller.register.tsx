@@ -149,6 +149,20 @@ export const action = async ({
         : null;
 
 
+  const inventoryFulfillmentType =
+    cleanText(
+      formData.get(
+        "inventoryFulfillmentType",
+      ),
+    );
+
+
+  const inventoryCertificationAccepted =
+    formData.get(
+      "inventoryCertificationAccepted",
+    ) === "on";
+
+
   // Multiple fulfillment methods may be selected.
   const sellsNationwide =
     formData.get(
@@ -183,7 +197,8 @@ export const action = async ({
     !contactFirstName ||
     !contactLastName ||
     !email ||
-    !postalCode
+    !postalCode ||
+    !inventoryFulfillmentType
   ) {
     return {
       success: false,
@@ -203,6 +218,9 @@ export const action = async ({
 
         canImportCsv:
           canImportCsvValue,
+
+        inventoryFulfillmentType,
+        inventoryCertificationAccepted,
 
         sellsNationwide,
         offersLocalPickup,
@@ -232,6 +250,9 @@ export const action = async ({
 
         canImportCsv:
           canImportCsvValue,
+
+        inventoryFulfillmentType,
+        inventoryCertificationAccepted,
 
         sellsNationwide,
         offersLocalPickup,
@@ -265,6 +286,41 @@ export const action = async ({
 
         canImportCsv:
           canImportCsvValue,
+
+        inventoryFulfillmentType,
+        inventoryCertificationAccepted,
+
+        sellsNationwide,
+        offersLocalPickup,
+        offersLocalDelivery,
+        offersSameDayDelivery,
+      },
+    };
+  }
+
+
+  if (!inventoryCertificationAccepted) {
+    return {
+      success: false,
+
+      message:
+        "Please acknowledge HairGrab's inventory and fulfillment responsibility statement.",
+
+      values: {
+        businessName,
+        contactFirstName,
+        contactLastName,
+        email,
+        phone,
+        postalCode,
+        yearsInBusiness,
+        productCountRange,
+
+        canImportCsv:
+          canImportCsvValue,
+
+        inventoryFulfillmentType,
+        inventoryCertificationAccepted,
 
         sellsNationwide,
         offersLocalPickup,
@@ -374,6 +430,10 @@ export const action = async ({
         productCountRange,
 
         canImportCsv,
+
+        inventoryFulfillmentType,
+
+        inventoryCertificationAccepted,
 
         sellsNationwide,
 
@@ -1543,6 +1603,221 @@ export default function SellerRegistrationPage() {
                 </div>
 
               </div>
+
+            </div>
+
+
+            {/* INVENTORY & ORDER FULFILLMENT */}
+
+            <div style={sectionStyle}>
+
+              <h2
+                style={
+                  headingStyle
+                }
+              >
+                Inventory &amp; order fulfillment
+              </h2>
+
+
+              <p
+                style={{
+                  margin:
+                    "0 0 14px 0",
+
+                  color:
+                    "#756b7b",
+
+                  fontSize:
+                    "12px",
+
+                  lineHeight:
+                    "1.5",
+                }}
+              >
+                How are the hair products you sell fulfilled? *
+              </p>
+
+
+              <div
+                style={{
+                  display:
+                    "grid",
+
+                  gap:
+                    "11px",
+                }}
+              >
+
+                <label style={fulfillmentOptionStyle}>
+                  <input
+                    type="radio"
+                    name="inventoryFulfillmentType"
+                    value="STOCKED_SELF"
+                    required
+                    defaultChecked={
+                      values?.inventoryFulfillmentType ===
+                      "STOCKED_SELF"
+                    }
+                  />
+
+                  <span>
+                    <strong>
+                      I stock/control my inventory and fulfill customer orders myself.
+                    </strong>
+                  </span>
+                </label>
+
+
+                <label style={fulfillmentOptionStyle}>
+                  <input
+                    type="radio"
+                    name="inventoryFulfillmentType"
+                    value="OWNED_3PL"
+                    required
+                    defaultChecked={
+                      values?.inventoryFulfillmentType ===
+                      "OWNED_3PL"
+                    }
+                  />
+
+                  <span>
+                    <strong>
+                      I own/control my inventory and use a warehouse or 3PL to fulfill orders.
+                    </strong>
+                  </span>
+                </label>
+
+
+                <label style={fulfillmentOptionStyle}>
+                  <input
+                    type="radio"
+                    name="inventoryFulfillmentType"
+                    value="DROPSHIP"
+                    required
+                    defaultChecked={
+                      values?.inventoryFulfillmentType ===
+                      "DROPSHIP"
+                    }
+                  />
+
+                  <span>
+                    <strong>
+                      My supplier ships products directly to my customers.
+                    </strong>
+
+                    <div style={helperStyle}>
+                      Supplier-direct fulfillment is reviewed as part of the HairGrab seller approval process.
+                    </div>
+                  </span>
+                </label>
+
+
+                <label style={fulfillmentOptionStyle}>
+                  <input
+                    type="radio"
+                    name="inventoryFulfillmentType"
+                    value="MIXED"
+                    required
+                    defaultChecked={
+                      values?.inventoryFulfillmentType ===
+                      "MIXED"
+                    }
+                  />
+
+                  <span>
+                    <strong>
+                      I use a combination of stocked inventory and supplier-direct fulfillment.
+                    </strong>
+
+                    <div style={helperStyle}>
+                      Mixed fulfillment is reviewed so HairGrab understands how your products are handled.
+                    </div>
+                  </span>
+                </label>
+
+              </div>
+
+
+              <div
+                style={{
+                  marginTop:
+                    "14px",
+
+                  background:
+                    "#faf7fc",
+
+                  border:
+                    "1px solid #ddcbea",
+
+                  borderRadius:
+                    "10px",
+
+                  padding:
+                    "13px",
+                }}
+              >
+                <label
+                  style={{
+                    display:
+                      "flex",
+
+                    gap:
+                      "10px",
+
+                    alignItems:
+                      "flex-start",
+
+                    color:
+                      "#554b5b",
+
+                    fontSize:
+                      "12px",
+
+                    lineHeight:
+                      "1.55",
+
+                    cursor:
+                      "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    name="inventoryCertificationAccepted"
+                    required
+                    defaultChecked={
+                      values?.inventoryCertificationAccepted ||
+                      false
+                    }
+                  />
+
+                  <span>
+                    <strong style={{ color: "#4B1678" }}>
+                      I understand that I am responsible for the products I sell on HairGrab
+                    </strong>{" "}
+                    and for meeting the fulfillment and delivery expectations presented to shoppers, including products fulfilled by a supplier or fulfillment partner.
+                  </span>
+                </label>
+              </div>
+
+
+              <p
+                style={{
+                  margin:
+                    "10px 0 0",
+
+                  color:
+                    "#756b7b",
+
+                  fontSize:
+                    "11px",
+
+                  lineHeight:
+                    "1.55",
+                }}
+              >
+                HairGrab may review supplier-direct fulfillment for product quality, inventory reliability, shipping performance, returns, refunds, replacements, and customer-service accountability.
+              </p>
 
             </div>
 
