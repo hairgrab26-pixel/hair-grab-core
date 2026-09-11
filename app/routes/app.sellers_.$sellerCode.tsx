@@ -101,8 +101,16 @@ export const loader = async ({
     );
   }
 
+  const featuredBoutiqueCount =
+    await db.seller.count({
+      where: {
+        homepageFeatured: true,
+      },
+    });
+
   return {
     seller,
+    featuredBoutiqueCount,
   };
 };
 
@@ -191,8 +199,34 @@ export const action = async ({
 
           deactivatedAt:
             new Date(),
+
+          homepageFeatured: false,
+          homepageFeaturedRank: null,
         },
       });
+
+      const remainingFeatured =
+        await db.seller.findMany({
+          where: {
+            homepageFeatured: true,
+          },
+          orderBy: [
+            { homepageFeaturedRank: "asc" },
+            { businessName: "asc" },
+          ],
+          select: { id: true },
+        });
+
+      await db.$transaction(
+        remainingFeatured.map((item, index) =>
+          db.seller.update({
+            where: { id: item.id },
+            data: {
+              homepageFeaturedRank: index + 1,
+            },
+          }),
+        ),
+      );
 
       return {
         success: true,
@@ -271,6 +305,177 @@ export const action = async ({
           error instanceof Error
             ? error.message
             : "Unable to reactivate seller.",
+        intent,
+      };
+    }
+  }
+
+
+  // ========================================================
+  // FEATURE BOUTIQUE ON HOMEPAGE
+  // ========================================================
+
+  if (
+    intent ===
+    "feature-boutique"
+  ) {
+    if (seller.status !== "ACTIVE") {
+      return {
+        success: false,
+        message:
+          "Only active sellers can be featured on the HairGrab homepage.",
+        intent,
+      };
+    }
+
+    if (seller.homepageFeatured) {
+      return {
+        success: false,
+        message:
+          `${seller.businessName} is already a Featured Boutique.`,
+        intent,
+      };
+    }
+
+    try {
+      const featuredSellers =
+        await db.seller.findMany({
+          where: {
+            homepageFeatured: true,
+          },
+          orderBy: [
+            { homepageFeaturedRank: "asc" },
+            { businessName: "asc" },
+          ],
+          select: {
+            id: true,
+            homepageFeaturedRank: true,
+          },
+        });
+
+      if (featuredSellers.length >= 5) {
+        return {
+          success: false,
+          message:
+            "The homepage already has 5 Featured Boutiques. Remove one before featuring another seller.",
+          intent,
+        };
+      }
+
+      const highestRank =
+        featuredSellers.reduce(
+          (highest, item) =>
+            Math.max(
+              highest,
+              item.homepageFeaturedRank || 0,
+            ),
+          0,
+        );
+
+      await db.seller.update({
+        where: {
+          id: seller.id,
+        },
+        data: {
+          homepageFeatured: true,
+          homepageFeaturedRank:
+            highestRank + 1,
+        },
+      });
+
+      return {
+        success: true,
+        message:
+          `${seller.businessName} is now featured on the HairGrab homepage.`,
+        intent,
+      };
+    } catch (error) {
+      console.error(
+        "[HairGrab Core] Feature boutique error:",
+        error,
+      );
+
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to feature this boutique.",
+        intent,
+      };
+    }
+  }
+
+
+  // ========================================================
+  // REMOVE BOUTIQUE FROM HOMEPAGE
+  // ========================================================
+
+  if (
+    intent ===
+    "remove-featured-boutique"
+  ) {
+    if (!seller.homepageFeatured) {
+      return {
+        success: false,
+        message:
+          `${seller.businessName} is not currently featured on the homepage.`,
+        intent,
+      };
+    }
+
+    try {
+      await db.seller.update({
+        where: {
+          id: seller.id,
+        },
+        data: {
+          homepageFeatured: false,
+          homepageFeaturedRank: null,
+        },
+      });
+
+      const remainingFeatured =
+        await db.seller.findMany({
+          where: {
+            homepageFeatured: true,
+          },
+          orderBy: [
+            { homepageFeaturedRank: "asc" },
+            { businessName: "asc" },
+          ],
+          select: { id: true },
+        });
+
+      await db.$transaction(
+        remainingFeatured.map((item, index) =>
+          db.seller.update({
+            where: { id: item.id },
+            data: {
+              homepageFeaturedRank: index + 1,
+            },
+          }),
+        ),
+      );
+
+      return {
+        success: true,
+        message:
+          `${seller.businessName} was removed from Featured Boutiques.`,
+        intent,
+      };
+    } catch (error) {
+      console.error(
+        "[HairGrab Core] Remove featured boutique error:",
+        error,
+      );
+
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to remove this boutique from the homepage.",
         intent,
       };
     }
@@ -408,6 +613,7 @@ const valueStyle = {
 export default function SellerDetailPage() {
   const {
     seller,
+    featuredBoutiqueCount,
   } =
     useLoaderData<
       typeof loader
@@ -448,6 +654,16 @@ export default function SellerDetailPage() {
     isSubmitting &&
     submittingIntent ===
       "resend-onboarding-link";
+
+  const isFeaturingBoutique =
+    isSubmitting &&
+    submittingIntent ===
+      "feature-boutique";
+
+  const isRemovingFeaturedBoutique =
+    isSubmitting &&
+    submittingIntent ===
+      "remove-featured-boutique";
 
   const hasPortalAccount =
     seller.portalAccounts.length >
@@ -909,6 +1125,250 @@ export default function SellerDetailPage() {
               automatic status action
               is available from this
               screen.
+            </div>
+          )}
+      </div>
+
+
+      {/* HOMEPAGE BOUTIQUE */}
+
+      <div
+        style={{
+          ...cardStyle,
+          marginBottom: "18px",
+          border: seller.homepageFeatured
+            ? "1px solid #d9c28a"
+            : "1px solid #e5d8ef",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "12px",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin: "0",
+                color: "#542378",
+                fontSize: "20px",
+              }}
+            >
+              Homepage Boutique
+            </h2>
+
+            <p
+              style={{
+                color: "#6f6675",
+                fontSize: "12px",
+                lineHeight: 1.6,
+                margin: "7px 0 0",
+              }}
+            >
+              Featured Boutiques are pulled automatically from the seller&apos;s HairGrab storefront profile. No separate homepage image, name, description or link needs to be maintained.
+            </p>
+          </div>
+
+          <div
+            style={{
+              padding: "7px 10px",
+              borderRadius: "999px",
+              background: seller.homepageFeatured
+                ? "#fff8e8"
+                : "#f7f2fa",
+              color: seller.homepageFeatured
+                ? "#7a5a10"
+                : "#756b7b",
+              fontSize: "11px",
+              fontWeight: "800",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {seller.homepageFeatured
+              ? `Featured · Position ${seller.homepageFeaturedRank || "—"}`
+              : "Not Featured"}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "10px",
+            marginTop: "16px",
+          }}
+        >
+          <div
+            style={{
+              padding: "11px 12px",
+              background: "#fcf9fe",
+              border: "1px solid #eee4f3",
+              borderRadius: "10px",
+            }}
+          >
+            <div style={labelStyle}>Homepage Slots</div>
+            <div style={valueStyle}>
+              {featuredBoutiqueCount} / 5 used
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: "11px 12px",
+              background: "#fcf9fe",
+              border: "1px solid #eee4f3",
+              borderRadius: "10px",
+            }}
+          >
+            <div style={labelStyle}>Storefront Image</div>
+            <div style={valueStyle}>
+              {seller.logoUrl
+                ? "Logo ready"
+                : seller.bannerUrl
+                  ? "Banner ready"
+                  : "Not added yet"}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: "11px 12px",
+              background: "#fcf9fe",
+              border: "1px solid #eee4f3",
+              borderRadius: "10px",
+            }}
+          >
+            <div style={labelStyle}>Store Description</div>
+            <div style={valueStyle}>
+              {seller.storeDescription
+                ? "Ready"
+                : "Not added yet"}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: "11px 12px",
+              background: "#fcf9fe",
+              border: "1px solid #eee4f3",
+              borderRadius: "10px",
+            }}
+          >
+            <div style={labelStyle}>Storefront Link</div>
+            <div style={valueStyle}>
+              {seller.storeSlug
+                ? "Ready"
+                : "Not added yet"}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: "16px" }}>
+          {seller.homepageFeatured ? (
+            <Form method="post">
+              <input
+                type="hidden"
+                name="intent"
+                value="remove-featured-boutique"
+              />
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  border: "1px solid #d8c8e2",
+                  borderRadius: "9px",
+                  background: "#ffffff",
+                  color: "#542378",
+                  padding: "10px 15px",
+                  fontWeight: "800",
+                  cursor: isSubmitting
+                    ? "wait"
+                    : "pointer",
+                  opacity: isSubmitting
+                    ? 0.65
+                    : 1,
+                }}
+              >
+                {isRemovingFeaturedBoutique
+                  ? "Removing..."
+                  : "Remove from Homepage"}
+              </button>
+            </Form>
+          ) : (
+            <Form method="post">
+              <input
+                type="hidden"
+                name="intent"
+                value="feature-boutique"
+              />
+
+              <button
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  seller.status !== "ACTIVE" ||
+                  featuredBoutiqueCount >= 5
+                }
+                style={{
+                  border: "none",
+                  borderRadius: "9px",
+                  background:
+                    seller.status === "ACTIVE" &&
+                    featuredBoutiqueCount < 5
+                      ? "#4B1678"
+                      : "#c8bdce",
+                  color: "#ffffff",
+                  padding: "10px 15px",
+                  fontWeight: "800",
+                  cursor:
+                    isSubmitting ||
+                    seller.status !== "ACTIVE" ||
+                    featuredBoutiqueCount >= 5
+                      ? "not-allowed"
+                      : "pointer",
+                  opacity: isSubmitting
+                    ? 0.65
+                    : 1,
+                }}
+              >
+                {isFeaturingBoutique
+                  ? "Featuring..."
+                  : "Feature Boutique"}
+              </button>
+            </Form>
+          )}
+        </div>
+
+        {seller.status !== "ACTIVE" && (
+          <div
+            style={{
+              marginTop: "10px",
+              color: "#805c12",
+              fontSize: "11px",
+              fontWeight: "700",
+            }}
+          >
+            Activate this seller before featuring the boutique.
+          </div>
+        )}
+
+        {!seller.homepageFeatured &&
+          featuredBoutiqueCount >= 5 && (
+            <div
+              style={{
+                marginTop: "10px",
+                color: "#805c12",
+                fontSize: "11px",
+                fontWeight: "700",
+              }}
+            >
+              All 5 homepage boutique slots are currently filled.
             </div>
           )}
       </div>
