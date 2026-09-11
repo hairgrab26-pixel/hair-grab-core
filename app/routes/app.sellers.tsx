@@ -42,6 +42,150 @@ type ShopifyVendorResponse = {
 
 
 // ===========================================================
+// STOREFRONT SLUG HELPERS
+// ===========================================================
+
+function slugifyStoreName(
+  value: string,
+) {
+  const slug =
+    String(
+      value ||
+        "",
+    )
+      .trim()
+      .toLowerCase()
+      .normalize(
+        "NFKD",
+      )
+      .replace(
+        /[\u0300-\u036f]/g,
+        "",
+      )
+      .replace(
+        /&/g,
+        " and ",
+      )
+      .replace(
+        /[^a-z0-9]+/g,
+        "-",
+      )
+      .replace(
+        /^-+|-+$/g,
+        "",
+      )
+      .replace(
+        /-{2,}/g,
+        "-",
+      );
+
+  return (
+    slug ||
+    "boutique"
+  );
+}
+
+
+async function getUniqueStoreSlug(
+  businessName: string,
+  excludeSellerId?: string,
+) {
+  const baseSlug =
+    slugifyStoreName(
+      businessName,
+    );
+
+  let candidate =
+    baseSlug;
+
+  let suffix =
+    2;
+
+  while (true) {
+    const existing =
+      await db.seller.findUnique({
+        where: {
+          storeSlug:
+            candidate,
+        },
+
+        select: {
+          id:
+            true,
+        },
+      });
+
+    if (
+      !existing ||
+      existing.id ===
+        excludeSellerId
+    ) {
+      return candidate;
+    }
+
+    candidate =
+      `${baseSlug}-${suffix}`;
+
+    suffix +=
+      1;
+  }
+}
+
+
+async function ensureMissingStoreSlugs() {
+  const sellersWithoutSlug =
+    await db.seller.findMany({
+      where: {
+        OR: [
+          {
+            storeSlug:
+              null,
+          },
+          {
+            storeSlug:
+              "",
+          },
+        ],
+      },
+
+      select: {
+        id:
+          true,
+        businessName:
+          true,
+      },
+
+      orderBy: {
+        sellerCode:
+          "asc",
+      },
+    });
+
+  for (
+    const seller of
+    sellersWithoutSlug
+  ) {
+    const storeSlug =
+      await getUniqueStoreSlug(
+        seller.businessName,
+        seller.id,
+      );
+
+    await db.seller.update({
+      where: {
+        id:
+          seller.id,
+      },
+
+      data: {
+        storeSlug,
+      },
+    });
+  }
+}
+
+
+// ===========================================================
 // LOADER
 // ===========================================================
 
@@ -52,6 +196,10 @@ export const loader = async ({
     await authenticate.admin(
       request,
     );
+
+  // Ensure every existing HairGrab seller has a public
+  // storefront slug before the seller registry is loaded.
+  await ensureMissingStoreSlugs();
 
   const sellers =
     await db.seller.findMany({
@@ -351,6 +499,12 @@ export const action = async ({
       )}`;
 
 
+    const storeSlug =
+      await getUniqueStoreSlug(
+        shopifyVendor,
+      );
+
+
     const seller =
       await db.seller.create({
         data: {
@@ -358,6 +512,8 @@ export const action = async ({
 
           businessName:
             shopifyVendor,
+
+          storeSlug,
 
           shopifyVendor,
 
