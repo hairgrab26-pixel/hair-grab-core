@@ -19,18 +19,18 @@ export default function App() {
         <link
           rel="icon"
           type="image/png"
-          href="/hairgrab-favicon.png?v=2"
+          href="/hg-bag-favicon.png?v=1"
         />
 
         <link
           rel="shortcut icon"
           type="image/png"
-          href="/hairgrab-favicon.png?v=2"
+          href="/hg-bag-favicon.png?v=1"
         />
 
         <link
           rel="apple-touch-icon"
-          href="/hairgrab-favicon.png?v=2"
+          href="/hg-bag-favicon.png?v=1"
         />
 
         <meta
