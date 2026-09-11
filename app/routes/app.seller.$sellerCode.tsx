@@ -1004,7 +1004,7 @@ export default function SellerDetailPage() {
 
           {seller.storeSlug && (
             <a
-              href={`/seller-store/${seller.storeSlug}`}
+              href={`https://shops.hairgrab.com/seller-store/${seller.storeSlug}`}
               target="_blank"
               rel="noreferrer"
               style={

@@ -350,7 +350,7 @@ export default function PublicSellerDirectoryPage() {
                   key={
                     seller.id
                   }
-                  to={`/seller-store/${seller.storeSlug}`}
+                  to={`https://shops.hairgrab.com/seller-store/${seller.storeSlug}`}
                   style={{
                     color:
                       "inherit",
