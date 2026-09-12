@@ -1128,7 +1128,7 @@ function HelpUpdatesMenu({
         >
           ?
         </span>
-        Help & Updates
+        <span className="hg-help-label">Help & Updates</span>
         {totalUnread > 0 && (
           <span
             style={{
@@ -1364,12 +1364,16 @@ export default function SellerDashboard() {
           }
 
           .hg-dashboard-logo {
-            width: 210px !important;
-            height: 76px !important;
+            width: 170px !important;
+            height: 64px !important;
           }
 
           .hg-dashboard-header-actions {
-            gap: 7px !important;
+            gap: 6px !important;
+          }
+
+          .hg-help-label {
+            display: none !important;
           }
 
           .hg-desktop-only {
@@ -1386,13 +1390,13 @@ export default function SellerDashboard() {
           }
 
           .hg-welcome-title {
-            font-size: 28px !important;
-            line-height: 1.05 !important;
+            font-size: 24px !important;
+            line-height: 1.08 !important;
           }
 
           .hg-add-product {
-            padding: 12px 17px !important;
-            font-size: 14px !important;
+            padding: 11px 14px !important;
+            font-size: 13px !important;
           }
 
           .hg-quick-stats {
@@ -1401,16 +1405,33 @@ export default function SellerDashboard() {
           }
 
           .hg-quick-stat {
-            min-height: 96px !important;
-            padding: 13px 10px !important;
+            min-height: 104px !important;
+            padding: 12px 8px !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 6px !important;
+            text-align: center !important;
+          }
+
+          .hg-quick-stat-icon {
+            width: 34px !important;
+            height: 34px !important;
+            font-size: 16px !important;
           }
 
           .hg-quick-stat-value {
-            font-size: 21px !important;
+            font-size: 18px !important;
+            white-space: nowrap !important;
           }
 
           .hg-quick-stat-label {
-            font-size: 10px !important;
+            font-size: 9px !important;
+            line-height: 1.15 !important;
+          }
+
+          .hg-quick-stat-arrow {
+            display: none !important;
           }
 
           .hg-store-grid {
@@ -1920,6 +1941,7 @@ function QuickStat({
     >
       <span
         aria-hidden="true"
+        className="hg-quick-stat-icon"
         style={{
           width: "42px",
           height: "42px",
@@ -1968,6 +1990,7 @@ function QuickStat({
 
       <span
         aria-hidden="true"
+        className="hg-quick-stat-arrow"
         style={{
           color: "#4B1678",
           fontSize: "20px",
