@@ -1339,478 +1339,420 @@ export default function SellerDashboard() {
       typeof loader
     >();
 
+  const sellerInitials =
+    seller.businessName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "HG";
 
   return (
     <div
       style={{
-        minHeight:
-          "100vh",
-
-        background:
-          "#faf8fc",
-
-        fontFamily:
-          "Arial, Helvetica, sans-serif",
-
-        color:
-          "#21152a",
+        minHeight: "100vh",
+        background: "#fbf9fd",
+        fontFamily: "Arial, Helvetica, sans-serif",
+        color: "#21152a",
+        paddingBottom: "78px",
       }}
     >
+      <style>{`
+        @media (max-width: 720px) {
+          .hg-dashboard-header-inner {
+            padding: 0 !important;
+          }
+
+          .hg-dashboard-logo {
+            width: 210px !important;
+            height: 76px !important;
+          }
+
+          .hg-dashboard-header-actions {
+            gap: 7px !important;
+          }
+
+          .hg-desktop-only {
+            display: none !important;
+          }
+
+          .hg-dashboard-main {
+            padding: 22px 16px 32px !important;
+          }
+
+          .hg-welcome-row {
+            align-items: flex-start !important;
+            gap: 16px !important;
+          }
+
+          .hg-welcome-title {
+            font-size: 28px !important;
+            line-height: 1.05 !important;
+          }
+
+          .hg-add-product {
+            padding: 12px 17px !important;
+            font-size: 14px !important;
+          }
+
+          .hg-quick-stats {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+          }
+
+          .hg-quick-stat {
+            min-height: 96px !important;
+            padding: 13px 10px !important;
+          }
+
+          .hg-quick-stat-value {
+            font-size: 21px !important;
+          }
+
+          .hg-quick-stat-label {
+            font-size: 10px !important;
+          }
+
+          .hg-store-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+          }
+
+          .hg-store-tile {
+            min-height: 156px !important;
+            padding: 16px !important;
+          }
+
+          .hg-store-tile-title {
+            font-size: 16px !important;
+          }
+
+          .hg-store-tile-text {
+            font-size: 11px !important;
+          }
+
+          .hg-bottom-nav {
+            display: grid !important;
+          }
+        }
+
+        @media (min-width: 721px) {
+          .hg-mobile-only {
+            display: none !important;
+          }
+        }
+      `}</style>
+
       <header
         style={{
-          background:
-            "#4B1678",
-
-          color:
-            "white",
-
-          padding:
-            "14px 16px",
+          background: "#4B1678",
+          color: "white",
+          padding: "12px 18px",
+          boxShadow: "0 4px 16px rgba(75, 22, 120, 0.12)",
         }}
       >
         <div
+          className="hg-dashboard-header-inner"
           style={{
-            maxWidth:
-              "1180px",
-
-            margin:
-              "0 auto",
-
-            display:
-              "flex",
-
-            flexDirection:
-              "column",
-
-            gap:
-              "12px",
+            maxWidth: "1180px",
+            margin: "0 auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "16px",
           }}
         >
-          <div
+          <Link
+            to="/seller"
+            aria-label="HairGrab Seller Dashboard home"
             style={{
-              display:
-                "flex",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "space-between",
-
-              gap:
-                "10px",
-
-              flexWrap:
-                "wrap",
+              display: "inline-flex",
+              alignItems: "center",
+              textDecoration: "none",
+              minWidth: 0,
             }}
           >
-            <Link
-              to="/seller"
-              aria-label="HairGrab Seller Dashboard home"
+            <img
+              className="hg-dashboard-logo"
+              src="/hairgrab-logo.png"
+              alt="HairGrab - The Marketplace for Hair - Find It. Love It. Grab It."
               style={{
-                display:
-                  "flex",
-
-                alignItems:
-                  "center",
-
-                gap:
-                  "10px",
-
-                textDecoration:
-                  "none",
-
-                color:
-                  "white",
-
-                minWidth:
-                  0,
-
-                flex:
-                  "1 1 240px",
+                width: "260px",
+                maxWidth: "48vw",
+                height: "88px",
+                objectFit: "contain",
+                display: "block",
+                background: "white",
+                borderRadius: "12px",
+                padding: "4px 8px",
+                boxSizing: "border-box",
               }}
-            >
-              <span
-                style={{
-                  display:
-                    "inline-flex",
-
-                  alignItems:
-                    "center",
-
-                  justifyContent:
-                    "center",
-
-                  background:
-                    "white",
-
-                  borderRadius:
-                    "11px",
-
-                  padding:
-                    "6px 10px",
-
-                  flex:
-                    "0 0 auto",
-                }}
-              >
-                <img
-                  src="/hairgrab-logo.png"
-                  alt="HairGrab"
-                  style={{
-                    width:
-                      "150px",
-
-                    maxWidth:
-                      "42vw",
-
-                    height:
-                      "52px",
-
-                    objectFit:
-                      "contain",
-
-                    display:
-                      "block",
-                  }}
-                />
-              </span>
-
-              <span
-                style={{
-                  minWidth:
-                    0,
-
-                  flex:
-                    1,
-                }}
-              >
-                <span
-                  style={{
-                    display:
-                      "block",
-
-                    fontSize:
-                      "8px",
-
-                    fontWeight:
-                      800,
-
-                    letterSpacing:
-                      "1px",
-
-                    opacity:
-                      0.82,
-                  }}
-                >
-                  SELLER PORTAL
-                </span>
-
-                <span
-                  style={{
-                    display:
-                      "block",
-
-                    fontSize:
-                      "18px",
-
-                    lineHeight:
-                      1.1,
-
-                    fontWeight:
-                      800,
-
-                    marginTop:
-                      "2px",
-
-                    overflowWrap:
-                      "anywhere",
-                  }}
-                >
-                  Seller Dashboard
-                </span>
-              </span>
-            </Link>
-
-            <Link
-              to="/seller/add-product"
-              style={{
-                background:
-                  "white",
-
-                color:
-                  "#4B1678",
-
-                textDecoration:
-                  "none",
-
-                fontWeight:
-                  800,
-
-                fontSize:
-                  "12px",
-
-                padding:
-                  "10px 13px",
-
-                borderRadius:
-                  "8px",
-
-                whiteSpace:
-                  "nowrap",
-              }}
-            >
-              + Add Product
-            </Link>
-          </div>
+            />
+          </Link>
 
           <div
+            className="hg-dashboard-header-actions"
             style={{
-              display:
-                "flex",
-
-              alignItems:
-                "center",
-
-              gap:
-                "8px",
-
-              flexWrap:
-                "wrap",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: "9px",
+              flexShrink: 0,
             }}
           >
-            <OrderAlertController />
+            <div className="hg-desktop-only">
+              <OrderAlertController />
+            </div>
 
             <HelpUpdatesMenu
               unreadMessages={stats.unreadMessages}
               unreadNotifications={stats.unreadNotifications}
             />
+
+            <div
+              title={seller.businessName}
+              style={{
+                width: "42px",
+                height: "42px",
+                borderRadius: "50%",
+                background: "#D4AF37",
+                color: "#4B1678",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                fontSize: "14px",
+                border: "2px solid rgba(255,255,255,.82)",
+              }}
+            >
+              {sellerInitials}
+            </div>
           </div>
         </div>
       </header>
 
-
       <main
+        className="hg-dashboard-main"
         style={{
-          maxWidth:
-            "1180px",
-
-          margin:
-            "0 auto",
-
-          padding:
-            "28px 20px 60px",
+          maxWidth: "1180px",
+          margin: "0 auto",
+          padding: "28px 20px 60px",
         }}
       >
         <section
+          className="hg-welcome-row"
           style={{
-            marginBottom:
-              "22px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "18px",
+            marginBottom: "24px",
           }}
         >
-          <div
-            style={{
-              color:
-                "#4B1678",
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                color: "#756b79",
+                fontSize: "15px",
+                fontWeight: 700,
+                marginBottom: "4px",
+              }}
+            >
+              Welcome back,
+            </div>
 
-              fontSize:
-                "11px",
+            <h1
+              className="hg-welcome-title"
+              style={{
+                margin: 0,
+                color: "#4B1678",
+                fontSize: "34px",
+                lineHeight: 1.08,
+                fontWeight: 900,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {seller.businessName}
+            </h1>
 
-              fontWeight:
-                "800",
-
-              letterSpacing:
-                "0.8px",
-            }}
-          >
-            {seller.sellerCode}
+            <div
+              style={{
+                marginTop: "6px",
+                color: "#756b79",
+                fontSize: "13px",
+                fontWeight: 700,
+                letterSpacing: "0.4px",
+              }}
+            >
+              {seller.sellerCode}
+            </div>
           </div>
 
-
-          <h1
+          <Link
+            className="hg-add-product"
+            to="/seller/add-product"
             style={{
-              margin:
-                "5px 0",
-
-              color:
-                "#4B1678",
-
-              fontSize:
-                "30px",
+              background: "#4B1678",
+              color: "white",
+              textDecoration: "none",
+              fontWeight: 900,
+              fontSize: "14px",
+              padding: "13px 19px",
+              borderRadius: "11px",
+              boxShadow: "0 6px 16px rgba(75, 22, 120, 0.18)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
-            Welcome, {seller.businessName}
-          </h1>
-
-
-          <div
-            style={{
-              color:
-                "#6f6575",
-
-              fontSize:
-                "14px",
-            }}
-          >
-            Everything you need to run your HairGrab store.
-          </div>
+            + Add Product
+          </Link>
         </section>
-
 
         <section
+          className="hg-mobile-only"
           style={{
-            background:
-              "#f2eafa",
-
-            border:
-              "1px solid #e2d1ef",
-
-            borderRadius:
-              "12px",
-
-            padding:
-              "14px 16px",
-
-            marginBottom:
-              "26px",
+            marginBottom: "14px",
           }}
         >
-          <div
-            style={{
-              color:
-                "#4B1678",
-
-              fontWeight:
-                "800",
-
-              fontSize:
-                "13px",
-            }}
-          >
-            HairGrab Announcement
-          </div>
-
-
-          <div
-            style={{
-              marginTop:
-                "4px",
-
-              fontSize:
-                "13px",
-            }}
-          >
-            Welcome to HairGrab! Your seller dashboard is ready.
-          </div>
+          <OrderAlertController />
         </section>
 
+        <section
+          className="hg-quick-stats"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: "12px",
+            marginBottom: "30px",
+          }}
+        >
+          <QuickStat
+            icon="▣"
+            value={String(stats.activeProducts)}
+            label="Products"
+            to="/seller/products"
+          />
+
+          <QuickStat
+            icon="🚚"
+            value={String(stats.readyToShip)}
+            label="Ready to Ship"
+            to="/seller/orders"
+          />
+
+          <QuickStat
+            icon="$"
+            value={money(stats.payoutReady)}
+            label="Payout Ready"
+            to="/seller/financials"
+            gold
+          />
+        </section>
 
         <section>
           <div
             style={{
-              marginBottom:
-                "14px",
+              marginBottom: "15px",
             }}
           >
             <h2
               style={{
-                margin:
-                  0,
-
-                color:
-                  "#4B1678",
-
-                fontSize:
-                  "23px",
+                margin: 0,
+                color: "#4B1678",
+                fontSize: "28px",
+                lineHeight: 1.1,
+                fontWeight: 900,
               }}
             >
               My Store
             </h2>
 
-
             <div
               style={{
-                color:
-                  "#756b79",
-
-                fontSize:
-                  "12px",
-
-                marginTop:
-                  "3px",
+                color: "#756b79",
+                fontSize: "13px",
+                marginTop: "5px",
               }}
             >
-              Manage your products, orders and storefront from one place.
+              Manage your products, orders and store all in one place.
             </div>
           </div>
 
-
           <div
+            className="hg-store-grid"
             style={{
-              display:
-                "grid",
-
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(250px, 1fr))",
-
-              gap:
-                "14px",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+              gap: "14px",
             }}
           >
-            <StoreTile
+            <CompactStoreTile
+              icon="◇"
               title="Products"
-              value={`${stats.activeProducts} Active`}
-              text="Add, edit and manage your HairGrab product listings."
+              text="Add, edit and manage your product listings."
               to="/seller/products"
             />
 
-            <StoreTile
-              title="Orders & Shipping"
-              value={`${stats.readyToShip} Ready to Ship`}
-              text={`${stats.shipped} Shipped · ${stats.delivered} Delivered · ${stats.totalOrders} Total`}
+            <CompactStoreTile
+              icon="🛒"
+              title="Orders"
+              text="View and manage your orders."
               to="/seller/orders"
+              gold
             />
 
-            <StoreTile
+            <CompactStoreTile
+              icon="▥"
+              title="Sales & Earnings"
+              text="Track your sales, fees and payouts."
+              to="/seller/financials"
+            />
+
+            <CompactStoreTile
+              icon="▰"
+              title="Store Settings"
+              text="Update your store info, fulfillment and shipping."
+              to="/seller/settings"
+            />
+
+            <CompactStoreTile
+              icon="★"
+              title="Seller Picks"
+              text="Manage your featured products."
+              to="/seller/picks"
+              gold
+            />
+
+            <CompactStoreTile
+              icon="✦"
+              title="Store Preview"
+              text="See how shoppers view your HairGrab store."
+              to="/seller/store-preview"
+            />
+
+            <CompactStoreTile
+              icon="⇄"
               title="Shopify Catalog"
-              value="Connect or Review"
-              text="Connect a Shopify store and review products available for HairGrab import."
+              text="Connect or review products from Shopify."
               to="/seller/shopify"
             />
 
-            <StoreTile
-              title="Seller Picks"
-              value="Choose up to 5"
-              text="Select the products you want eligible for HairGrab homepage rotation."
-              to="/seller/picks"
-            />
-
-            <StoreTile
-              title="Store Settings"
-              value="Storefront & Fulfillment"
-              text="Edit your storefront, business details, shipping and selling preferences."
-              to="/seller/settings"
+            <CompactStoreTile
+              icon="?"
+              title="Help & Updates"
+              text="Messages, notifications and dashboard help."
+              to="/seller/help"
             />
           </div>
         </section>
 
-
         <section
           style={{
-            marginTop:
-              "28px",
-
-            background:
-              "white",
-
-            border:
-              "1px solid #e5dce9",
-
-            borderRadius:
-              "14px",
-
-            padding:
-              "20px",
+            marginTop: "28px",
+            background: "white",
+            border: "1px solid #e5dce9",
+            borderRadius: "14px",
+            padding: "20px",
           }}
         >
           <div
@@ -1833,6 +1775,7 @@ export default function SellerDashboard() {
               >
                 Financials
               </h2>
+
               <div
                 style={{
                   color: "#756b79",
@@ -1840,101 +1783,346 @@ export default function SellerDashboard() {
                   marginTop: "4px",
                 }}
               >
-                Your HairGrab sales, marketplace fees, earnings and payout-ready balance.
+                Sales, HairGrab fees, earnings and payout-ready balance.
               </div>
             </div>
 
-            <div
+            <Link
+              to="/seller/financials"
               style={{
-                display: "flex",
-                gap: "12px",
-                alignItems: "center",
-                flexWrap: "wrap",
+                background: "#4B1678",
+                color: "white",
+                fontSize: "12px",
+                fontWeight: 800,
+                textDecoration: "none",
+                padding: "9px 12px",
+                borderRadius: "8px",
               }}
             >
-              <Link
-                to="/seller/financials"
-                style={{
-                  background: "#4B1678",
-                  color: "white",
-                  fontSize: "12px",
-                  fontWeight: 800,
-                  textDecoration: "none",
-                  padding: "9px 12px",
-                  borderRadius: "8px",
-                }}
-              >
-                View / Export Financial Report
-              </Link>
-              <Link
-                to="/seller/help"
-                style={{
-                  color: "#4B1678",
-                  fontSize: "11px",
-                  fontWeight: 800,
-                  textDecoration: "none",
-                }}
-              >
-                What do these mean? →
-              </Link>
-            </div>
+              View Financial Report
+            </Link>
           </div>
-
 
           <div
             style={{
-              display:
-                "grid",
-
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(160px, 1fr))",
-
-              gap:
-                "16px",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
+              gap: "16px",
             }}
           >
             <Financial
               label="Gross Sales"
-              value={
-                money(
-                  stats.grossSales,
-                )
-              }
+              value={money(stats.grossSales)}
             />
-
 
             <Financial
               label="HairGrab Fee"
-              value={
-                money(
-                  stats.commission,
-                )
-              }
+              value={money(stats.commission)}
             />
-
 
             <Financial
               label="Your Earnings"
-              value={
-                money(
-                  stats.sellerEarnings,
-                )
-              }
+              value={money(stats.sellerEarnings)}
             />
-
 
             <Financial
               label="Payout Ready"
-              value={
-                money(
-                  stats.payoutReady,
-                )
-              }
+              value={money(stats.payoutReady)}
             />
           </div>
         </section>
       </main>
+
+      <nav
+        className="hg-bottom-nav"
+        style={{
+          position: "fixed",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: "68px",
+          background: "white",
+          borderTop: "1px solid #e7deeb",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+          alignItems: "stretch",
+          zIndex: 1200,
+          boxShadow: "0 -5px 20px rgba(45, 27, 54, 0.06)",
+          display: "none",
+        }}
+      >
+        <BottomNavItem
+          to="/seller"
+          icon="⌂"
+          label="Home"
+          active
+        />
+
+        <BottomNavItem
+          to="/seller/products"
+          icon="◇"
+          label="Products"
+        />
+
+        <BottomNavItem
+          to="/seller/orders"
+          icon="🛒"
+          label="Orders"
+        />
+
+        <BottomNavItem
+          to="/seller/financials"
+          icon="$"
+          label="Payouts"
+        />
+
+        <BottomNavItem
+          to="/seller/settings"
+          icon="☰"
+          label="More"
+        />
+      </nav>
     </div>
+  );
+}
+
+
+function QuickStat({
+  icon,
+  value,
+  label,
+  to,
+  gold,
+}: {
+  icon: string;
+  value: string;
+  label: string;
+  to: string;
+  gold?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className="hg-quick-stat"
+      style={{
+        minHeight: "104px",
+        background: "white",
+        border: "1px solid #e7dceb",
+        borderRadius: "15px",
+        padding: "16px",
+        textDecoration: "none",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        boxSizing: "border-box",
+        boxShadow: "0 4px 14px rgba(45,27,54,.04)",
+        minWidth: 0,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: "42px",
+          height: "42px",
+          borderRadius: "11px",
+          background: gold ? "#fbf4df" : "#f3ebf9",
+          color: gold ? "#b88414" : "#4B1678",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 900,
+          fontSize: "19px",
+          flex: "0 0 auto",
+        }}
+      >
+        {icon}
+      </span>
+
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span
+          className="hg-quick-stat-value"
+          style={{
+            display: "block",
+            color: "#21152a",
+            fontSize: "24px",
+            fontWeight: 900,
+            lineHeight: 1.05,
+            overflowWrap: "anywhere",
+          }}
+        >
+          {value}
+        </span>
+
+        <span
+          className="hg-quick-stat-label"
+          style={{
+            display: "block",
+            color: "#756b79",
+            fontSize: "12px",
+            marginTop: "4px",
+            lineHeight: 1.15,
+          }}
+        >
+          {label}
+        </span>
+      </span>
+
+      <span
+        aria-hidden="true"
+        style={{
+          color: "#4B1678",
+          fontSize: "20px",
+          fontWeight: 900,
+          flex: "0 0 auto",
+        }}
+      >
+        ›
+      </span>
+    </Link>
+  );
+}
+
+
+function CompactStoreTile({
+  icon,
+  title,
+  text,
+  to,
+  gold,
+}: {
+  icon: string;
+  title: string;
+  text: string;
+  to: string;
+  gold?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className="hg-store-tile"
+      style={{
+        minHeight: "145px",
+        background: "white",
+        border: "1px solid #e7dceb",
+        borderRadius: "15px",
+        padding: "18px",
+        boxSizing: "border-box",
+        textDecoration: "none",
+        color: "inherit",
+        display: "flex",
+        gap: "13px",
+        alignItems: "flex-start",
+        boxShadow: "0 4px 14px rgba(45,27,54,.035)",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: "46px",
+          height: "46px",
+          borderRadius: "12px",
+          background: gold ? "#fbf4df" : "#f3ebf9",
+          color: gold ? "#b88414" : "#4B1678",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flex: "0 0 auto",
+          fontWeight: 900,
+          fontSize: "21px",
+        }}
+      >
+        {icon}
+      </span>
+
+      <span
+        style={{
+          minWidth: 0,
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+        }}
+      >
+        <span
+          className="hg-store-tile-title"
+          style={{
+            color: "#21152a",
+            fontSize: "17px",
+            fontWeight: 900,
+            lineHeight: 1.15,
+          }}
+        >
+          {title}
+        </span>
+
+        <span
+          className="hg-store-tile-text"
+          style={{
+            color: "#756b79",
+            fontSize: "12px",
+            lineHeight: 1.4,
+            marginTop: "7px",
+          }}
+        >
+          {text}
+        </span>
+      </span>
+
+      <span
+        aria-hidden="true"
+        style={{
+          color: "#4B1678",
+          fontSize: "22px",
+          fontWeight: 900,
+          alignSelf: "center",
+          flex: "0 0 auto",
+        }}
+      >
+        ›
+      </span>
+    </Link>
+  );
+}
+
+
+function BottomNavItem({
+  to,
+  icon,
+  label,
+  active,
+}: {
+  to: string;
+  icon: string;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      style={{
+        textDecoration: "none",
+        color: active ? "#4B1678" : "#5f5869",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "3px",
+        fontSize: "10px",
+        fontWeight: active ? 900 : 700,
+        minWidth: 0,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          fontSize: "21px",
+          lineHeight: 1,
+          fontWeight: 900,
+        }}
+      >
+        {icon}
+      </span>
+      <span>{label}</span>
+    </Link>
   );
 }
 
