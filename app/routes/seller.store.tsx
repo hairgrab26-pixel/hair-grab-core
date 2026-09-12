@@ -11,330 +11,1486 @@ import {
 } from "react-router";
 
 import db from "../db.server";
+import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
 
+type StagedTarget = {
+  url: string;
+  resourceUrl: string;
+  parameters: Array<{
+    name: string;
+    value: string;
+  }>;
+};
+
+const DAYS = [
+  { value: 0, label: "Sunday" },
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+];
+
+async function getShopifyAdmin() {
+  const offlineSession = await db.session.findFirst({
+    where: { isOnline: false },
+  });
+
+  if (!offlineSession) {
+    throw new Error(
+      "HairGrab could not find the Shopify offline session.",
+    );
+  }
+
+  return unauthenticated.admin(offlineSession.shop);
+}
+
+async function uploadStoreImage(
+  file: File,
+  altText: string,
+) {
+  const { admin } = await getShopifyAdmin();
+
+  const stagedResponse = await admin.graphql(
+    `#graphql
+      mutation HairGrabStageStoreImage(
+        $input: [StagedUploadInput!]!
+      ) {
+        stagedUploadsCreate(input: $input) {
+          stagedTargets {
+            url
+            resourceUrl
+            parameters {
+              name
+              value
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    {
+      variables: {
+        input: [
+          {
+            filename: file.name,
+            mimeType: file.type || "image/jpeg",
+            httpMethod: "POST",
+            resource: "IMAGE",
+          },
+        ],
+      },
+    },
+  );
+
+  const stagedJson = await stagedResponse.json();
+  const stagedResult =
+    stagedJson?.data?.stagedUploadsCreate;
+  const stagedErrors =
+    stagedResult?.userErrors || [];
+
+  if (stagedErrors.length > 0) {
+    throw new Error(
+      stagedErrors
+        .map(
+          (error: { message?: string }) =>
+            error.message ||
+            "Unable to prepare image upload.",
+        )
+        .join(" | "),
+    );
+  }
+
+  const target = stagedResult?.stagedTargets?.[0] as
+    | StagedTarget
+    | undefined;
+
+  if (!target?.url || !target.resourceUrl) {
+    throw new Error(
+      "Shopify did not return an image upload target.",
+    );
+  }
+
+  const uploadForm = new FormData();
+
+  for (const parameter of target.parameters) {
+    uploadForm.append(
+      parameter.name,
+      parameter.value,
+    );
+  }
+
+  uploadForm.append(
+    "file",
+    file,
+    file.name,
+  );
+
+  const uploadResponse = await fetch(
+    target.url,
+    {
+      method: "POST",
+      body: uploadForm,
+    },
+  );
+
+  if (!uploadResponse.ok) {
+    throw new Error(
+      `Upload failed for ${file.name}.`,
+    );
+  }
+
+  const fileCreateResponse = await admin.graphql(
+    `#graphql
+      mutation HairGrabCreateStoreImage(
+        $files: [FileCreateInput!]!
+      ) {
+        fileCreate(files: $files) {
+          files {
+            id
+            fileStatus
+            ... on MediaImage {
+              image {
+                url
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    {
+      variables: {
+        files: [
+          {
+            originalSource: target.resourceUrl,
+            contentType: "IMAGE",
+            alt: altText,
+          },
+        ],
+      },
+    },
+  );
+
+  const fileCreateJson =
+    await fileCreateResponse.json();
+  const fileCreateResult =
+    fileCreateJson?.data?.fileCreate;
+  const fileErrors =
+    fileCreateResult?.userErrors || [];
+
+  if (fileErrors.length > 0) {
+    throw new Error(
+      fileErrors
+        .map(
+          (error: { message?: string }) =>
+            error.message ||
+            "Unable to save uploaded image.",
+        )
+        .join(" | "),
+    );
+  }
+
+  const fileId =
+    fileCreateResult?.files?.[0]?.id;
+
+  let imageUrl =
+    fileCreateResult?.files?.[0]?.image?.url ||
+    null;
+
+  if (!fileId) {
+    throw new Error(
+      "Shopify did not return the saved image.",
+    );
+  }
+
+  for (
+    let attempt = 0;
+    !imageUrl && attempt < 8;
+    attempt += 1
+  ) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, 350),
+    );
+
+    const queryResponse = await admin.graphql(
+      `#graphql
+        query HairGrabStoreImageStatus($id: ID!) {
+          node(id: $id) {
+            ... on MediaImage {
+              fileStatus
+              image {
+                url
+              }
+            }
+          }
+        }
+      `,
+      { variables: { id: fileId } },
+    );
+
+    const queryJson =
+      await queryResponse.json();
+
+    imageUrl =
+      queryJson?.data?.node?.image?.url ||
+      null;
+  }
+
+  if (!imageUrl) {
+    throw new Error(
+      "The image uploaded, but Shopify is still processing it. Please try saving again in a moment.",
+    );
+  }
+
+  return String(imageUrl);
+}
+
+function makeSlug(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70);
+}
+
+async function uniqueCollectionSlug(
+  sellerId: string,
+  name: string,
+  excludeId?: string,
+) {
+  const base = makeSlug(name) || "collection";
+  let slug = base;
+  let suffix = 2;
+
+  while (
+    await db.sellerStoreCollection.findFirst({
+      where: {
+        sellerId,
+        slug,
+        ...(excludeId
+          ? { id: { not: excludeId } }
+          : {}),
+      },
+      select: { id: true },
+    })
+  ) {
+    slug = `${base}-${suffix}`;
+    suffix += 1;
+  }
+
+  return slug;
+}
 
 export const loader = async ({
   request,
 }: LoaderFunctionArgs) => {
   const { seller } =
-    await requireSellerSession(
-      request,
-    );
+    await requireSellerSession(request);
 
   const [
     activeProducts,
     featuredProducts,
-  ] =
-    await Promise.all([
-      db.sellerProduct.count({
-        where: {
-          sellerId:
-            seller.id,
-          status:
-            "ACTIVE",
-        },
-      }),
+    products,
+    collections,
+    media,
+    hours,
+  ] = await Promise.all([
+    db.sellerProduct.count({
+      where: {
+        sellerId: seller.id,
+        status: "ACTIVE",
+      },
+    }),
 
-      db.sellerHomepagePick.count({
-        where: {
-          sellerId:
-            seller.id,
+    db.sellerHomepagePick.count({
+      where: { sellerId: seller.id },
+    }),
+
+    db.sellerProduct.findMany({
+      where: {
+        sellerId: seller.id,
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        title: true,
+        shopifyHandle: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    }),
+
+    db.sellerStoreCollection.findMany({
+      where: { sellerId: seller.id },
+      include: {
+        products: {
+          orderBy: { rank: "asc" },
+          select: {
+            sellerProductId: true,
+          },
         },
-      }),
-    ]);
+      },
+      orderBy: [
+        { rank: "asc" },
+        { createdAt: "asc" },
+      ],
+    }),
+
+    db.sellerStoreMedia.findMany({
+      where: { sellerId: seller.id },
+      orderBy: [
+        { rank: "asc" },
+        { createdAt: "asc" },
+      ],
+    }),
+
+    db.sellerStoreHour.findMany({
+      where: { sellerId: seller.id },
+      orderBy: { dayOfWeek: "asc" },
+    }),
+  ]);
+
+  const hourMap = new Map(
+    hours.map((hour) => [
+      hour.dayOfWeek,
+      hour,
+    ]),
+  );
 
   return {
     seller: {
-      businessName:
-        seller.businessName,
-
-      sellerCode:
-        seller.sellerCode,
-
-      storeSlug:
-        seller.storeSlug ||
-        "",
-
+      businessName: seller.businessName,
+      sellerCode: seller.sellerCode,
+      storeSlug: seller.storeSlug || "",
       storeDescription:
-        seller.storeDescription ||
-        "",
-
-      logoUrl:
-        seller.logoUrl ||
-        "",
-
-      bannerUrl:
-        seller.bannerUrl ||
-        "",
-
-      city:
-        seller.city ||
-        "",
-
-      state:
-        seller.state ||
-        "",
-
+        seller.storeDescription || "",
+      logoUrl: seller.logoUrl || "",
+      bannerUrl: seller.bannerUrl || "",
+      city: seller.city || "",
+      state: seller.state || "",
       sellsNationwide:
         seller.sellsNationwide,
-
       offersLocalPickup:
         seller.offersLocalPickup,
-
       offersLocalDelivery:
         seller.offersLocalDelivery,
-
       offersSameDayDelivery:
         seller.offersSameDayDelivery,
-
       returnPolicy:
         seller.returnPolicy ||
         "14_DAY_RETURNS",
+      showFeaturedCollection:
+        seller.showFeaturedCollection,
+      showNewArrivalsCollection:
+        seller.showNewArrivalsCollection,
+      showOnSaleCollection:
+        seller.showOnSaleCollection,
+      showCustomCollections:
+        seller.showCustomCollections,
+      showGallery:
+        seller.showGallery,
+      showReviews:
+        seller.showReviews,
+      storeOpenOverride:
+        seller.storeOpenOverride || "AUTO",
     },
 
     stats: {
       activeProducts,
       featuredProducts,
+      customCollections:
+        collections.length,
     },
+
+    products,
+
+    collections: collections.map(
+      (collection) => ({
+        id: collection.id,
+        name: collection.name,
+        slug: collection.slug,
+        imageUrl:
+          collection.imageUrl || "",
+        isVisible:
+          collection.isVisible,
+        rank: collection.rank,
+        productIds:
+          collection.products.map(
+            (item) =>
+              item.sellerProductId,
+          ),
+      }),
+    ),
+
+    media: media.map((item) => ({
+      id: item.id,
+      mediaType: item.mediaType,
+      url: item.url,
+      altText: item.altText || "",
+      isVisible: item.isVisible,
+      rank: item.rank,
+    })),
+
+    hours: DAYS.map((day) => {
+      const saved = hourMap.get(day.value);
+
+      return {
+        dayOfWeek: day.value,
+        label: day.label,
+        isClosed:
+          saved?.isClosed ?? false,
+        openTime:
+          saved?.openTime || "09:00",
+        closeTime:
+          saved?.closeTime || "18:00",
+      };
+    }),
   };
 };
-
 
 export const action = async ({
   request,
 }: ActionFunctionArgs) => {
   const { seller } =
-    await requireSellerSession(
-      request,
+    await requireSellerSession(request);
+
+  try {
+    const formData =
+      await request.formData();
+
+    const intent = String(
+      formData.get("intent") ||
+        "saveStorefront",
     );
 
-  const formData =
-    await request.formData();
+    if (intent === "saveStorefront") {
+      const storeDescription = String(
+        formData.get("storeDescription") ||
+          "",
+      ).trim();
 
-  const storeDescription =
-    String(
-      formData.get(
-        "storeDescription",
-      ) || "",
-    ).trim();
+      if (storeDescription.length > 600) {
+        return {
+          success: false,
+          message:
+            "Keep your About the Brand section to 600 characters or less.",
+        };
+      }
 
-  if (
-    storeDescription.length >
-    600
-  ) {
+      const returnPolicy = String(
+        formData.get("returnPolicy") ||
+          "14_DAY_RETURNS",
+      );
+
+      if (
+        ![
+          "14_DAY_RETURNS",
+          "FINAL_SALE",
+        ].includes(returnPolicy)
+      ) {
+        return {
+          success: false,
+          message:
+            "Please choose a valid HairGrab return policy.",
+        };
+      }
+
+      const storeOpenOverride = String(
+        formData.get(
+          "storeOpenOverride",
+        ) || "AUTO",
+      );
+
+      if (
+        ![
+          "AUTO",
+          "OPEN",
+          "CLOSED",
+        ].includes(storeOpenOverride)
+      ) {
+        return {
+          success: false,
+          message:
+            "Please choose a valid store status.",
+        };
+      }
+
+      const logoFile =
+        formData.get("logoImage");
+      const bannerFile =
+        formData.get("bannerImage");
+
+      let logoUrl = seller.logoUrl;
+      let bannerUrl = seller.bannerUrl;
+
+      if (
+        logoFile instanceof File &&
+        logoFile.size > 0
+      ) {
+        if (
+          !logoFile.type.startsWith(
+            "image/",
+          )
+        ) {
+          return {
+            success: false,
+            message:
+              "Your logo must be an image file.",
+          };
+        }
+
+        logoUrl = await uploadStoreImage(
+          logoFile,
+          `${seller.businessName} logo`,
+        );
+      }
+
+      if (
+        bannerFile instanceof File &&
+        bannerFile.size > 0
+      ) {
+        if (
+          !bannerFile.type.startsWith(
+            "image/",
+          )
+        ) {
+          return {
+            success: false,
+            message:
+              "Your banner must be an image file.",
+          };
+        }
+
+        bannerUrl =
+          await uploadStoreImage(
+            bannerFile,
+            `${seller.businessName} storefront banner`,
+          );
+      }
+
+      await db.seller.update({
+        where: { id: seller.id },
+        data: {
+          storeDescription:
+            storeDescription || null,
+          logoUrl: logoUrl || null,
+          bannerUrl: bannerUrl || null,
+          sellsNationwide:
+            formData.get(
+              "sellsNationwide",
+            ) === "on",
+          offersLocalPickup:
+            formData.get(
+              "offersLocalPickup",
+            ) === "on",
+          offersLocalDelivery:
+            formData.get(
+              "offersLocalDelivery",
+            ) === "on",
+          offersSameDayDelivery:
+            formData.get(
+              "offersSameDayDelivery",
+            ) === "on",
+          returnPolicy,
+          showFeaturedCollection:
+            formData.get(
+              "showFeaturedCollection",
+            ) === "on",
+          showNewArrivalsCollection:
+            formData.get(
+              "showNewArrivalsCollection",
+            ) === "on",
+          showOnSaleCollection:
+            formData.get(
+              "showOnSaleCollection",
+            ) === "on",
+          showCustomCollections:
+            formData.get(
+              "showCustomCollections",
+            ) === "on",
+          showGallery:
+            formData.get(
+              "showGallery",
+            ) === "on",
+          showReviews:
+            formData.get(
+              "showReviews",
+            ) === "on",
+          storeOpenOverride,
+        },
+      });
+
+      for (const day of DAYS) {
+        const isClosed =
+          formData.get(
+            `day_${day.value}_closed`,
+          ) === "on";
+
+        const openTime = String(
+          formData.get(
+            `day_${day.value}_open`,
+          ) || "",
+        ).trim();
+
+        const closeTime = String(
+          formData.get(
+            `day_${day.value}_close`,
+          ) || "",
+        ).trim();
+
+        await db.sellerStoreHour.upsert({
+          where: {
+            sellerId_dayOfWeek: {
+              sellerId: seller.id,
+              dayOfWeek: day.value,
+            },
+          },
+          update: {
+            isClosed,
+            openTime:
+              isClosed || !openTime
+                ? null
+                : openTime,
+            closeTime:
+              isClosed || !closeTime
+                ? null
+                : closeTime,
+          },
+          create: {
+            sellerId: seller.id,
+            dayOfWeek: day.value,
+            isClosed,
+            openTime:
+              isClosed || !openTime
+                ? null
+                : openTime,
+            closeTime:
+              isClosed || !closeTime
+                ? null
+                : closeTime,
+          },
+        });
+      }
+
+      return {
+        success: true,
+        message:
+          "Your HairGrab storefront settings were saved.",
+      };
+    }
+
+    if (intent === "createCollection") {
+      const name = String(
+        formData.get("collectionName") ||
+          "",
+      ).trim();
+
+      if (!name) {
+        return {
+          success: false,
+          message:
+            "Enter a collection name.",
+        };
+      }
+
+      if (name.length > 60) {
+        return {
+          success: false,
+          message:
+            "Keep collection names to 60 characters or less.",
+        };
+      }
+
+      const imageFile =
+        formData.get("collectionImage");
+
+      let imageUrl: string | null = null;
+
+      if (
+        imageFile instanceof File &&
+        imageFile.size > 0
+      ) {
+        if (
+          !imageFile.type.startsWith(
+            "image/",
+          )
+        ) {
+          return {
+            success: false,
+            message:
+              "Collection artwork must be an image file.",
+          };
+        }
+
+        imageUrl = await uploadStoreImage(
+          imageFile,
+          `${seller.businessName} ${name} collection`,
+        );
+      }
+
+      const productIds = formData
+        .getAll("collectionProductIds")
+        .map(String);
+
+      const validProducts =
+        await db.sellerProduct.findMany({
+          where: {
+            sellerId: seller.id,
+            status: "ACTIVE",
+            id: { in: productIds },
+          },
+          select: { id: true },
+        });
+
+      const rank =
+        (await db.sellerStoreCollection.count(
+          {
+            where: {
+              sellerId: seller.id,
+            },
+          },
+        )) + 1;
+
+      await db.sellerStoreCollection.create({
+        data: {
+          sellerId: seller.id,
+          name,
+          slug:
+            await uniqueCollectionSlug(
+              seller.id,
+              name,
+            ),
+          imageUrl,
+          isVisible: true,
+          rank,
+          products: {
+            create: validProducts.map(
+              (product, index) => ({
+                sellerProductId:
+                  product.id,
+                rank: index + 1,
+              }),
+            ),
+          },
+        },
+      });
+
+      return {
+        success: true,
+        message: `"${name}" was added to your storefront.`,
+      };
+    }
+
+    if (intent === "updateCollection") {
+      const collectionId = String(
+        formData.get("collectionId") ||
+          "",
+      );
+
+      const collection =
+        await db.sellerStoreCollection.findFirst(
+          {
+            where: {
+              id: collectionId,
+              sellerId: seller.id,
+            },
+          },
+        );
+
+      if (!collection) {
+        return {
+          success: false,
+          message:
+            "HairGrab could not find that collection.",
+        };
+      }
+
+      const name = String(
+        formData.get("collectionName") ||
+          "",
+      ).trim();
+
+      if (!name) {
+        return {
+          success: false,
+          message:
+            "Enter a collection name.",
+        };
+      }
+
+      const imageFile =
+        formData.get("collectionImage");
+
+      let imageUrl =
+        collection.imageUrl;
+
+      if (
+        imageFile instanceof File &&
+        imageFile.size > 0
+      ) {
+        if (
+          !imageFile.type.startsWith(
+            "image/",
+          )
+        ) {
+          return {
+            success: false,
+            message:
+              "Collection artwork must be an image file.",
+          };
+        }
+
+        imageUrl = await uploadStoreImage(
+          imageFile,
+          `${seller.businessName} ${name} collection`,
+        );
+      }
+
+      const productIds = formData
+        .getAll("collectionProductIds")
+        .map(String);
+
+      const validProducts =
+        await db.sellerProduct.findMany({
+          where: {
+            sellerId: seller.id,
+            status: "ACTIVE",
+            id: { in: productIds },
+          },
+          select: { id: true },
+        });
+
+      await db.$transaction([
+        db.sellerStoreCollection.update({
+          where: { id: collection.id },
+          data: {
+            name,
+            slug:
+              await uniqueCollectionSlug(
+                seller.id,
+                name,
+                collection.id,
+              ),
+            imageUrl,
+            isVisible:
+              formData.get(
+                "collectionVisible",
+              ) === "on",
+          },
+        }),
+
+        db.sellerStoreCollectionProduct.deleteMany(
+          {
+            where: {
+              collectionId:
+                collection.id,
+            },
+          },
+        ),
+
+        db.sellerStoreCollectionProduct.createMany(
+          {
+            data: validProducts.map(
+              (product, index) => ({
+                collectionId:
+                  collection.id,
+                sellerProductId:
+                  product.id,
+                rank: index + 1,
+              }),
+            ),
+          },
+        ),
+      ]);
+
+      return {
+        success: true,
+        message: `"${name}" was updated.`,
+      };
+    }
+
+    if (intent === "deleteCollection") {
+      const collectionId = String(
+        formData.get("collectionId") ||
+          "",
+      );
+
+      const collection =
+        await db.sellerStoreCollection.findFirst(
+          {
+            where: {
+              id: collectionId,
+              sellerId: seller.id,
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        );
+
+      if (!collection) {
+        return {
+          success: false,
+          message:
+            "HairGrab could not find that collection.",
+        };
+      }
+
+      await db.sellerStoreCollection.delete({
+        where: { id: collection.id },
+      });
+
+      return {
+        success: true,
+        message: `"${collection.name}" was removed.`,
+      };
+    }
+
+    if (intent === "addGalleryImage") {
+      const imageFile =
+        formData.get("galleryImage");
+
+      if (
+        !(imageFile instanceof File) ||
+        imageFile.size === 0
+      ) {
+        return {
+          success: false,
+          message:
+            "Choose an image to add to your gallery.",
+        };
+      }
+
+      if (
+        !imageFile.type.startsWith(
+          "image/",
+        )
+      ) {
+        return {
+          success: false,
+          message:
+            "Gallery media must be an image file.",
+        };
+      }
+
+      const imageUrl =
+        await uploadStoreImage(
+          imageFile,
+          `${seller.businessName} storefront gallery`,
+        );
+
+      const rank =
+        (await db.sellerStoreMedia.count({
+          where: {
+            sellerId: seller.id,
+          },
+        })) + 1;
+
+      await db.sellerStoreMedia.create({
+        data: {
+          sellerId: seller.id,
+          mediaType: "IMAGE",
+          url: imageUrl,
+          altText: `${seller.businessName} storefront gallery`,
+          isVisible: true,
+          rank,
+        },
+      });
+
+      return {
+        success: true,
+        message:
+          "Gallery image added.",
+      };
+    }
+
+    if (intent === "addVideo") {
+      const videoUrl = String(
+        formData.get("videoUrl") || "",
+      ).trim();
+
+      if (!videoUrl) {
+        return {
+          success: false,
+          message:
+            "Paste a video URL first.",
+        };
+      }
+
+      let parsed: URL;
+
+      try {
+        parsed = new URL(videoUrl);
+      } catch {
+        return {
+          success: false,
+          message:
+            "Enter a valid video URL.",
+        };
+      }
+
+      if (
+        !["http:", "https:"].includes(
+          parsed.protocol,
+        )
+      ) {
+        return {
+          success: false,
+          message:
+            "Enter a valid http or https video URL.",
+        };
+      }
+
+      const rank =
+        (await db.sellerStoreMedia.count({
+          where: {
+            sellerId: seller.id,
+          },
+        })) + 1;
+
+      await db.sellerStoreMedia.create({
+        data: {
+          sellerId: seller.id,
+          mediaType: "VIDEO",
+          url: videoUrl,
+          altText: `${seller.businessName} storefront video`,
+          isVisible: true,
+          rank,
+        },
+      });
+
+      return {
+        success: true,
+        message:
+          "Storefront video added.",
+      };
+    }
+
+    if (intent === "toggleMedia") {
+      const mediaId = String(
+        formData.get("mediaId") || "",
+      );
+
+      const media =
+        await db.sellerStoreMedia.findFirst({
+          where: {
+            id: mediaId,
+            sellerId: seller.id,
+          },
+        });
+
+      if (!media) {
+        return {
+          success: false,
+          message:
+            "HairGrab could not find that media item.",
+        };
+      }
+
+      await db.sellerStoreMedia.update({
+        where: { id: media.id },
+        data: {
+          isVisible: !media.isVisible,
+        },
+      });
+
+      return {
+        success: true,
+        message:
+          media.isVisible
+            ? "Media hidden from your storefront."
+            : "Media is now visible on your storefront.",
+      };
+    }
+
+    if (intent === "deleteMedia") {
+      const mediaId = String(
+        formData.get("mediaId") || "",
+      );
+
+      const media =
+        await db.sellerStoreMedia.findFirst({
+          where: {
+            id: mediaId,
+            sellerId: seller.id,
+          },
+          select: { id: true },
+        });
+
+      if (!media) {
+        return {
+          success: false,
+          message:
+            "HairGrab could not find that media item.",
+        };
+      }
+
+      await db.sellerStoreMedia.delete({
+        where: { id: media.id },
+      });
+
+      return {
+        success: true,
+        message:
+          "Media removed from your storefront.",
+      };
+    }
+
     return {
-      success:
-        false,
-
+      success: false,
       message:
-        "Keep your About the Brand section to 600 characters or less.",
+        "HairGrab did not recognize that storefront action.",
     };
-  }
-
-  const returnPolicy =
-    String(
-      formData.get(
-        "returnPolicy",
-      ) ||
-        "14_DAY_RETURNS",
+  } catch (error) {
+    console.error(
+      "[HairGrab Core] Storefront error:",
+      error,
     );
 
-  const allowedPolicies =
-    [
-      "14_DAY_RETURNS",
-      "FINAL_SALE",
-    ];
-
-  if (
-    !allowedPolicies.includes(
-      returnPolicy,
-    )
-  ) {
     return {
-      success:
-        false,
-
+      success: false,
       message:
-        "Please choose a valid HairGrab return policy.",
+        error instanceof Error
+          ? error.message
+          : "HairGrab could not save your storefront.",
     };
   }
-
-  await db.seller.update({
-    where: {
-      id:
-        seller.id,
-    },
-
-    data: {
-      storeDescription:
-        storeDescription ||
-        null,
-
-      logoUrl:
-        String(
-          formData.get(
-            "logoUrl",
-          ) || "",
-        ).trim() ||
-        null,
-
-      bannerUrl:
-        String(
-          formData.get(
-            "bannerUrl",
-          ) || "",
-        ).trim() ||
-        null,
-
-      sellsNationwide:
-        formData.get(
-          "sellsNationwide",
-        ) === "on",
-
-      offersLocalPickup:
-        formData.get(
-          "offersLocalPickup",
-        ) === "on",
-
-      offersLocalDelivery:
-        formData.get(
-          "offersLocalDelivery",
-        ) === "on",
-
-      offersSameDayDelivery:
-        formData.get(
-          "offersSameDayDelivery",
-        ) === "on",
-
-      returnPolicy,
-    },
-  });
-
-  return {
-    success:
-      true,
-
-    message:
-      "Your HairGrab storefront settings were saved.",
-  };
 };
-
 
 export default function SellerStorePage() {
   const {
     seller,
     stats,
-  } =
-    useLoaderData<
-      typeof loader
-    >();
+    products,
+    collections,
+    media,
+    hours,
+  } = useLoaderData<typeof loader>();
 
   const actionData =
-    useActionData<
-      typeof action
-    >();
+    useActionData<typeof action>();
 
   return (
-    <div
-      style={{
-        minHeight:
-          "100vh",
-
-        background:
-          "#F7F2FA",
-
-        color:
-          "#21152a",
-
-        fontFamily:
-          "Arial, Helvetica, sans-serif",
-      }}
-    >
+    <div className="hg-page">
       <style>{`
+        * { box-sizing: border-box; }
+
+        .hg-page {
+          min-height: 100vh;
+          background: #F7F2FA;
+          color: #21152a;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .hg-header {
+          background: #4B1678;
+          color: white;
+          padding: 20px 22px;
+        }
+
+        .hg-header-inner,
+        .hg-main {
+          max-width: 1080px;
+          margin: 0 auto;
+        }
+
+        .hg-header-inner,
+        .hg-top,
+        .hg-sticky {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
+
+        .hg-main {
+          padding: 28px 20px 80px;
+        }
+
+        .hg-title {
+          margin: 5px 0;
+          color: #4B1678;
+          font-size: 34px;
+          line-height: 1.08;
+        }
+
+        .hg-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .hg-stats {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin: 18px 0 22px;
+        }
+
+        .hg-card {
+          background: white;
+          border: 1px solid #e5dce9;
+          border-radius: 15px;
+          padding: 18px;
+          box-shadow: 0 3px 12px rgba(45,27,54,.035);
+        }
+
+        .hg-card h2 {
+          margin: 0;
+          color: #4B1678;
+          font-size: 17px;
+        }
+
+        .hg-subtitle {
+          color: #756b79;
+          font-size: 11px;
+          line-height: 1.45;
+          margin: 4px 0 14px;
+        }
+
+        .hg-label {
+          color: #4B1678;
+          font-size: 11px;
+          font-weight: 800;
+          margin-bottom: 6px;
+        }
+
+        .hg-field {
+          width: 100%;
+          border: 1px solid #d8cce0;
+          border-radius: 9px;
+          padding: 11px;
+          background: white;
+          color: #21152a;
+          font-size: 12px;
+        }
+
+        .hg-check {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 0;
+          border-bottom: 1px solid #f0e9f3;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 800;
+          color: #35263e;
+        }
+
+        .hg-check input {
+          width: 17px;
+          height: 17px;
+          accent-color: #4B1678;
+        }
+
+        .hg-info {
+          margin-top: 13px;
+          background: #F7F2FA;
+          border: 1px solid #e2d1ef;
+          border-radius: 10px;
+          padding: 10px;
+          color: #6f6575;
+          font-size: 10px;
+          line-height: 1.5;
+        }
+
+        .hg-button {
+          border: 0;
+          background: #4B1678;
+          color: white;
+          border-radius: 9px;
+          padding: 12px 17px;
+          font-weight: 900;
+          font-size: 12px;
+          cursor: pointer;
+        }
+
+        .hg-button-secondary {
+          background: white;
+          color: #4B1678;
+          border: 1px solid #cdb9db;
+        }
+
+        .hg-button-danger {
+          background: white;
+          color: #922f2f;
+          border: 1px solid #efcaca;
+        }
+
+        .hg-image-box {
+          height: 135px;
+          border: 1px dashed #cdb9db;
+          border-radius: 11px;
+          background: #faf7fc;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 9px;
+        }
+
+        .hg-image-box.banner {
+          height: 135px;
+        }
+
+        .hg-image-box img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+        }
+
+        .hg-image-box.banner img {
+          object-fit: cover;
+        }
+
+        .hg-collection {
+          border: 1px solid #eadff0;
+          border-radius: 12px;
+          padding: 13px;
+          margin-top: 12px;
+        }
+
+        .hg-products {
+          max-height: 210px;
+          overflow: auto;
+          border: 1px solid #eee7f2;
+          border-radius: 9px;
+          padding: 8px;
+          margin-top: 9px;
+        }
+
+        .hg-product-check {
+          display: flex;
+          gap: 8px;
+          align-items: flex-start;
+          padding: 7px 4px;
+          font-size: 11px;
+          border-bottom: 1px solid #f4eef6;
+        }
+
+        .hg-hours-row {
+          display: grid;
+          grid-template-columns: 95px 1fr 1fr auto;
+          gap: 8px;
+          align-items: center;
+          padding: 8px 0;
+          border-bottom: 1px solid #f0e9f3;
+        }
+
+        .hg-media-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 12px;
+        }
+
+        .hg-media-item {
+          border: 1px solid #eadff0;
+          border-radius: 11px;
+          overflow: hidden;
+          background: #faf7fc;
+        }
+
+        .hg-media-item img {
+          width: 100%;
+          height: 130px;
+          object-fit: cover;
+          display: block;
+        }
+
+        .hg-media-actions {
+          padding: 8px;
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .hg-mini-button {
+          border: 1px solid #d8cce0;
+          background: white;
+          color: #4B1678;
+          border-radius: 7px;
+          padding: 6px 8px;
+          font-size: 9px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .hg-sticky {
+          position: sticky;
+          bottom: 12px;
+          margin-top: 18px;
+          background: rgba(247,242,250,.94);
+          backdrop-filter: blur(8px);
+          border: 1px solid #e2d1ef;
+          border-radius: 13px;
+          padding: 10px;
+          z-index: 5;
+        }
+
         @media (max-width: 720px) {
-          .hg-store-header {
-            padding: 18px 16px !important;
+          .hg-header {
+            padding: 18px 16px;
           }
 
-          .hg-store-main {
-            padding: 20px 14px 60px !important;
+          .hg-main {
+            padding: 20px 14px 70px;
           }
 
-          .hg-store-top {
-            align-items: flex-start !important;
+          .hg-title {
+            font-size: 27px;
           }
 
-          .hg-store-title {
-            font-size: 27px !important;
+          .hg-grid {
+            grid-template-columns: 1fr;
           }
 
-          .hg-store-grid {
-            grid-template-columns: 1fr !important;
+          .hg-stats {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
           }
 
-          .hg-store-system-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          .hg-preview-button {
+            width: 100%;
+            justify-content: center;
           }
 
-          .hg-store-preview-button {
-            width: 100% !important;
-            justify-content: center !important;
+          .hg-hours-row {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .hg-hours-day {
+            grid-column: 1 / -1;
+          }
+
+          .hg-media-grid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
 
-      <header
-        className="hg-store-header"
-        style={{
-          background:
-            "#4B1678",
-
-          color:
-            "white",
-
-          padding:
-            "20px 22px",
-        }}
-      >
-        <div
-          style={{
-            maxWidth:
-              "1050px",
-
-            margin:
-              "0 auto",
-
-            display:
-              "flex",
-
-            justifyContent:
-              "space-between",
-
-            alignItems:
-              "center",
-
-            gap:
-              "14px",
-
-            flexWrap:
-              "wrap",
-          }}
-        >
+      <header className="hg-header">
+        <div className="hg-header-inner">
           <div>
             <div
               style={{
-                fontSize:
-                  "10px",
-
-                fontWeight:
-                  800,
-
-                letterSpacing:
-                  "1px",
-
-                opacity:
-                  0.82,
+                fontSize: "10px",
+                fontWeight: 800,
+                letterSpacing: "1px",
+                opacity: 0.82,
               }}
             >
               HAIRGRAB SELLER
@@ -342,14 +1498,9 @@ export default function SellerStorePage() {
 
             <div
               style={{
-                fontSize:
-                  "22px",
-
-                fontWeight:
-                  900,
-
-                marginTop:
-                  "3px",
+                fontSize: "22px",
+                fontWeight: 900,
+                marginTop: "3px",
               }}
             >
               Storefront
@@ -359,17 +1510,10 @@ export default function SellerStorePage() {
           <Link
             to="/seller"
             style={{
-              color:
-                "white",
-
-              textDecoration:
-                "none",
-
-              fontWeight:
-                800,
-
-              fontSize:
-                "12px",
+              color: "white",
+              textDecoration: "none",
+              fontWeight: 800,
+              fontSize: "12px",
             }}
           >
             ← Dashboard
@@ -377,126 +1521,44 @@ export default function SellerStorePage() {
         </div>
       </header>
 
-      <main
-        className="hg-store-main"
-        style={{
-          maxWidth:
-            "1050px",
-
-          margin:
-            "0 auto",
-
-          padding:
-            "28px 20px 70px",
-        }}
-      >
-        <div
-          className="hg-store-top"
-          style={{
-            display:
-              "flex",
-
-            justifyContent:
-              "space-between",
-
-            alignItems:
-              "center",
-
-            gap:
-              "18px",
-
-            flexWrap:
-              "wrap",
-
-            marginBottom:
-              "22px",
-          }}
-        >
+      <main className="hg-main">
+        <div className="hg-top">
           <div>
             <div
               style={{
-                color:
-                  "#756b79",
-
-                fontSize:
-                  "12px",
-
-                fontWeight:
-                  800,
+                color: "#756b79",
+                fontSize: "12px",
+                fontWeight: 800,
               }}
             >
               {seller.sellerCode}
             </div>
 
-            <h1
-              className="hg-store-title"
-              style={{
-                margin:
-                  "5px 0 5px",
-
-                color:
-                  "#4B1678",
-
-                fontSize:
-                  "34px",
-
-                lineHeight:
-                  1.08,
-              }}
-            >
+            <h1 className="hg-title">
               Build Your Store
             </h1>
 
             <div
               style={{
-                color:
-                  "#756b79",
-
-                fontSize:
-                  "13px",
-
-                lineHeight:
-                  1.5,
-
-                maxWidth:
-                  "650px",
+                color: "#756b79",
+                fontSize: "13px",
+                lineHeight: 1.5,
+                maxWidth: "650px",
               }}
             >
-              HairGrab builds the storefront for you. Add your brand details, choose your policies, and your products are organized automatically.
+              HairGrab builds the storefront for you.
+              Customize what shoppers see without
+              building pages or menus.
             </div>
           </div>
 
           <Link
-            className="hg-store-preview-button"
+            className="hg-preview-button hg-button"
             to="/seller/store-preview"
             style={{
-              display:
-                "inline-flex",
-
-              alignItems:
-                "center",
-
-              background:
-                "#4B1678",
-
-              color:
-                "white",
-
-              textDecoration:
-                "none",
-
-              borderRadius:
-                "10px",
-
-              padding:
-                "12px 16px",
-
-              fontSize:
-                "12px",
-
-              fontWeight:
-                900,
-
+              display: "inline-flex",
+              alignItems: "center",
+              textDecoration: "none",
               boxShadow:
                 "0 5px 14px rgba(75,22,120,.15)",
             }}
@@ -507,69 +1569,43 @@ export default function SellerStorePage() {
 
         {actionData && (
           <Notice
-            success={
-              actionData.success
-            }
-            text={
-              actionData.message
-            }
+            success={actionData.success}
+            text={actionData.message}
           />
         )}
 
-        <div
-          style={{
-            display:
-              "grid",
-
-            gridTemplateColumns:
-              "repeat(3, minmax(0, 1fr))",
-
-            gap:
-              "10px",
-
-            margin:
-              "18px 0 22px",
-          }}
-          className="hg-store-system-grid"
-        >
+        <div className="hg-stats">
           <MiniStat
-            value={
-              String(
-                stats.activeProducts,
-              )
-            }
+            value={String(
+              stats.activeProducts,
+            )}
             label="Active Products"
           />
-
           <MiniStat
-            value={
-              String(
-                stats.featuredProducts,
-              )
-            }
+            value={String(
+              stats.featuredProducts,
+            )}
             label="Seller Picks"
           />
-
           <MiniStat
-            value="Automatic"
-            label="Store Collections"
+            value={String(
+              stats.customCollections,
+            )}
+            label="Custom Collections"
           />
         </div>
 
-        <Form method="post">
-          <div
-            className="hg-store-grid"
-            style={{
-              display:
-                "grid",
+        <Form
+          method="post"
+          encType="multipart/form-data"
+        >
+          <input
+            type="hidden"
+            name="intent"
+            value="saveStorefront"
+          />
 
-              gridTemplateColumns:
-                "1fr 1fr",
-
-              gap:
-                "16px",
-            }}
-          >
+          <div className="hg-grid">
             <Card
               title="Brand & About"
               subtitle="What shoppers see first."
@@ -581,54 +1617,88 @@ export default function SellerStorePage() {
                   seller.storeDescription
                 }
                 multiline
-                help="Tell shoppers what makes your business special. Keep it short and easy to scan."
+                help="Keep it short and easy to scan. Maximum 600 characters."
               />
 
-              <Field
-                label="Logo Image URL"
-                name="logoUrl"
-                defaultValue={
-                  seller.logoUrl
-                }
-                help="Your existing storefront logo stays in place unless you change it."
-              />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "12px",
+                  marginTop: "14px",
+                }}
+              >
+                <ImageUpload
+                  label="Store Logo"
+                  name="logoImage"
+                  currentUrl={seller.logoUrl}
+                  help="Upload a square logo or brand image."
+                />
 
-              <Field
-                label="Hero / Banner Image URL"
-                name="bannerUrl"
-                defaultValue={
-                  seller.bannerUrl
-                }
-                help="Wide brand or lifestyle image shown at the top of your store."
-              />
+                <ImageUpload
+                  label="Hero / Banner"
+                  name="bannerImage"
+                  currentUrl={
+                    seller.bannerUrl
+                  }
+                  help="Upload a wide brand or lifestyle image."
+                  banner
+                />
+              </div>
             </Card>
 
             <Card
-              title="Collections"
-              subtitle="HairGrab organizes the basics automatically."
+              title="Store Sections"
+              subtitle="All Products always stays available. Choose which additional sections shoppers see."
             >
-              <SystemCollection
-                title="All Products"
-                text="Every active product in your HairGrab catalog."
+              <CheckRow
+                name="showFeaturedCollection"
+                defaultChecked={
+                  seller.showFeaturedCollection
+                }
+                label="Show Featured / Seller Picks"
               />
-
-              <SystemCollection
-                title="New Arrivals"
-                text="Recently added active products automatically appear here."
+              <CheckRow
+                name="showNewArrivalsCollection"
+                defaultChecked={
+                  seller.showNewArrivalsCollection
+                }
+                label="Show New Arrivals"
               />
-
-              <SystemCollection
-                title="On Sale"
-                text="Products with an active compare-at sale price appear here automatically."
+              <CheckRow
+                name="showOnSaleCollection"
+                defaultChecked={
+                  seller.showOnSaleCollection
+                }
+                label="Show On Sale"
               />
-
-              <SystemCollection
-                title="Featured"
-                text="Your Seller Picks appear as featured products in your store."
+              <CheckRow
+                name="showCustomCollections"
+                defaultChecked={
+                  seller.showCustomCollections
+                }
+                label="Show Custom Collections"
+              />
+              <CheckRow
+                name="showGallery"
+                defaultChecked={
+                  seller.showGallery
+                }
+                label="Show Gallery & Video"
+              />
+              <CheckRow
+                name="showReviews"
+                defaultChecked={
+                  seller.showReviews
+                }
+                label="Show Reviews"
               />
 
               <InfoBox>
-                Custom seller collections such as Glueless Wigs, Raw Hair, Curly Collection, or Under $200 are the next storefront data feature. HairGrab will keep them simple: name the collection, optional image, select products.
+                All Products is automatic and cannot
+                be switched off, so shoppers can
+                always reach your full active catalog.
               </InfoBox>
             </Card>
 
@@ -643,7 +1713,6 @@ export default function SellerStorePage() {
                 }
                 label="Nationwide Shipping"
               />
-
               <CheckRow
                 name="offersLocalPickup"
                 defaultChecked={
@@ -651,7 +1720,6 @@ export default function SellerStorePage() {
                 }
                 label="Local Pickup"
               />
-
               <CheckRow
                 name="offersLocalDelivery"
                 defaultChecked={
@@ -659,7 +1727,6 @@ export default function SellerStorePage() {
                 }
                 label="Local Delivery"
               />
-
               <CheckRow
                 name="offersSameDayDelivery"
                 defaultChecked={
@@ -672,27 +1739,19 @@ export default function SellerStorePage() {
                 seller.state) && (
                 <div
                   style={{
-                    marginTop:
-                      "12px",
-
-                    color:
-                      "#756b79",
-
-                    fontSize:
-                      "11px",
+                    marginTop: "12px",
+                    color: "#756b79",
+                    fontSize: "11px",
                   }}
                 >
-                  Store location shown to shoppers:{" "}
+                  Store location shown to
+                  shoppers:{" "}
                   {[
                     seller.city,
                     seller.state,
                   ]
-                    .filter(
-                      Boolean,
-                    )
-                    .join(
-                      ", ",
-                    )}
+                    .filter(Boolean)
+                    .join(", ")}
                 </div>
               )}
             </Card>
@@ -701,33 +1760,20 @@ export default function SellerStorePage() {
               title="Returns & Buyer Protection"
               subtitle="Simple, consistent HairGrab choices."
             >
-              <label
-                style={{
-                  display:
-                    "block",
-                }}
-              >
-                <div
-                  style={
-                    labelStyle
-                  }
-                >
+              <label>
+                <div className="hg-label">
                   Return Policy
                 </div>
-
                 <select
                   name="returnPolicy"
                   defaultValue={
                     seller.returnPolicy
                   }
-                  style={
-                    fieldStyle
-                  }
+                  className="hg-field"
                 >
                   <option value="14_DAY_RETURNS">
                     14-Day Returns
                   </option>
-
                   <option value="FINAL_SALE">
                     Final Sale
                   </option>
@@ -735,205 +1781,569 @@ export default function SellerStorePage() {
               </label>
 
               <InfoBox>
-                HairGrab buyer protection still applies to wrong, damaged, counterfeit, materially misrepresented, and qualifying non-delivery issues.
+                HairGrab buyer protection still
+                applies to wrong, damaged,
+                counterfeit, materially
+                misrepresented, and qualifying
+                non-delivery issues.
               </InfoBox>
             </Card>
 
             <Card
-              title="Reviews"
-              subtitle="Product reviews and seller reputation stay separate."
+              title="Store Status"
+              subtitle="Control local service availability without shutting off nationwide shopping."
             >
-              <ReviewRule
-                title="Product Reviews"
-                text='Products with no HairGrab reviews display "New on HairGrab" instead of empty stars.'
-              />
-
-              <ReviewRule
-                title="Seller Reviews"
-                text="Your store will have its own seller reputation section separate from individual product ratings."
-              />
-
-              <ReviewRule
-                title="Verified Purchase"
-                text="HairGrab reviews will be tied to verified marketplace purchases when review submission is activated."
-              />
+              <label>
+                <div className="hg-label">
+                  Store Status
+                </div>
+                <select
+                  name="storeOpenOverride"
+                  defaultValue={
+                    seller.storeOpenOverride
+                  }
+                  className="hg-field"
+                >
+                  <option value="AUTO">
+                    Auto — follow listed hours
+                  </option>
+                  <option value="OPEN">
+                    Open — temporarily override hours
+                  </option>
+                  <option value="CLOSED">
+                    Closed — temporarily override hours
+                  </option>
+                </select>
+              </label>
 
               <InfoBox>
-                We are not importing or faking outside reviews as HairGrab reviews.
+                Closing outside your listed hours
+                affects local pickup, local delivery,
+                and same-day availability. It does
+                not turn off normal nationwide
+                online orders.
               </InfoBox>
             </Card>
 
             <Card
-              title="Store Gallery"
-              subtitle="Brand and lifestyle media for your HairGrab storefront."
+              title="Business Hours"
+              subtitle="Used for local pickup, local delivery, and same-day availability."
             >
-              <InfoBox>
-                Your hero banner is already active. The full drag-and-reorder gallery and reusable storefront media library will be added with the custom collections/media data update so sellers do not have to upload the same image twice.
-              </InfoBox>
+              {hours.map((hour) => (
+                <div
+                  className="hg-hours-row"
+                  key={hour.dayOfWeek}
+                >
+                  <strong className="hg-hours-day">
+                    {hour.label}
+                  </strong>
 
-              <div
-                style={{
-                  marginTop:
-                    "12px",
+                  <input
+                    type="time"
+                    name={`day_${hour.dayOfWeek}_open`}
+                    defaultValue={
+                      hour.openTime
+                    }
+                    className="hg-field"
+                  />
 
-                  padding:
-                    "14px",
+                  <input
+                    type="time"
+                    name={`day_${hour.dayOfWeek}_close`}
+                    defaultValue={
+                      hour.closeTime
+                    }
+                    className="hg-field"
+                  />
 
-                  border:
-                    "1px dashed #cfb8df",
-
-                  borderRadius:
-                    "11px",
-
-                  color:
-                    "#6f6575",
-
-                  fontSize:
-                    "12px",
-
-                  textAlign:
-                    "center",
-                }}
-              >
-                Gallery images + product/brand video
-              </div>
-            </Card>
-
-            <Card
-              title="Store Navigation"
-              subtitle="Built automatically for every seller."
-            >
-              <div
-                style={{
-                  display:
-                    "flex",
-
-                  flexWrap:
-                    "wrap",
-
-                  gap:
-                    "7px",
-                }}
-              >
-                {[
-                  "Home",
-                  "Shop",
-                  "Collections",
-                  "About",
-                  "Reviews",
-                  "Policies",
-                ].map(
-                  (
-                    item,
-                  ) => (
-                    <span
-                      key={
-                        item
+                  <label
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      name={`day_${hour.dayOfWeek}_closed`}
+                      defaultChecked={
+                        hour.isClosed
                       }
                       style={{
-                        background:
-                          "#f2eafa",
-
-                        color:
+                        accentColor:
                           "#4B1678",
-
-                        border:
-                          "1px solid #e2d1ef",
-
-                        borderRadius:
-                          "999px",
-
-                        padding:
-                          "7px 10px",
-
-                        fontSize:
-                          "10px",
-
-                        fontWeight:
-                          800,
                       }}
-                    >
-                      {item}
-                    </span>
-                  ),
-                )}
-              </div>
-
-              <InfoBox>
-                Sellers do not build menus or pages. HairGrab creates this structure automatically.
-              </InfoBox>
+                    />{" "}
+                    Closed
+                  </label>
+                </div>
+              ))}
             </Card>
           </div>
 
-          <div
-            style={{
-              position:
-                "sticky",
-
-              bottom:
-                "12px",
-
-              marginTop:
-                "18px",
-
-              background:
-                "rgba(247,242,250,.94)",
-
-              backdropFilter:
-                "blur(8px)",
-
-              border:
-                "1px solid #e2d1ef",
-
-              borderRadius:
-                "13px",
-
-              padding:
-                "10px",
-
-              display:
-                "flex",
-
-              justifyContent:
-                "space-between",
-
-              alignItems:
-                "center",
-
-              gap:
-                "10px",
-
-              flexWrap:
-                "wrap",
-            }}
-          >
+          <div className="hg-sticky">
             <div
               style={{
-                color:
-                  "#756b79",
-
-                fontSize:
-                  "11px",
+                color: "#756b79",
+                fontSize: "11px",
               }}
             >
-              Changes update your HairGrab storefront.
+              Save your main storefront settings
+              and business hours.
             </div>
 
             <button
               type="submit"
-              style={
-                saveButton
-              }
+              className="hg-button"
             >
               Save Storefront
             </button>
           </div>
         </Form>
+
+        <div
+          className="hg-grid"
+          style={{ marginTop: "16px" }}
+        >
+          <Card
+            title="Custom Collections"
+            subtitle="Create simple collections such as Glueless Wigs, Raw Hair, Curly Collection, or Under $200."
+          >
+            <Form
+              method="post"
+              encType="multipart/form-data"
+            >
+              <input
+                type="hidden"
+                name="intent"
+                value="createCollection"
+              />
+
+              <Field
+                label="Collection Name"
+                name="collectionName"
+                defaultValue=""
+                help="Give shoppers a short, clear collection name."
+              />
+
+              <div
+                style={{
+                  marginTop: "12px",
+                }}
+              >
+                <div className="hg-label">
+                  Collection Image (Optional)
+                </div>
+                <input
+                  type="file"
+                  name="collectionImage"
+                  accept="image/*"
+                  style={{
+                    width: "100%",
+                    fontSize: "11px",
+                  }}
+                />
+              </div>
+
+              <ProductPicker
+                products={products}
+                selectedIds={[]}
+              />
+
+              <button
+                type="submit"
+                className="hg-button"
+                style={{
+                  marginTop: "12px",
+                }}
+              >
+                Add Collection
+              </button>
+            </Form>
+
+            {collections.length === 0 ? (
+              <InfoBox>
+                No custom collections yet. Your
+                automatic All Products collection
+                is already active.
+              </InfoBox>
+            ) : (
+              collections.map(
+                (collection) => (
+                  <Form
+                    method="post"
+                    encType="multipart/form-data"
+                    key={collection.id}
+                    className="hg-collection"
+                  >
+                    <input
+                      type="hidden"
+                      name="intent"
+                      value="updateCollection"
+                    />
+                    <input
+                      type="hidden"
+                      name="collectionId"
+                      value={collection.id}
+                    />
+
+                    {collection.imageUrl && (
+                      <img
+                        src={
+                          collection.imageUrl
+                        }
+                        alt={
+                          collection.name
+                        }
+                        style={{
+                          width: "100%",
+                          height: "110px",
+                          objectFit: "cover",
+                          borderRadius:
+                            "9px",
+                          marginBottom:
+                            "10px",
+                        }}
+                      />
+                    )}
+
+                    <Field
+                      label="Collection Name"
+                      name="collectionName"
+                      defaultValue={
+                        collection.name
+                      }
+                    />
+
+                    <label className="hg-check">
+                      <input
+                        type="checkbox"
+                        name="collectionVisible"
+                        defaultChecked={
+                          collection.isVisible
+                        }
+                      />
+                      Show this collection
+                    </label>
+
+                    <div
+                      style={{
+                        marginTop: "10px",
+                      }}
+                    >
+                      <div className="hg-label">
+                        Change Collection Image
+                      </div>
+                      <input
+                        type="file"
+                        name="collectionImage"
+                        accept="image/*"
+                        style={{
+                          width: "100%",
+                          fontSize: "11px",
+                        }}
+                      />
+                    </div>
+
+                    <ProductPicker
+                      products={products}
+                      selectedIds={
+                        collection.productIds
+                      }
+                    />
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        flexWrap: "wrap",
+                        marginTop: "12px",
+                      }}
+                    >
+                      <button
+                        type="submit"
+                        className="hg-button"
+                      >
+                        Save Collection
+                      </button>
+
+                      <button
+                        type="submit"
+                        name="intent"
+                        value="deleteCollection"
+                        className="hg-button hg-button-danger"
+                        onClick={(event) => {
+                          if (
+                            !window.confirm(
+                              `Remove "${collection.name}"? This does not delete the products.`,
+                            )
+                          ) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </Form>
+                ),
+              )
+            )}
+          </Card>
+
+          <Card
+            title="Store Gallery & Video"
+            subtitle="Add brand, lifestyle, and product media to make your HairGrab store feel like your own site."
+          >
+            <Form
+              method="post"
+              encType="multipart/form-data"
+            >
+              <input
+                type="hidden"
+                name="intent"
+                value="addGalleryImage"
+              />
+
+              <div className="hg-label">
+                Add Gallery Image
+              </div>
+              <input
+                type="file"
+                name="galleryImage"
+                accept="image/*"
+                style={{
+                  width: "100%",
+                  fontSize: "11px",
+                }}
+              />
+
+              <button
+                type="submit"
+                className="hg-button"
+                style={{
+                  marginTop: "10px",
+                }}
+              >
+                Upload Image
+              </button>
+            </Form>
+
+            <Form
+              method="post"
+              style={{
+                marginTop: "18px",
+                paddingTop: "16px",
+                borderTop:
+                  "1px solid #eee7f2",
+              }}
+            >
+              <input
+                type="hidden"
+                name="intent"
+                value="addVideo"
+              />
+
+              <Field
+                label="Brand / Product Video URL"
+                name="videoUrl"
+                defaultValue=""
+                help="Add a direct or embeddable video link. The preview will open it from your HairGrab storefront."
+              />
+
+              <button
+                type="submit"
+                className="hg-button"
+                style={{
+                  marginTop: "10px",
+                }}
+              >
+                Add Video
+              </button>
+            </Form>
+
+            {media.length === 0 ? (
+              <InfoBox>
+                No gallery media yet.
+              </InfoBox>
+            ) : (
+              <div className="hg-media-grid">
+                {media.map((item) => (
+                  <div
+                    className="hg-media-item"
+                    key={item.id}
+                  >
+                    {item.mediaType ===
+                    "IMAGE" ? (
+                      <img
+                        src={item.url}
+                        alt={
+                          item.altText ||
+                          "Store gallery"
+                        }
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          height: "130px",
+                          display: "flex",
+                          alignItems:
+                            "center",
+                          justifyContent:
+                            "center",
+                          textAlign:
+                            "center",
+                          padding: "12px",
+                          color: "#4B1678",
+                          fontWeight: 900,
+                          fontSize: "12px",
+                        }}
+                      >
+                        ▶ Storefront Video
+                      </div>
+                    )}
+
+                    <div className="hg-media-actions">
+                      <Form method="post">
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="toggleMedia"
+                        />
+                        <input
+                          type="hidden"
+                          name="mediaId"
+                          value={item.id}
+                        />
+                        <button
+                          type="submit"
+                          className="hg-mini-button"
+                        >
+                          {item.isVisible
+                            ? "Hide"
+                            : "Show"}
+                        </button>
+                      </Form>
+
+                      <Form method="post">
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="deleteMedia"
+                        />
+                        <input
+                          type="hidden"
+                          name="mediaId"
+                          value={item.id}
+                        />
+                        <button
+                          type="submit"
+                          className="hg-mini-button"
+                        >
+                          Remove
+                        </button>
+                      </Form>
+
+                      <span
+                        style={{
+                          fontSize: "9px",
+                          color:
+                            item.isVisible
+                              ? "#28743b"
+                              : "#8a7b91",
+                          fontWeight: 800,
+                          alignSelf:
+                            "center",
+                        }}
+                      >
+                        {item.isVisible
+                          ? "VISIBLE"
+                          : "HIDDEN"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <InfoBox>
+              HairGrab keeps shoppers on HairGrab.
+              Seller websites, Instagram, TikTok,
+              and other off-site shopping links are
+              not part of the storefront.
+            </InfoBox>
+          </Card>
+
+          <Card
+            title="Reviews"
+            subtitle="HairGrab controls review authenticity; sellers control only whether the review section is displayed."
+          >
+            <ReviewRule
+              title="Product Reviews"
+              text='Products with no HairGrab reviews display "New on HairGrab" instead of empty stars.'
+            />
+            <ReviewRule
+              title="Seller Reviews"
+              text="Your store reputation stays separate from individual product ratings."
+            />
+            <ReviewRule
+              title="Verified Purchase"
+              text="Verified Purchase is controlled by HairGrab order data, not by sellers."
+            />
+          </Card>
+
+          <Card
+            title="Store Navigation"
+            subtitle="Built automatically for every seller."
+          >
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "7px",
+              }}
+            >
+              {[
+                "Home",
+                "Shop",
+                "Collections",
+                "About",
+                "Reviews",
+                "Policies",
+              ].map((item) => (
+                <span
+                  key={item}
+                  style={{
+                    background:
+                      "#f2eafa",
+                    color: "#4B1678",
+                    border:
+                      "1px solid #e2d1ef",
+                    borderRadius:
+                      "999px",
+                    padding: "7px 10px",
+                    fontSize: "10px",
+                    fontWeight: 800,
+                  }}
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+
+            <InfoBox>
+              Sellers do not build menus or pages.
+              HairGrab creates the navigation
+              automatically. The shopper storefront
+              will make these links clickable and
+              horizontally scrollable on mobile.
+            </InfoBox>
+          </Card>
+        </div>
       </main>
     </div>
   );
 }
-
 
 function Card({
   title,
@@ -942,69 +2352,18 @@ function Card({
 }: {
   title: string;
   subtitle: string;
-  children:
-    React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
-    <section
-      style={{
-        background:
-          "white",
-
-        border:
-          "1px solid #e5dce9",
-
-        borderRadius:
-          "15px",
-
-        padding:
-          "18px",
-
-        boxShadow:
-          "0 3px 12px rgba(45,27,54,.035)",
-      }}
-    >
-      <h2
-        style={{
-          margin:
-            0,
-
-          color:
-            "#4B1678",
-
-          fontSize:
-            "17px",
-        }}
-      >
-        {title}
-      </h2>
-
-      <div
-        style={{
-          color:
-            "#756b79",
-
-          fontSize:
-            "11px",
-
-          lineHeight:
-            1.45,
-
-          marginTop:
-            "4px",
-
-          marginBottom:
-            "14px",
-        }}
-      >
+    <section className="hg-card">
+      <h2>{title}</h2>
+      <div className="hg-subtitle">
         {subtitle}
       </div>
-
       {children}
     </section>
   );
 }
-
 
 function Field({
   label,
@@ -1012,78 +2371,48 @@ function Field({
   defaultValue,
   multiline,
   help,
-  placeholder,
 }: {
   label: string;
   name: string;
   defaultValue: string;
   multiline?: boolean;
   help?: string;
-  placeholder?: string;
 }) {
   return (
     <label
       style={{
-        display:
-          "block",
-
-        marginTop:
-          "13px",
+        display: "block",
+        marginTop: "13px",
       }}
     >
-      <div
-        style={
-          labelStyle
-        }
-      >
+      <div className="hg-label">
         {label}
       </div>
 
       {multiline ? (
         <textarea
           name={name}
-          defaultValue={
-            defaultValue
-          }
+          defaultValue={defaultValue}
           rows={5}
-          placeholder={
-            placeholder
-          }
-          style={{
-            ...fieldStyle,
-            resize:
-              "vertical",
-          }}
+          maxLength={600}
+          className="hg-field"
+          style={{ resize: "vertical" }}
         />
       ) : (
         <input
           name={name}
-          defaultValue={
-            defaultValue
-          }
-          placeholder={
-            placeholder
-          }
-          style={
-            fieldStyle
-          }
+          defaultValue={defaultValue}
+          className="hg-field"
         />
       )}
 
       {help && (
         <div
           style={{
-            color:
-              "#817686",
-
-            fontSize:
-              "10px",
-
-            lineHeight:
-              1.45,
-
-            marginTop:
-              "5px",
+            color: "#817686",
+            fontSize: "10px",
+            lineHeight: 1.45,
+            marginTop: "5px",
           }}
         >
           {help}
@@ -1093,6 +2422,71 @@ function Field({
   );
 }
 
+function ImageUpload({
+  label,
+  name,
+  currentUrl,
+  help,
+  banner,
+}: {
+  label: string;
+  name: string;
+  currentUrl: string;
+  help: string;
+  banner?: boolean;
+}) {
+  return (
+    <div>
+      <div className="hg-label">
+        {label}
+      </div>
+
+      <div
+        className={`hg-image-box${
+          banner ? " banner" : ""
+        }`}
+      >
+        {currentUrl ? (
+          <img
+            src={currentUrl}
+            alt={label}
+          />
+        ) : (
+          <div
+            style={{
+              color: "#8a7b91",
+              fontSize: "11px",
+              textAlign: "center",
+              padding: "20px",
+            }}
+          >
+            No {label.toLowerCase()} uploaded yet
+          </div>
+        )}
+      </div>
+
+      <input
+        type="file"
+        name={name}
+        accept="image/*"
+        style={{
+          width: "100%",
+          fontSize: "11px",
+        }}
+      />
+
+      <div
+        style={{
+          color: "#8a7b91",
+          fontSize: "10px",
+          marginTop: "5px",
+        }}
+      >
+        {help}
+      </div>
+    </div>
+  );
+}
 
 function CheckRow({
   name,
@@ -1104,157 +2498,79 @@ function CheckRow({
   label: string;
 }) {
   return (
-    <label
-      style={{
-        display:
-          "flex",
-
-        alignItems:
-          "center",
-
-        gap:
-          "10px",
-
-        padding:
-          "10px 0",
-
-        borderBottom:
-          "1px solid #f0e9f3",
-
-        cursor:
-          "pointer",
-      }}
-    >
+    <label className="hg-check">
       <input
         type="checkbox"
         name={name}
-        defaultChecked={
-          defaultChecked
-        }
-        style={{
-          width:
-            "17px",
-
-          height:
-            "17px",
-
-          accentColor:
-            "#4B1678",
-        }}
+        defaultChecked={defaultChecked}
       />
-
-      <span
-        style={{
-          fontSize:
-            "12px",
-
-          fontWeight:
-            800,
-
-          color:
-            "#35263e",
-        }}
-      >
-        {label}
-      </span>
+      <span>{label}</span>
     </label>
   );
 }
 
-
-function SystemCollection({
-  title,
-  text,
+function ProductPicker({
+  products,
+  selectedIds,
 }: {
-  title: string;
-  text: string;
+  products: Array<{
+    id: string;
+    title: string;
+    shopifyHandle: string | null;
+  }>;
+  selectedIds: string[];
 }) {
+  const selected =
+    new Set(selectedIds);
+
   return (
-    <div
-      style={{
-        padding:
-          "10px 0",
-
-        borderBottom:
-          "1px solid #f0e9f3",
-      }}
-    >
-      <div
-        style={{
-          display:
-            "flex",
-
-          alignItems:
-            "center",
-
-          justifyContent:
-            "space-between",
-
-          gap:
-            "10px",
-        }}
-      >
-        <div
-          style={{
-            fontWeight:
-              900,
-
-            fontSize:
-              "12px",
-
-            color:
-              "#35263e",
-          }}
-        >
-          {title}
-        </div>
-
-        <span
-          style={{
-            background:
-              "#edf8ef",
-
-            color:
-              "#28743b",
-
-            borderRadius:
-              "999px",
-
-            padding:
-              "4px 7px",
-
-            fontSize:
-              "9px",
-
-            fontWeight:
-              900,
-          }}
-        >
-          AUTO
-        </span>
+    <div style={{ marginTop: "12px" }}>
+      <div className="hg-label">
+        Products
       </div>
 
+      {products.length === 0 ? (
+        <div className="hg-info">
+          Add active products before creating
+          product collections.
+        </div>
+      ) : (
+        <div className="hg-products">
+          {products.map((product) => (
+            <label
+              className="hg-product-check"
+              key={product.id}
+            >
+              <input
+                type="checkbox"
+                name="collectionProductIds"
+                value={product.id}
+                defaultChecked={selected.has(
+                  product.id,
+                )}
+                style={{
+                  accentColor: "#4B1678",
+                }}
+              />
+              <span>{product.title}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
       <div
         style={{
-          marginTop:
-            "4px",
-
-          color:
-            "#817686",
-
-          fontSize:
-            "10px",
-
-          lineHeight:
-            1.45,
+          color: "#817686",
+          fontSize: "9px",
+          marginTop: "5px",
         }}
       >
-        {text}
+        Check the active HairGrab products that
+        belong in this collection.
       </div>
     </div>
   );
 }
-
 
 function ReviewRule({
   title,
@@ -1266,41 +2582,26 @@ function ReviewRule({
   return (
     <div
       style={{
-        padding:
-          "10px 0",
-
+        padding: "10px 0",
         borderBottom:
           "1px solid #f0e9f3",
       }}
     >
       <div
         style={{
-          color:
-            "#35263e",
-
-          fontSize:
-            "12px",
-
-          fontWeight:
-            900,
+          color: "#35263e",
+          fontSize: "12px",
+          fontWeight: 900,
         }}
       >
         {title}
       </div>
-
       <div
         style={{
-          color:
-            "#817686",
-
-          fontSize:
-            "10px",
-
-          lineHeight:
-            1.45,
-
-          marginTop:
-            "4px",
+          color: "#817686",
+          fontSize: "10px",
+          lineHeight: 1.45,
+          marginTop: "4px",
         }}
       >
         {text}
@@ -1309,46 +2610,17 @@ function ReviewRule({
   );
 }
 
-
 function InfoBox({
   children,
 }: {
-  children:
-    React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
-    <div
-      style={{
-        marginTop:
-          "13px",
-
-        background:
-          "#F7F2FA",
-
-        border:
-          "1px solid #e2d1ef",
-
-        borderRadius:
-          "10px",
-
-        padding:
-          "10px",
-
-        color:
-          "#6f6575",
-
-        fontSize:
-          "10px",
-
-        lineHeight:
-          1.5,
-      }}
-    >
+    <div className="hg-info">
       {children}
     </div>
   );
 }
-
 
 function MiniStat({
   value,
@@ -1360,35 +2632,20 @@ function MiniStat({
   return (
     <div
       style={{
-        background:
-          "white",
-
+        background: "white",
         border:
           "1px solid #e5dce9",
-
-        borderRadius:
-          "12px",
-
-        padding:
-          "13px",
-
-        textAlign:
-          "center",
+        borderRadius: "12px",
+        padding: "13px",
+        textAlign: "center",
       }}
     >
       <div
         style={{
-          color:
-            "#4B1678",
-
-          fontSize:
-            "17px",
-
-          fontWeight:
-            900,
-
-          lineHeight:
-            1.1,
+          color: "#4B1678",
+          fontSize: "17px",
+          fontWeight: 900,
+          lineHeight: 1.1,
         }}
       >
         {value}
@@ -1396,17 +2653,10 @@ function MiniStat({
 
       <div
         style={{
-          color:
-            "#756b79",
-
-          fontSize:
-            "9px",
-
-          marginTop:
-            "4px",
-
-          fontWeight:
-            700,
+          color: "#756b79",
+          fontSize: "9px",
+          marginTop: "4px",
+          fontWeight: 700,
         }}
       >
         {label}
@@ -1414,7 +2664,6 @@ function MiniStat({
     </div>
   );
 }
-
 
 function Notice({
   success,
@@ -1426,104 +2675,23 @@ function Notice({
   return (
     <div
       style={{
-        background:
-          success
-            ? "#edf8ef"
-            : "#fff0f0",
-
-        color:
-          success
-            ? "#28743b"
-            : "#9b2c2c",
-
-        border:
-          success
-            ? "1px solid #cdebd2"
-            : "1px solid #f3caca",
-
-        borderRadius:
-          "10px",
-
-        padding:
-          "11px 13px",
-
-        fontSize:
-          "11px",
-
-        fontWeight:
-          800,
+        background: success
+          ? "#edf8ef"
+          : "#fff0f0",
+        color: success
+          ? "#28743b"
+          : "#9b2c2c",
+        border: success
+          ? "1px solid #cdebd2"
+          : "1px solid #f3caca",
+        borderRadius: "10px",
+        padding: "11px 13px",
+        fontSize: "11px",
+        fontWeight: 800,
+        marginTop: "16px",
       }}
     >
       {text}
     </div>
   );
 }
-
-
-const labelStyle = {
-  color:
-    "#4B1678",
-
-  fontSize:
-    "11px",
-
-  fontWeight:
-    800,
-
-  marginBottom:
-    "6px",
-};
-
-
-const fieldStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box" as const,
-
-  border:
-    "1px solid #d8cce0",
-
-  borderRadius:
-    "9px",
-
-  padding:
-    "11px",
-
-  background:
-    "white",
-
-  color:
-    "#21152a",
-
-  fontSize:
-    "12px",
-};
-
-
-const saveButton = {
-  border:
-    0,
-
-  background:
-    "#4B1678",
-
-  color:
-    "white",
-
-  borderRadius:
-    "9px",
-
-  padding:
-    "12px 17px",
-
-  fontWeight:
-    900,
-
-  fontSize:
-    "12px",
-
-  cursor:
-    "pointer",
-};

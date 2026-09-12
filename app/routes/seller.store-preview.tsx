@@ -33,6 +33,11 @@ export const loader = async ({
   const [
     ownedProducts,
     sellerPicks,
+    storeCollections,
+    storeMedia,
+    storeHours,
+    sellerReviews,
+    productReviews,
   ] =
     await Promise.all([
       db.sellerProduct.findMany({
@@ -84,6 +89,53 @@ export const loader = async ({
         select: {
           sellerProductId:
             true,
+        },
+      }),
+
+      db.sellerStoreCollection.findMany({
+        where: {
+          sellerId: seller.id,
+          isVisible: true,
+        },
+        orderBy: { rank: "asc" },
+        include: {
+          products: {
+            orderBy: { rank: "asc" },
+            select: { sellerProductId: true },
+          },
+        },
+      }),
+
+      db.sellerStoreMedia.findMany({
+        where: {
+          sellerId: seller.id,
+          isVisible: true,
+        },
+        orderBy: { rank: "asc" },
+      }),
+
+      db.sellerStoreHour.findMany({
+        where: { sellerId: seller.id },
+        orderBy: { dayOfWeek: "asc" },
+      }),
+
+      db.sellerReview.findMany({
+        where: {
+          sellerId: seller.id,
+          status: "PUBLISHED",
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+
+      db.productReview.findMany({
+        where: {
+          sellerProduct: { sellerId: seller.id },
+          status: "PUBLISHED",
+        },
+        select: {
+          sellerProductId: true,
+          rating: true,
         },
       }),
     ]);
@@ -409,6 +461,21 @@ export const loader = async ({
       60 *
       1000;
 
+  const productReviewStats = new Map<
+    string,
+    { count: number; total: number }
+  >();
+
+  for (const review of productReviews) {
+    const current = productReviewStats.get(review.sellerProductId) || {
+      count: 0,
+      total: 0,
+    };
+    current.count += 1;
+    current.total += review.rating;
+    productReviewStats.set(review.sellerProductId, current);
+  }
+
   return {
     seller: {
       businessName:
@@ -452,22 +519,77 @@ export const loader = async ({
       returnPolicy:
         seller.returnPolicy ||
         "14_DAY_RETURNS",
+
+      showFeaturedCollection:
+        seller.showFeaturedCollection,
+      showNewArrivalsCollection:
+        seller.showNewArrivalsCollection,
+      showOnSaleCollection:
+        seller.showOnSaleCollection,
+      showCustomCollections:
+        seller.showCustomCollections,
+      showGallery:
+        seller.showGallery,
+      showReviews:
+        seller.showReviews,
+      storeOpenOverride:
+        seller.storeOpenOverride || "AUTO",
     },
 
     products:
       products.map(
         (
           product,
-        ) => ({
-          ...product,
+        ) => {
+          const stats = productReviewStats.get(product.id);
+          return {
+            ...product,
 
-          isNew:
-            new Date(
-              product.createdAt,
-            ).getTime() >=
-            newArrivalCutoff,
-        }),
+            isNew:
+              new Date(
+                product.createdAt,
+              ).getTime() >=
+              newArrivalCutoff,
+
+            reviewCount: stats?.count || 0,
+            reviewAverage:
+              stats && stats.count > 0
+                ? stats.total / stats.count
+                : null,
+          };
+        },
       ),
+
+    customCollections: storeCollections.map((collection) => ({
+      id: collection.id,
+      name: collection.name,
+      slug: collection.slug,
+      imageUrl: collection.imageUrl || "",
+      productIds: collection.products.map((item) => item.sellerProductId),
+    })),
+
+    storeMedia: storeMedia.map((media) => ({
+      id: media.id,
+      mediaType: media.mediaType,
+      url: media.url,
+      altText: media.altText || "",
+    })),
+
+    storeHours: storeHours.map((hour) => ({
+      dayOfWeek: hour.dayOfWeek,
+      isClosed: hour.isClosed,
+      openTime: hour.openTime || "",
+      closeTime: hour.closeTime || "",
+    })),
+
+    sellerReviews: sellerReviews.map((review) => ({
+      id: review.id,
+      rating: review.rating,
+      title: review.title || "",
+      body: review.body || "",
+      verifiedPurchase: review.verifiedPurchase,
+      createdAt: review.createdAt.toISOString(),
+    })),
   };
 };
 
@@ -476,6 +598,10 @@ export default function SellerStorePreviewPage() {
   const {
     seller,
     products,
+    customCollections,
+    storeMedia,
+    storeHours,
+    sellerReviews,
   } =
     useLoaderData<
       typeof loader
@@ -528,6 +654,50 @@ export default function SellerStorePreviewPage() {
       ? "Final Sale"
       : "14-Day Returns";
 
+  const visibleCustomCollections =
+    seller.showCustomCollections
+      ? customCollections
+      : [];
+
+  const collectionProductMap =
+    new Map(
+      visibleCustomCollections.map(
+        (collection) => [
+          collection.id,
+          products.filter((product) =>
+            collection.productIds.includes(product.id),
+          ),
+        ],
+      ),
+    );
+
+  const dayNames = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+
+  const storeStatusLabel =
+    seller.storeOpenOverride === "OPEN"
+      ? "Open"
+      : seller.storeOpenOverride === "CLOSED"
+        ? "Closed"
+        : storeHours.length > 0
+          ? "Hours Listed"
+          : "";
+
+  const sellerReviewAverage =
+    sellerReviews.length > 0
+      ? sellerReviews.reduce(
+          (sum, review) => sum + review.rating,
+          0,
+        ) / sellerReviews.length
+      : null;
+
   return (
     <div
       style={{
@@ -555,14 +725,14 @@ export default function SellerStorePreviewPage() {
           }
 
           .hg-preview-profile {
-            grid-template-columns: 78px minmax(0, 1fr) !important;
+            grid-template-columns: 68px minmax(0, 1fr) !important;
             gap: 12px !important;
             padding: 15px !important;
           }
 
           .hg-preview-logo {
-            width: 78px !important;
-            height: 78px !important;
+            width: 68px !important;
+            height: 68px !important;
             border-radius: 12px !important;
           }
 
@@ -929,6 +1099,22 @@ export default function SellerStorePreviewPage() {
                 </div>
               )}
 
+              {storeStatusLabel && (
+                <div
+                  style={{
+                    color:
+                      seller.storeOpenOverride === "CLOSED"
+                        ? "#8a4d4d"
+                        : "#4B1678",
+                    fontSize: "10px",
+                    fontWeight: 900,
+                    marginBottom: "8px",
+                  }}
+                >
+                  {storeStatusLabel}
+                </div>
+              )}
+
               <div
                 style={{
                   display:
@@ -1044,29 +1230,26 @@ export default function SellerStorePreviewPage() {
           </nav>
         </section>
 
-        <section
-          id="home"
-          style={{
-            marginTop:
-              "24px",
-          }}
-        >
-          <SectionHeading
-            title="Featured"
-            subtitle="Seller-selected products."
-          />
-
-          {featured.length >
-          0 ? (
-            <ProductGrid
-              products={
-                featured
-              }
+        {seller.showFeaturedCollection && (
+          <section
+            id="home"
+            style={{
+              marginTop:
+                "24px",
+            }}
+          >
+            <SectionHeading
+              title="Featured"
+              subtitle="Seller-selected products."
             />
-          ) : (
-            <EmptyState text="Seller Picks will appear here." />
-          )}
-        </section>
+
+            {featured.length > 0 ? (
+              <ProductGrid products={featured} />
+            ) : (
+              <EmptyState text="Seller Picks will appear here." />
+            )}
+          </section>
+        )}
 
         <section
           id="collections"
@@ -1077,57 +1260,91 @@ export default function SellerStorePreviewPage() {
         >
           <SectionHeading
             title="Collections"
-            subtitle="Automatically organized by HairGrab."
+            subtitle="Browse this HairGrab store."
           />
+
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              overflowX: "auto",
+              paddingBottom: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            <CollectionChip title="All Products" href="#shop" />
+            {seller.showNewArrivalsCollection && newArrivals.length > 0 && (
+              <CollectionChip title="New Arrivals" href="#new-arrivals" />
+            )}
+            {seller.showOnSaleCollection && onSale.length > 0 && (
+              <CollectionChip title="On Sale" href="#on-sale" />
+            )}
+            {seller.showFeaturedCollection && featured.length > 0 && (
+              <CollectionChip title="Featured" href="#home" />
+            )}
+            {visibleCustomCollections.map((collection) => (
+              <CollectionChip
+                key={collection.id}
+                title={collection.name}
+                href={`#collection-${collection.slug}`}
+              />
+            ))}
+          </div>
 
           <div
             style={{
               display:
                 "grid",
-
               gridTemplateColumns:
                 "repeat(auto-fit, minmax(180px, 1fr))",
-
               gap:
                 "12px",
             }}
           >
             <CollectionCard
               title="All Products"
-              count={
-                products.length
-              }
+              count={products.length}
               href="#shop"
             />
 
-            <CollectionCard
-              title="New Arrivals"
-              count={
-                newArrivals.length
-              }
-              href="#new-arrivals"
-            />
+            {seller.showNewArrivalsCollection && (
+              <CollectionCard
+                title="New Arrivals"
+                count={newArrivals.length}
+                href="#new-arrivals"
+              />
+            )}
 
-            <CollectionCard
-              title="On Sale"
-              count={
-                onSale.length
-              }
-              href="#on-sale"
-            />
+            {seller.showOnSaleCollection && (
+              <CollectionCard
+                title="On Sale"
+                count={onSale.length}
+                href="#on-sale"
+              />
+            )}
 
-            <CollectionCard
-              title="Featured"
-              count={
-                featured.length
-              }
-              href="#home"
-            />
+            {seller.showFeaturedCollection && (
+              <CollectionCard
+                title="Featured"
+                count={featured.length}
+                href="#home"
+              />
+            )}
+
+            {visibleCustomCollections.map((collection) => (
+              <CollectionCard
+                key={collection.id}
+                title={collection.name}
+                count={(collectionProductMap.get(collection.id) || []).length}
+                href={`#collection-${collection.slug}`}
+                imageUrl={collection.imageUrl}
+              />
+            ))}
           </div>
         </section>
 
-        {newArrivals.length >
-          0 && (
+        {seller.showNewArrivalsCollection &&
+          newArrivals.length > 0 && (
           <section
             id="new-arrivals"
             style={{
@@ -1148,8 +1365,8 @@ export default function SellerStorePreviewPage() {
           </section>
         )}
 
-        {onSale.length >
-          0 && (
+        {seller.showOnSaleCollection &&
+          onSale.length > 0 && (
           <section
             id="on-sale"
             style={{
@@ -1169,6 +1386,32 @@ export default function SellerStorePreviewPage() {
             />
           </section>
         )}
+
+        {visibleCustomCollections.map((collection) => {
+          const collectionProducts =
+            collectionProductMap.get(collection.id) || [];
+
+          return (
+            <section
+              key={collection.id}
+              id={`collection-${collection.slug}`}
+              style={{ marginTop: "30px" }}
+            >
+              <SectionHeading
+                title={collection.name}
+                subtitle={`${collectionProducts.length} ${
+                  collectionProducts.length === 1 ? "product" : "products"
+                }`}
+              />
+
+              {collectionProducts.length > 0 ? (
+                <ProductGrid products={collectionProducts} />
+              ) : (
+                <EmptyState text="Products will appear here when this collection is stocked." />
+              )}
+            </section>
+          );
+        })}
 
         <section
           id="shop"
@@ -1281,6 +1524,103 @@ export default function SellerStorePreviewPage() {
           </section>
         </div>
 
+        {seller.showGallery && storeMedia.length > 0 && (
+          <section
+            id="gallery"
+            style={{
+              ...infoCardStyle,
+              marginTop: "16px",
+            }}
+          >
+            <SectionHeading
+              title="Gallery"
+              subtitle={`Inside ${seller.businessName}.`}
+            />
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "12px",
+              }}
+            >
+              {storeMedia.map((media) => (
+                <div
+                  key={media.id}
+                  style={{
+                    borderRadius: "12px",
+                    overflow: "hidden",
+                    background: "#f3edf7",
+                    border: "1px solid #e5dce9",
+                  }}
+                >
+                  {media.mediaType === "VIDEO" ? (
+                    <video
+                      src={media.url}
+                      controls
+                      playsInline
+                      style={{
+                        width: "100%",
+                        display: "block",
+                        maxHeight: "420px",
+                      }}
+                    />
+                  ) : (
+                    <a
+                      href={media.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: "block" }}
+                    >
+                      <img
+                        src={media.url}
+                        alt={media.altText || `${seller.businessName} gallery image`}
+                        style={{
+                          width: "100%",
+                          aspectRatio: "1 / 1",
+                          objectFit: "cover",
+                          display: "block",
+                        }}
+                      />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {storeHours.length > 0 && (
+          <section
+            id="hours"
+            style={{
+              ...infoCardStyle,
+              marginTop: "16px",
+            }}
+          >
+            <SectionHeading
+              title="Store Hours"
+              subtitle="Local pickup and delivery availability."
+            />
+
+            {storeHours.map((hour) => (
+              <PolicyRow
+                key={hour.dayOfWeek}
+                label={dayNames[hour.dayOfWeek] || `Day ${hour.dayOfWeek}`}
+                value={
+                  hour.isClosed
+                    ? "Closed"
+                    : hour.openTime && hour.closeTime
+                      ? `${hour.openTime} – ${hour.closeTime}`
+                      : "Hours not set"
+                }
+              />
+            ))}
+          </section>
+        )}
+
+        {seller.showReviews && (
         <section
           id="reviews"
           style={{
@@ -1295,97 +1635,118 @@ export default function SellerStorePreviewPage() {
             subtitle="HairGrab marketplace reviews. Shopping stays on HairGrab."
           />
 
-          <div
-            style={{
-              display:
-                "grid",
-
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(210px, 1fr))",
-
-              gap:
-                "12px",
-            }}
-          >
-            <div
-              style={
-                reviewBoxStyle
-              }
-            >
-              <div
-                style={{
-                  color:
-                    "#4B1678",
-
-                  fontWeight:
-                    900,
-
-                  fontSize:
-                    "13px",
-                }}
-              >
-                Seller Reviews
+          {sellerReviews.length > 0 ? (
+            <div>
+              <div style={reviewBoxStyle}>
+                <div
+                  style={{
+                    color: "#4B1678",
+                    fontWeight: 900,
+                    fontSize: "14px",
+                  }}
+                >
+                  {sellerReviewAverage?.toFixed(1)} ★ · {sellerReviews.length}{" "}
+                  {sellerReviews.length === 1 ? "review" : "reviews"}
+                </div>
+                <div
+                  style={{
+                    color: "#756b79",
+                    fontSize: "10px",
+                    marginTop: "4px",
+                  }}
+                >
+                  HairGrab marketplace seller reviews.
+                </div>
               </div>
 
               <div
                 style={{
-                  color:
-                    "#756b79",
-
-                  fontSize:
-                    "11px",
-
-                  lineHeight:
-                    1.5,
-
-                  marginTop:
-                    "5px",
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "12px",
+                  marginTop: "12px",
                 }}
               >
-                New on HairGrab. Seller reputation reviews will appear here after verified marketplace purchases.
-              </div>
-            </div>
+                {sellerReviews.map((review) => (
+                  <div key={review.id} style={reviewBoxStyle}>
+                    <div
+                      style={{
+                        color: "#D4AF37",
+                        fontWeight: 900,
+                        fontSize: "12px",
+                      }}
+                    >
+                      {"★".repeat(Math.max(1, Math.min(5, review.rating)))}
+                    </div>
 
-            <div
-              style={
-                reviewBoxStyle
-              }
-            >
-              <div
-                style={{
-                  color:
-                    "#4B1678",
+                    {review.title && (
+                      <div
+                        style={{
+                          color: "#4B1678",
+                          fontWeight: 900,
+                          fontSize: "12px",
+                          marginTop: "6px",
+                        }}
+                      >
+                        {review.title}
+                      </div>
+                    )}
 
-                  fontWeight:
-                    900,
+                    {review.body && (
+                      <div
+                        style={{
+                          color: "#4f4554",
+                          fontSize: "11px",
+                          lineHeight: 1.5,
+                          marginTop: "5px",
+                        }}
+                      >
+                        {review.body}
+                      </div>
+                    )}
 
-                  fontSize:
-                    "13px",
-                }}
-              >
-                Product Reviews
-              </div>
-
-              <div
-                style={{
-                  color:
-                    "#756b79",
-
-                  fontSize:
-                    "11px",
-
-                  lineHeight:
-                    1.5,
-
-                  marginTop:
-                    "5px",
-                }}
-              >
-                Products without HairGrab reviews display “New on HairGrab” instead of empty stars.
+                    {review.verifiedPurchase && (
+                      <div
+                        style={{
+                          color: "#4B1678",
+                          fontSize: "9px",
+                          fontWeight: 900,
+                          marginTop: "7px",
+                        }}
+                      >
+                        Verified Purchase
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          ) : (
+            <div style={reviewBoxStyle}>
+              <div
+                style={{
+                  color: "#4B1678",
+                  fontWeight: 900,
+                  fontSize: "13px",
+                }}
+              >
+                New on HairGrab
+              </div>
+              <div
+                style={{
+                  color: "#756b79",
+                  fontSize: "11px",
+                  lineHeight: 1.5,
+                  marginTop: "5px",
+                }}
+              >
+                Seller reviews will appear here after verified HairGrab purchases.
+              </div>
+            </div>
+          )}
         </section>
+        )}
       </main>
     </div>
   );
@@ -1405,6 +1766,8 @@ function ProductGrid({
     onSale: boolean;
     featured: boolean;
     isNew: boolean;
+    reviewCount: number;
+    reviewAverage: number | null;
   }>;
 }) {
   return (
@@ -1600,7 +1963,11 @@ function ProductGrid({
                   800,
               }}
             >
-              New on HairGrab
+              {product.reviewCount > 0 && product.reviewAverage !== null
+                ? `${product.reviewAverage.toFixed(1)} ★ · ${product.reviewCount} ${
+                    product.reviewCount === 1 ? "review" : "reviews"
+                  }`
+                : "New on HairGrab"}
             </div>
 
             {product.shopifyHandle && (
@@ -1643,10 +2010,12 @@ function CollectionCard({
   title,
   count,
   href,
+  imageUrl,
 }: {
   title: string;
   count: number;
   href: string;
+  imageUrl?: string;
 }) {
   return (
     <a
@@ -1674,6 +2043,21 @@ function CollectionCard({
           "0 3px 12px rgba(45,27,54,.03)",
       }}
     >
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt={`${title} collection`}
+          style={{
+            width: "100%",
+            aspectRatio: "16 / 9",
+            objectFit: "cover",
+            borderRadius: "9px",
+            marginBottom: "10px",
+            display: "block",
+          }}
+        />
+      )}
+
       <div
         style={{
           color:
@@ -1707,6 +2091,35 @@ function CollectionCard({
           ? "product"
           : "products"}
       </div>
+    </a>
+  );
+}
+
+
+function CollectionChip({
+  title,
+  href,
+}: {
+  title: string;
+  href: string;
+}) {
+  return (
+    <a
+      href={href}
+      style={{
+        flex: "0 0 auto",
+        background: "white",
+        color: "#4B1678",
+        border: "1px solid #e2d1ef",
+        borderRadius: "999px",
+        padding: "8px 11px",
+        textDecoration: "none",
+        fontSize: "10px",
+        fontWeight: 900,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {title}
     </a>
   );
 }
