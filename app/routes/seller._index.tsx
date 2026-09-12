@@ -1365,7 +1365,7 @@ export default function SellerDashboard() {
             "white",
 
           padding:
-            "18px 24px",
+            "14px 16px",
         }}
       >
         <div
@@ -1379,82 +1379,13 @@ export default function SellerDashboard() {
             display:
               "flex",
 
-            justifyContent:
-              "space-between",
-
-            alignItems:
-              "center",
+            flexDirection:
+              "column",
 
             gap:
-              "16px",
-
-            flexWrap:
-              "wrap",
+              "12px",
           }}
         >
-          <Link
-            to="/seller"
-            aria-label="HairGrab Seller Dashboard home"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "12px",
-              textDecoration: "none",
-              color: "white",
-              minWidth: 0,
-            }}
-          >
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "white",
-                borderRadius: "14px",
-                padding: "10px 14px",
-                flex: "0 0 auto",
-              }}
-            >
-              <img
-                src="/hairgrab-logo.png"
-                alt="HairGrab"
-                style={{
-                  width: "280px",
-                  maxWidth: "62vw",
-                  height: "92px",
-                  objectFit: "contain",
-                  display: "block",
-                }}
-              />
-            </span>
-
-            <span style={{ minWidth: 0 }}>
-              <span
-                style={{
-                  display: "block",
-                  fontSize: "9px",
-                  fontWeight: 800,
-                  letterSpacing: "1px",
-                  opacity: 0.82,
-                }}
-              >
-                SELLER PORTAL
-              </span>
-              <span
-                style={{
-                  display: "block",
-                  fontSize: "20px",
-                  fontWeight: 800,
-                  marginTop: "2px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Seller Dashboard
-              </span>
-            </span>
-          </Link>
-
-
           <div
             style={{
               display:
@@ -1463,22 +1394,143 @@ export default function SellerDashboard() {
               alignItems:
                 "center",
 
+              justifyContent:
+                "space-between",
+
               gap:
-                "8px",
+                "10px",
 
               flexWrap:
                 "wrap",
-
-              justifyContent:
-                "flex-end",
             }}
           >
-            <OrderAlertController />
+            <Link
+              to="/seller"
+              aria-label="HairGrab Seller Dashboard home"
+              style={{
+                display:
+                  "flex",
 
-            <HelpUpdatesMenu
-              unreadMessages={stats.unreadMessages}
-              unreadNotifications={stats.unreadNotifications}
-            />
+                alignItems:
+                  "center",
+
+                gap:
+                  "10px",
+
+                textDecoration:
+                  "none",
+
+                color:
+                  "white",
+
+                minWidth:
+                  0,
+
+                flex:
+                  "1 1 240px",
+              }}
+            >
+              <span
+                style={{
+                  display:
+                    "inline-flex",
+
+                  alignItems:
+                    "center",
+
+                  justifyContent:
+                    "center",
+
+                  background:
+                    "white",
+
+                  borderRadius:
+                    "11px",
+
+                  padding:
+                    "6px 10px",
+
+                  flex:
+                    "0 0 auto",
+                }}
+              >
+                <img
+                  src="/hairgrab-logo.png"
+                  alt="HairGrab"
+                  style={{
+                    width:
+                      "150px",
+
+                    maxWidth:
+                      "42vw",
+
+                    height:
+                      "52px",
+
+                    objectFit:
+                      "contain",
+
+                    display:
+                      "block",
+                  }}
+                />
+              </span>
+
+              <span
+                style={{
+                  minWidth:
+                    0,
+
+                  flex:
+                    1,
+                }}
+              >
+                <span
+                  style={{
+                    display:
+                      "block",
+
+                    fontSize:
+                      "8px",
+
+                    fontWeight:
+                      800,
+
+                    letterSpacing:
+                      "1px",
+
+                    opacity:
+                      0.82,
+                  }}
+                >
+                  SELLER PORTAL
+                </span>
+
+                <span
+                  style={{
+                    display:
+                      "block",
+
+                    fontSize:
+                      "18px",
+
+                    lineHeight:
+                      1.1,
+
+                    fontWeight:
+                      800,
+
+                    marginTop:
+                      "2px",
+
+                    overflowWrap:
+                      "anywhere",
+                  }}
+                >
+                  Seller Dashboard
+                </span>
+              </span>
+            </Link>
 
             <Link
               to="/seller/add-product"
@@ -1493,20 +1545,46 @@ export default function SellerDashboard() {
                   "none",
 
                 fontWeight:
-                  "800",
+                  800,
 
                 fontSize:
-                  "13px",
+                  "12px",
 
                 padding:
-                  "11px 16px",
+                  "10px 13px",
 
                 borderRadius:
                   "8px",
+
+                whiteSpace:
+                  "nowrap",
               }}
             >
               + Add Product
             </Link>
+          </div>
+
+          <div
+            style={{
+              display:
+                "flex",
+
+              alignItems:
+                "center",
+
+              gap:
+                "8px",
+
+              flexWrap:
+                "wrap",
+            }}
+          >
+            <OrderAlertController />
+
+            <HelpUpdatesMenu
+              unreadMessages={stats.unreadMessages}
+              unreadNotifications={stats.unreadNotifications}
+            />
           </div>
         </div>
       </header>
