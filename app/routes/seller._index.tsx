@@ -1351,7 +1351,7 @@ export default function SellerDashboard() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#fbf9fd",
+        background: "#F7F2FA",
         fontFamily: "Arial, Helvetica, sans-serif",
         color: "#21152a",
         paddingBottom: "78px",
@@ -1386,12 +1386,12 @@ export default function SellerDashboard() {
 
           .hg-welcome-row {
             align-items: flex-start !important;
-            gap: 16px !important;
+            gap: 14px !important;
           }
 
           .hg-welcome-title {
-            font-size: 24px !important;
-            line-height: 1.08 !important;
+            font-size: 21px !important;
+            line-height: 1.12 !important;
           }
 
           .hg-add-product {
@@ -1450,6 +1450,23 @@ export default function SellerDashboard() {
 
           .hg-store-tile-text {
             font-size: 11px !important;
+          }
+
+          .hg-mobile-order-alert button {
+            background: #F1E7F7 !important;
+            color: #4B1678 !important;
+            border: 1px solid #D9C4E8 !important;
+            opacity: 1 !important;
+            box-shadow: none !important;
+            min-height: 46px !important;
+            padding: 11px 14px !important;
+            font-size: 13px !important;
+            font-weight: 800 !important;
+          }
+
+          .hg-mobile-order-alert span {
+            color: #4B1678 !important;
+            opacity: 1 !important;
           }
 
           .hg-bottom-nav {
@@ -1574,9 +1591,9 @@ export default function SellerDashboard() {
             <div
               style={{
                 color: "#756b79",
-                fontSize: "15px",
+                fontSize: "14px",
                 fontWeight: 700,
-                marginBottom: "4px",
+                marginBottom: "3px",
               }}
             >
               Welcome back,
@@ -1587,7 +1604,7 @@ export default function SellerDashboard() {
               style={{
                 margin: 0,
                 color: "#4B1678",
-                fontSize: "34px",
+                fontSize: "30px",
                 lineHeight: 1.08,
                 fontWeight: 900,
                 overflowWrap: "anywhere",
@@ -1630,9 +1647,9 @@ export default function SellerDashboard() {
         </section>
 
         <section
-          className="hg-mobile-only"
+          className="hg-mobile-only hg-mobile-order-alert"
           style={{
-            marginBottom: "14px",
+            marginBottom: "16px",
           }}
         >
           <OrderAlertController />
