@@ -1970,7 +1970,7 @@ export default function SellerRegistrationPage() {
                     "20px",
                 }}
               >
-                Start with no monthly seller fee.
+                Start selling with no upfront seller fees.
               </h2>
 
 
@@ -1989,45 +1989,15 @@ export default function SellerRegistrationPage() {
                     "1.7",
                 }}
               >
-                HairGrab has no listing fees and no monthly
-                seller subscription cost. The first 100
-                approved HairGrab sellers become
-                <strong> Founding Sellers </strong>
-                and permanently lock in a
-                <strong> 5% marketplace commission rate</strong>.
-                After the first 100 approved sellers, the
-                standard HairGrab marketplace commission
-                is <strong>7%</strong>. Standard payment
-                processing fees apply to transactions.
+                It’s free to open your <strong>HairGrab seller account</strong>,
+                create your storefront, and list your products.
+                <strong> HairGrab’s marketplace fee is charged only when you make a sale.</strong>
+                The first 100 approved sellers become
+                <strong> Founding Sellers</strong> and permanently lock in a
+                <strong> 5% marketplace commission rate</strong>. After the first
+                100 sellers, the standard marketplace commission is
+                <strong> 7%</strong>. Standard payment processing fees apply.
               </p>
-
-
-              <div
-                style={{
-                  marginTop:
-                    "12px",
-
-                  paddingTop:
-                    "12px",
-
-                  borderTop:
-                    "1px solid #e6d9ef",
-
-                  color:
-                    "#756b7b",
-
-                  fontSize:
-                    "12px",
-
-                  lineHeight:
-                    "1.55",
-                }}
-              >
-                Founding Seller status and the 5% marketplace
-                commission stay with the seller account
-                permanently while the account remains in
-                good standing.
-              </div>
 
             </div>
 
