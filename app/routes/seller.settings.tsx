@@ -8,6 +8,7 @@ import {
   Link,
   useActionData,
   useLoaderData,
+  useNavigation,
 } from "react-router";
 
 import {
@@ -259,6 +260,204 @@ async function uploadStoreImage(
   return String(imageUrl);
 }
 
+
+async function uploadStoreVideo(
+  file: File,
+  altText: string,
+) {
+  const { admin } = await getShopifyAdmin();
+
+  const stagedResponse = await admin.graphql(
+    `#graphql
+      mutation HairGrabStageStoreVideo(
+        $input: [StagedUploadInput!]!
+      ) {
+        stagedUploadsCreate(input: $input) {
+          stagedTargets {
+            url
+            resourceUrl
+            parameters {
+              name
+              value
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    {
+      variables: {
+        input: [
+          {
+            filename: file.name,
+            mimeType: file.type || "video/mp4",
+            httpMethod: "POST",
+            resource: "VIDEO",
+          },
+        ],
+      },
+    },
+  );
+
+  const stagedJson = await stagedResponse.json();
+  const stagedResult =
+    stagedJson?.data?.stagedUploadsCreate;
+  const stagedErrors =
+    stagedResult?.userErrors || [];
+
+  if (stagedErrors.length > 0) {
+    throw new Error(
+      stagedErrors
+        .map(
+          (error: { message?: string }) =>
+            error.message ||
+            "Unable to prepare video upload.",
+        )
+        .join(" | "),
+    );
+  }
+
+  const target = stagedResult?.stagedTargets?.[0] as
+    | StagedTarget
+    | undefined;
+
+  if (!target?.url || !target.resourceUrl) {
+    throw new Error(
+      "Shopify did not return a video upload target.",
+    );
+  }
+
+  const uploadForm = new FormData();
+
+  for (const parameter of target.parameters) {
+    uploadForm.append(
+      parameter.name,
+      parameter.value,
+    );
+  }
+
+  uploadForm.append("file", file, file.name);
+
+  const uploadResponse = await fetch(
+    target.url,
+    {
+      method: "POST",
+      body: uploadForm,
+    },
+  );
+
+  if (!uploadResponse.ok) {
+    throw new Error(
+      `Upload failed for ${file.name}.`,
+    );
+  }
+
+  const fileCreateResponse = await admin.graphql(
+    `#graphql
+      mutation HairGrabCreateStoreVideo(
+        $files: [FileCreateInput!]!
+      ) {
+        fileCreate(files: $files) {
+          files {
+            id
+            fileStatus
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    {
+      variables: {
+        files: [
+          {
+            originalSource: target.resourceUrl,
+            contentType: "VIDEO",
+            alt: altText,
+          },
+        ],
+      },
+    },
+  );
+
+  const fileCreateJson =
+    await fileCreateResponse.json();
+  const fileCreateResult =
+    fileCreateJson?.data?.fileCreate;
+  const fileErrors =
+    fileCreateResult?.userErrors || [];
+
+  if (fileErrors.length > 0) {
+    throw new Error(
+      fileErrors
+        .map(
+          (error: { message?: string }) =>
+            error.message ||
+            "Unable to save uploaded video.",
+        )
+        .join(" | "),
+    );
+  }
+
+  const fileId =
+    fileCreateResult?.files?.[0]?.id;
+
+  if (!fileId) {
+    throw new Error(
+      "Shopify did not return the saved video.",
+    );
+  }
+
+  let videoUrl: string | null = null;
+
+  for (
+    let attempt = 0;
+    !videoUrl && attempt < 12;
+    attempt += 1
+  ) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, 500),
+    );
+
+    const queryResponse = await admin.graphql(
+      `#graphql
+        query HairGrabStoreVideoStatus($id: ID!) {
+          node(id: $id) {
+            ... on Video {
+              fileStatus
+              sources {
+                url
+                mimeType
+              }
+            }
+          }
+        }
+      `,
+      { variables: { id: fileId } },
+    );
+
+    const queryJson =
+      await queryResponse.json();
+
+    videoUrl =
+      queryJson?.data?.node?.sources?.[0]?.url ||
+      null;
+  }
+
+  if (!videoUrl) {
+    throw new Error(
+      "The video uploaded, but Shopify is still processing it. Please try again in a moment.",
+    );
+  }
+
+  return String(videoUrl);
+}
+
 function makeSlug(value: string) {
   return value
     .toLowerCase()
@@ -507,6 +706,7 @@ export const action = async ({
 
       if (
         ![
+          "7_DAY_RETURNS",
           "14_DAY_RETURNS",
           "FINAL_SALE",
         ].includes(returnPolicy)
@@ -523,25 +723,7 @@ export const action = async ({
 
       const storeOpenOverride = alwaysOpen
         ? "OPEN"
-        : String(
-            formData.get(
-              "storeOpenOverride",
-            ) || "AUTO",
-          );
-
-      if (
-        ![
-          "AUTO",
-          "OPEN",
-          "CLOSED",
-        ].includes(storeOpenOverride)
-      ) {
-        return {
-          success: false,
-          message:
-            "Please choose a valid store status.",
-        };
-      }
+        : "AUTO";
 
       const logoFile =
         formData.get("logoImage");
@@ -644,14 +826,9 @@ export const action = async ({
             formData.get(
               "showReviews",
             ) === "on",
-          useStoreHours:
-            formData.get(
-              "useStoreHours",
-            ) === "on",
+          useStoreHours: !alwaysOpen,
           showStoreHours:
-            formData.get(
-              "useStoreHours",
-            ) === "on" &&
+            !alwaysOpen &&
             formData.get(
               "showStoreHours",
             ) === "on",
@@ -1049,41 +1226,37 @@ export const action = async ({
     }
 
     if (intent === "addVideo") {
-      const videoUrl = String(
-        formData.get("videoUrl") || "",
-      ).trim();
+      const videoFile =
+        formData.get("videoFile");
 
-      if (!videoUrl) {
+      if (
+        !(videoFile instanceof File) ||
+        videoFile.size === 0
+      ) {
         return {
           success: false,
           message:
-            "Paste a video URL first.",
-        };
-      }
-
-      let parsed: URL;
-
-      try {
-        parsed = new URL(videoUrl);
-      } catch {
-        return {
-          success: false,
-          message:
-            "Enter a valid video URL.",
+            "Choose a video to upload.",
         };
       }
 
       if (
-        !["http:", "https:"].includes(
-          parsed.protocol,
+        !videoFile.type.startsWith(
+          "video/",
         )
       ) {
         return {
           success: false,
           message:
-            "Enter a valid http or https video URL.",
+            "Your storefront video must be a video file.",
         };
       }
+
+      const videoUrl =
+        await uploadStoreVideo(
+          videoFile,
+          `${seller.businessName} storefront video`,
+        );
 
       const rank =
         (await db.sellerStoreMedia.count({
@@ -1106,7 +1279,7 @@ export const action = async ({
       return {
         success: true,
         message:
-          "Storefront video added.",
+          "Storefront video uploaded.",
       };
     }
 
@@ -1213,6 +1386,19 @@ export default function SellerSettingsPage() {
 
   const actionData =
     useActionData<typeof action>();
+
+  const navigation = useNavigation();
+
+  const isSavingStore =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("intent") ===
+      "saveStorefront";
+
+  const storeSaveSucceeded =
+    navigation.state === "idle" &&
+    actionData?.success === true &&
+    actionData?.message ===
+      "Your HairGrab storefront settings were saved.";
 
   return (
     <div className="hg-page">
@@ -1627,7 +1813,7 @@ export default function SellerSettingsPage() {
             value={String(
               stats.customCollections,
             )}
-            label="Custom Collections"
+            label="Collections"
           />
         </div>
 
@@ -1714,7 +1900,7 @@ export default function SellerSettingsPage() {
                 defaultChecked={
                   seller.showCustomCollections
                 }
-                label="Show Custom Collections"
+                label="Show Collections"
               />
               <CheckRow
                 name="showGallery"
@@ -1793,8 +1979,8 @@ export default function SellerSettingsPage() {
             </Card>
 
             <Card
-              title="Returns & Buyer Protection"
-              subtitle="Simple, consistent HairGrab choices."
+              title="Returns"
+              subtitle="Choose the return window you offer shoppers."
             >
               <label>
                 <div className="hg-label">
@@ -1807,41 +1993,49 @@ export default function SellerSettingsPage() {
                   }
                   className="hg-field"
                 >
-                  <option value="14_DAY_RETURNS">
-                    14-Day Returns
-                  </option>
                   <option value="FINAL_SALE">
                     Final Sale
                   </option>
+                  <option value="7_DAY_RETURNS">
+                    7-Day Returns
+                  </option>
+                  <option value="14_DAY_RETURNS">
+                    14-Day Returns
+                  </option>
                 </select>
               </label>
-
-              <InfoBox>
-                HairGrab buyer protection still
-                applies to wrong, damaged,
-                counterfeit, materially
-                misrepresented, and qualifying
-                non-delivery issues.
-              </InfoBox>
             </Card>
 
             <Card
-              title="Store Status"
-              subtitle="Choose whether shoppers see Open / Closed status."
+              title="Store Hours & Availability"
+              subtitle="Choose Always Open or set weekly hours. HairGrab keeps this simple."
             >
-              <CheckRow
-                name="alwaysOpen"
-                defaultChecked={
-                  seller.storeOpenOverride === "OPEN"
-                }
-                label="Always Open — show my store as open 24/7"
-              />
-
-              <InfoBox>
-                Turn this on if your HairGrab store should always display as open.
-                This overrides listed business hours for the Open / Closed display.
-                Nationwide online ordering remains available either way.
-              </InfoBox>
+              <label className="hg-check">
+                <input
+                  type="checkbox"
+                  name="alwaysOpen"
+                  defaultChecked={
+                    seller.storeOpenOverride === "OPEN"
+                  }
+                  style={{
+                    accentColor: "#4B1678",
+                  }}
+                />
+                <span>
+                  <strong>Always Open — 24/7</strong>
+                  <span
+                    style={{
+                      display: "block",
+                      color: "#756b79",
+                      fontSize: "10px",
+                      fontWeight: 400,
+                      marginTop: "2px",
+                    }}
+                  >
+                    Choose this if you do not want HairGrab to use weekly business hours.
+                  </span>
+                </span>
+              </label>
 
               <CheckRow
                 name="showStoreStatus"
@@ -1851,83 +2045,23 @@ export default function SellerSettingsPage() {
                 label="Show Open / Closed status to shoppers"
               />
 
-              <label
-                style={{
-                  display:
-                    "block",
-                  marginTop:
-                    "14px",
-                }}
-              >
-                <div className="hg-label">
-                  Store Status
-                </div>
-
-                <select
-                  name="storeOpenOverride"
-                  defaultValue={
-                    seller.storeOpenOverride === "OPEN"
-                      ? "AUTO"
-                      : seller.storeOpenOverride
-                  }
-                  className="hg-field"
-                >
-                  <option value="AUTO">
-                    Auto — follow listed hours
-                  </option>
-
-                  <option value="OPEN">
-                    Open — temporarily override hours
-                  </option>
-
-                  <option value="CLOSED">
-                    Closed — temporarily override hours
-                  </option>
-                </select>
-              </label>
-
-              <InfoBox>
-                This display setting is optional.
-                Closed status affects local pickup,
-                local delivery, and same-day
-                availability only. Nationwide online
-                orders remain available.
-              </InfoBox>
-            </Card>
-
-            <Card
-              title="Business Hours"
-              subtitle="Hours are optional. Sellers choose whether to use them and whether shoppers see them."
-            >
-              <CheckRow
-                name="useStoreHours"
-                defaultChecked={
-                  seller.useStoreHours
-                }
-                label="Add business hours to my HairGrab store"
-              />
-
               <CheckRow
                 name="showStoreHours"
                 defaultChecked={
                   seller.showStoreHours
                 }
-                label="Show my business hours to shoppers"
+                label="Show my weekly hours to shoppers"
               />
 
               <InfoBox>
-                If you turn off business hours,
-                HairGrab keeps your saved times so
-                you can turn them back on later.
-                Store hours mainly guide local
-                pickup, local delivery, and
-                same-day availability.
+                If Always Open is off, HairGrab follows the weekly hours below.
+                These hours mainly guide local pickup, local delivery, and same-day availability.
+                Nationwide shipping remains available based on each product.
               </InfoBox>
 
               <div
                 style={{
-                  marginTop:
-                    "14px",
+                  marginTop: "14px",
                 }}
               >
                 {hours.map((hour) => (
@@ -1959,12 +2093,9 @@ export default function SellerSettingsPage() {
 
                     <label
                       style={{
-                        fontSize:
-                          "10px",
-                        fontWeight:
-                          800,
-                        whiteSpace:
-                          "nowrap",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                        whiteSpace: "nowrap",
                       }}
                     >
                       <input
@@ -1974,8 +2105,7 @@ export default function SellerSettingsPage() {
                           hour.isClosed
                         }
                         style={{
-                          accentColor:
-                            "#4B1678",
+                          accentColor: "#4B1678",
                         }}
                       />{" "}
                       Closed
@@ -1993,15 +2123,27 @@ export default function SellerSettingsPage() {
                 fontSize: "11px",
               }}
             >
-              Save your main storefront settings
-              and business hours.
+              {isSavingStore
+                ? "Saving your changes…"
+                : storeSaveSucceeded
+                  ? "✓ Your store settings were saved successfully."
+                  : "Save all store settings from this one page."}
             </div>
 
             <button
               type="submit"
               className="hg-button"
+              disabled={isSavingStore}
+              style={{
+                minWidth: "150px",
+                opacity: isSavingStore ? 0.75 : 1,
+              }}
             >
-              Save Store Settings
+              {isSavingStore
+                ? "Saving…"
+                : storeSaveSucceeded
+                  ? "✓ Saved"
+                  : "Save Store Settings"}
             </button>
           </div>
         </Form>
@@ -2011,8 +2153,8 @@ export default function SellerSettingsPage() {
           style={{ marginTop: "16px" }}
         >
           <Card
-            title="Custom Collections"
-            subtitle="Create simple collections such as Glueless Wigs, Raw Hair, Curly Collection, or Under $200."
+            title="Collections"
+            subtitle="Create a collection, choose its products, and save. Edit or delete it anytime."
           >
             <Form
               method="post"
@@ -2083,11 +2225,6 @@ export default function SellerSettingsPage() {
                   >
                     <input
                       type="hidden"
-                      name="intent"
-                      value="updateCollection"
-                    />
-                    <input
-                      type="hidden"
                       name="collectionId"
                       value={collection.id}
                     />
@@ -2137,7 +2274,7 @@ export default function SellerSettingsPage() {
                       }}
                     >
                       <div className="hg-label">
-                        Change Collection Image
+                        Collection Image (Optional)
                       </div>
                       <input
                         type="file"
@@ -2167,6 +2304,8 @@ export default function SellerSettingsPage() {
                     >
                       <button
                         type="submit"
+                        name="intent"
+                        value="updateCollection"
                         className="hg-button"
                       >
                         Save Collection
@@ -2197,7 +2336,7 @@ export default function SellerSettingsPage() {
           </Card>
 
           <Card
-            title="Store Gallery & Video"
+            title="Gallery & Video"
             subtitle="Add brand, lifestyle, and product media to make your HairGrab store feel like your own site."
           >
             <Form
@@ -2236,6 +2375,7 @@ export default function SellerSettingsPage() {
 
             <Form
               method="post"
+              encType="multipart/form-data"
               style={{
                 marginTop: "18px",
                 paddingTop: "16px",
@@ -2249,12 +2389,28 @@ export default function SellerSettingsPage() {
                 value="addVideo"
               />
 
-              <Field
-                label="Brand / Product Video URL"
-                name="videoUrl"
-                defaultValue=""
-                help="Add a direct or embeddable video link. The preview will open it from your HairGrab storefront."
+              <div className="hg-label">
+                Upload Brand / Product Video
+              </div>
+              <input
+                type="file"
+                name="videoFile"
+                accept="video/*"
+                style={{
+                  width: "100%",
+                  fontSize: "11px",
+                }}
               />
+              <div
+                style={{
+                  color: "#8a7b91",
+                  fontSize: "10px",
+                  lineHeight: 1.45,
+                  marginTop: "5px",
+                }}
+              >
+                Upload the video directly. Sellers do not need to paste a video URL.
+              </div>
 
               <button
                 type="submit"
@@ -2263,7 +2419,7 @@ export default function SellerSettingsPage() {
                   marginTop: "10px",
                 }}
               >
-                Add Video
+                Upload Video
               </button>
             </Form>
 
