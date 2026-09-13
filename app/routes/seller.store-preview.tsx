@@ -15,10 +15,16 @@ import { requireSellerSession } from "../seller-session.server";
 type ShopifyProductInfo = {
   title: string;
   handle: string;
+  vendor: string;
   imageUrl: string | null;
   imageAlt: string;
   price: string;
   onSale: boolean;
+  shippingScope: string;
+  shipsWithin: string;
+  shipsFromCity: string;
+  shipsFromState: string;
+  returnPolicy: string;
 };
 
 
@@ -197,6 +203,14 @@ export const loader = async ({
                   id
                   title
                   handle
+                  vendor
+
+                  metafields(first: 50, namespace: "custom") {
+                    nodes {
+                      key
+                      value
+                    }
+                  }
 
                   featuredImage {
                     url
@@ -338,6 +352,25 @@ export const loader = async ({
                   )}`;
           }
 
+          const metafields = new Map<string, string>(
+            (node?.metafields?.nodes || []).map(
+              (metafield: any) => [
+                String(metafield?.key || "").toLowerCase(),
+                String(metafield?.value || ""),
+              ],
+            ),
+          );
+
+          const metafieldValue = (...keys: string[]) => {
+            for (const key of keys) {
+              const value = metafields.get(key.toLowerCase());
+              if (value) {
+                return value;
+              }
+            }
+            return "";
+          };
+
           shopifyById.set(
             String(
               node.id,
@@ -353,6 +386,39 @@ export const loader = async ({
                 String(
                   node.handle ||
                   "",
+                ),
+
+              vendor:
+                String(
+                  node.vendor ||
+                  "",
+                ),
+
+              shippingScope:
+                metafieldValue(
+                  "shipping_scope",
+                  "shipping_territory",
+                ),
+
+              shipsWithin:
+                metafieldValue(
+                  "ships_within",
+                  "ships_within_24_hours",
+                ),
+
+              shipsFromCity:
+                metafieldValue(
+                  "ships_from_city",
+                ),
+
+              shipsFromState:
+                metafieldValue(
+                  "ships_from_state",
+                ),
+
+              returnPolicy:
+                metafieldValue(
+                  "return_policy",
                 ),
 
               imageUrl:
@@ -434,6 +500,41 @@ export const loader = async ({
           price:
             shopifyProduct
               ?.price ||
+            "",
+
+          vendor:
+            shopifyProduct
+              ?.vendor ||
+            seller.businessName,
+
+          shippingScope:
+            shopifyProduct
+              ?.shippingScope ||
+            (seller.sellsNationwide
+              ? "Nationwide"
+              : ""),
+
+          shipsWithin:
+            shopifyProduct
+              ?.shipsWithin ||
+            "",
+
+          shipsFromCity:
+            shopifyProduct
+              ?.shipsFromCity ||
+            seller.city ||
+            "",
+
+          shipsFromState:
+            shopifyProduct
+              ?.shipsFromState ||
+            seller.state ||
+            "",
+
+          productReturnPolicy:
+            shopifyProduct
+              ?.returnPolicy ||
+            seller.returnPolicy ||
             "",
 
           onSale:
@@ -1763,6 +1864,12 @@ function ProductGrid({
     imageUrl: string | null;
     imageAlt: string;
     price: string;
+    vendor: string;
+    shippingScope: string;
+    shipsWithin: string;
+    shipsFromCity: string;
+    shipsFromState: string;
+    productReturnPolicy: string;
     onSale: boolean;
     featured: boolean;
     isNew: boolean;
@@ -1928,6 +2035,17 @@ function ProductGrid({
               {product.title}
             </div>
 
+            <div
+              style={{
+                marginTop: "4px",
+                color: "#6f6575",
+                fontSize: "9px",
+                fontWeight: 800,
+              }}
+            >
+              {product.vendor}
+            </div>
+
             {product.price && (
               <div
                 style={{
@@ -1954,7 +2072,9 @@ function ProductGrid({
                   "7px",
 
                 color:
-                  "#8a7b91",
+                  product.reviewCount > 0
+                    ? "#4B1678"
+                    : "#8a7b91",
 
                 fontSize:
                   "9px",
@@ -1968,6 +2088,56 @@ function ProductGrid({
                     product.reviewCount === 1 ? "review" : "reviews"
                   }`
                 : "New on HairGrab"}
+            </div>
+
+            <div
+              style={{
+                marginTop: "8px",
+                paddingTop: "8px",
+                borderTop: "1px solid #f0e9f3",
+                display: "grid",
+                gap: "4px",
+                color: "#5f5564",
+                fontSize: "9px",
+                lineHeight: 1.35,
+              }}
+            >
+              {product.shippingScope && (
+                <div>
+                  <strong style={{ color: "#4B1678" }}>
+                    {product.shippingScope.toLowerCase().includes("nation")
+                      ? "Ships Nationwide"
+                      : product.shippingScope}
+                  </strong>
+                </div>
+              )}
+
+              {product.shipsWithin && (
+                <div>
+                  Ships Within <strong>{product.shipsWithin}</strong>
+                </div>
+              )}
+
+              {(product.shipsFromCity || product.shipsFromState) && (
+                <div>
+                  Ships From{" "}
+                  <strong>
+                    {[product.shipsFromCity, product.shipsFromState]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </strong>
+                </div>
+              )}
+
+              {product.productReturnPolicy && (
+                <div>
+                  {product.productReturnPolicy === "14_DAY_RETURNS"
+                    ? "14-Day Returns"
+                    : product.productReturnPolicy === "FINAL_SALE"
+                      ? "Final Sale"
+                      : product.productReturnPolicy}
+                </div>
+              )}
             </div>
 
             {product.shopifyHandle && (
