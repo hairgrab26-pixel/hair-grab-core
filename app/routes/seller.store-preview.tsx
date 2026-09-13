@@ -1068,6 +1068,7 @@ export default function SellerStorePreviewPage() {
         }}
       >
         <section
+          id="store-home"
           style={{
             background:
               "white",
@@ -1336,9 +1337,12 @@ export default function SellerStorePreviewPage() {
             </div>
           </div>
 
-          <nav
-            className="hg-preview-nav"
-            style={{
+
+        </section>
+
+        <nav
+          className="hg-preview-nav"
+          style={{
               display:
                 "flex",
 
@@ -1351,18 +1355,24 @@ export default function SellerStorePreviewPage() {
               flexWrap:
                 "wrap",
 
-              borderTop:
-                "1px solid #eee5f1",
+              border:
+                "1px solid #e5dce9",
+
+              borderRadius:
+                "12px",
 
               padding:
                 "10px 14px",
 
               background:
-                "#fbf8fd",
+                "white",
+
+              marginTop:
+                "14px",
             }}
           >
             {[
-              ["Home", "#home"],
+              ["Home", "#store-home"],
               ["Shop", "#shop"],
               ["Collections", "#collections"],
               ["About", "#about"],
@@ -1407,7 +1417,6 @@ export default function SellerStorePreviewPage() {
               ),
             )}
           </nav>
-        </section>
 
         <section
           id="collections"
@@ -1433,7 +1442,7 @@ export default function SellerStorePreviewPage() {
             }}
           >
             <CollectionCard
-              title="All Products"
+              title="Shop All"
               count={products.length}
               href="#shop"
             />
@@ -1458,7 +1467,7 @@ export default function SellerStorePreviewPage() {
               <CollectionCard
                 title="Featured"
                 count={featured.length}
-                href="#home"
+                href="#featured"
               />
             )}
 
@@ -1486,7 +1495,7 @@ export default function SellerStorePreviewPage() {
 
         {seller.showFeaturedCollection && (
           <section
-            id="home"
+            id="featured"
             style={{
               marginTop:
                 "30px",
