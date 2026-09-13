@@ -10,6 +10,11 @@ import {
   useLoaderData,
 } from "react-router";
 
+import {
+  useEffect,
+  useState,
+} from "react";
+
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
@@ -824,7 +829,7 @@ export default function SellerSettingsPage() {
                   currentUrl={
                     seller.logoUrl
                   }
-                  help="Upload a square logo or brand image."
+                  help="Recommended size: 1000 × 1000 px (square). Use a clear logo with space around the edges."
                 />
 
                 <ImageUpload
@@ -833,7 +838,7 @@ export default function SellerSettingsPage() {
                   currentUrl={
                     seller.bannerUrl
                   }
-                  help="Upload a wide image for the top of your storefront."
+                  help="Recommended size: 1800 × 450 px (4:1). Keep important text, logos, and faces centered for the best desktop and mobile display."
                   banner
                 />
               </div>
@@ -1064,6 +1069,59 @@ function ImageUpload({
   help: string;
   banner?: boolean;
 }) {
+  const [
+    selectedPreviewUrl,
+    setSelectedPreviewUrl,
+  ] = useState<string>("");
+
+  useEffect(() => {
+    return () => {
+      if (
+        selectedPreviewUrl.startsWith(
+          "blob:",
+        )
+      ) {
+        URL.revokeObjectURL(
+          selectedPreviewUrl,
+        );
+      }
+    };
+  }, [selectedPreviewUrl]);
+
+  const previewUrl =
+    selectedPreviewUrl ||
+    currentUrl;
+
+  const handleImageChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) {
+      setSelectedPreviewUrl(
+        "",
+      );
+      return;
+    }
+
+    if (
+      selectedPreviewUrl.startsWith(
+        "blob:",
+      )
+    ) {
+      URL.revokeObjectURL(
+        selectedPreviewUrl,
+      );
+    }
+
+    setSelectedPreviewUrl(
+      URL.createObjectURL(
+        file,
+      ),
+    );
+  };
+
   return (
     <div>
       <div
@@ -1076,10 +1134,23 @@ function ImageUpload({
 
       <div
         style={{
-          height:
+          width:
+            "100%",
+
+          aspectRatio:
+            banner
+              ? "4 / 1"
+              : "1 / 1",
+
+          minHeight:
             banner
               ? "120px"
               : "140px",
+
+          maxHeight:
+            banner
+              ? "220px"
+              : "220px",
 
           border:
             "1px dashed #cdb9db",
@@ -1106,10 +1177,10 @@ function ImageUpload({
             "9px",
         }}
       >
-        {currentUrl ? (
+        {previewUrl ? (
           <img
             src={
-              currentUrl
+              previewUrl
             }
             alt={
               label
@@ -1125,6 +1196,12 @@ function ImageUpload({
                 banner
                   ? "cover"
                   : "contain",
+
+              objectPosition:
+                "center",
+
+              display:
+                "block",
             }}
           />
         ) : (
@@ -1152,6 +1229,9 @@ function ImageUpload({
         type="file"
         name={name}
         accept="image/*"
+        onChange={
+          handleImageChange
+        }
         style={{
           width:
             "100%",
@@ -1161,6 +1241,26 @@ function ImageUpload({
         }}
       />
 
+      {selectedPreviewUrl && (
+        <div
+          style={{
+            color:
+              "#4B1678",
+
+            fontSize:
+              "10px",
+
+            fontWeight:
+              "800",
+
+            marginTop:
+              "6px",
+          }}
+        >
+          New image selected — preview shown above. Click Save Settings to publish it.
+        </div>
+      )}
+
       <div
         style={{
           color:
@@ -1168,6 +1268,9 @@ function ImageUpload({
 
           fontSize:
             "10px",
+
+          lineHeight:
+            1.45,
 
           marginTop:
             "5px",
