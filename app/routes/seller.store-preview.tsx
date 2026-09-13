@@ -670,6 +670,9 @@ export const loader = async ({
         seller.bannerUrl ||
         "",
 
+      businessPositioning:
+        seller.businessPositioning || [],
+
       city:
         seller.city ||
         "",
@@ -829,10 +832,24 @@ export default function SellerStorePreviewPage() {
     );
 
   const returnPolicyLabel =
-    seller.returnPolicy ===
-    "FINAL_SALE"
+    seller.returnPolicy === "FINAL_SALE"
       ? "Final Sale"
-      : "14-Day Returns";
+      : seller.returnPolicy === "7_DAY_RETURNS"
+        ? "7-Day Returns"
+        : "14-Day Returns";
+
+  const businessPositioningLabels: Record<string, string> = {
+    LUXURY: "Luxury Hair",
+    PREMIUM: "Premium Hair",
+    EVERYDAY: "Everyday Hair",
+    VALUE: "Value Hair",
+    CUSTOM_MADE_TO_ORDER: "Custom / Made-to-Order",
+  };
+
+  const businessPositioning =
+    (seller.businessPositioning || [])
+      .map((value) => businessPositioningLabels[value])
+      .filter(Boolean);
 
   const visibleCustomCollections =
     seller.showCustomCollections
@@ -1016,7 +1033,7 @@ export default function SellerStorePreviewPage() {
             }}
           >
             <Link
-              to="/seller/store"
+              to="/seller/settings"
               style={{
                 color:
                   "white",
@@ -1302,6 +1319,36 @@ export default function SellerStorePreviewPage() {
                   }}
                 >
                   {location}
+                </div>
+              )}
+
+              {businessPositioning.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "6px",
+                    marginBottom: "8px",
+                  }}
+                >
+                  {businessPositioning.map((label) => (
+                    <span
+                      key={label}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "4px 8px",
+                        borderRadius: "999px",
+                        background: "#f4eef8",
+                        border: "1px solid #dfd0ea",
+                        color: "#4B1678",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {label}
+                    </span>
+                  ))}
                 </div>
               )}
 
@@ -1714,10 +1761,6 @@ export default function SellerStorePreviewPage() {
               }
             />
 
-            <PolicyRow
-              label="Buyer Protection"
-              value="HairGrab Protected"
-            />
 
             {seller.sellsNationwide && (
               <PolicyRow

@@ -582,6 +582,8 @@ export const loader = async ({
         seller.storeDescription || "",
       logoUrl: seller.logoUrl || "",
       bannerUrl: seller.bannerUrl || "",
+      businessPositioning:
+        seller.businessPositioning || [],
       city: seller.city || "",
       state: seller.state || "",
       sellsNationwide:
@@ -718,6 +720,21 @@ export const action = async ({
         };
       }
 
+      const allowedBusinessPositioning = [
+        "LUXURY",
+        "PREMIUM",
+        "EVERYDAY",
+        "VALUE",
+        "CUSTOM_MADE_TO_ORDER",
+      ];
+
+      const businessPositioning = formData
+        .getAll("businessPositioning")
+        .map((value) => String(value))
+        .filter((value) =>
+          allowedBusinessPositioning.includes(value),
+        );
+
       const alwaysOpen =
         formData.get("alwaysOpen") === "on";
 
@@ -785,6 +802,7 @@ export const action = async ({
             storeDescription || null,
           logoUrl: logoUrl || null,
           bannerUrl: bannerUrl || null,
+          businessPositioning,
           sellsNationwide:
             formData.get(
               "sellsNationwide",
@@ -1868,6 +1886,94 @@ export default function SellerSettingsPage() {
                   banner
                 />
               </div>
+            </Card>
+
+            <Card
+              title="Business Positioning"
+              subtitle="Help HairGrab understand your business and help shoppers discover stores that fit what they are looking for. Select all that apply."
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gap: "10px",
+                }}
+              >
+                {[
+                  {
+                    value: "LUXURY",
+                    label: "Luxury Hair",
+                    description:
+                      "High-end hair business focused on exceptional quality, craftsmanship, customization, and/or an elevated shopping experience. Typically carries products in HairGrab's higher price ranges.",
+                  },
+                  {
+                    value: "PREMIUM",
+                    label: "Premium Hair",
+                    description:
+                      "Higher-quality hair and construction positioned above everyday or value offerings, without necessarily being luxury-priced.",
+                  },
+                  {
+                    value: "EVERYDAY",
+                    label: "Everyday Hair",
+                    description:
+                      "Hair designed for regular wear at accessible mid-range prices, balancing quality and affordability.",
+                  },
+                  {
+                    value: "VALUE",
+                    label: "Value Hair",
+                    description:
+                      "Budget-conscious hair focused on affordability and accessible pricing. Value does not mean low quality.",
+                  },
+                  {
+                    value: "CUSTOM_MADE_TO_ORDER",
+                    label: "Custom / Made-to-Order",
+                    description:
+                      "Specializes in products made, colored, constructed, customized, or prepared specifically for the shopper.",
+                  },
+                ].map((option) => (
+                  <label
+                    key={option.value}
+                    className="hg-check"
+                    style={{
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      name="businessPositioning"
+                      value={option.value}
+                      defaultChecked={seller.businessPositioning.includes(
+                        option.value,
+                      )}
+                      style={{
+                        accentColor: "#4B1678",
+                        marginTop: "3px",
+                      }}
+                    />
+                    <span>
+                      <strong>{option.label}</strong>
+                      <span
+                        style={{
+                          display: "block",
+                          color: "#756b79",
+                          fontSize: "10px",
+                          fontWeight: 400,
+                          lineHeight: 1.45,
+                          marginTop: "2px",
+                        }}
+                      >
+                        {option.description}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              <InfoBox>
+                Select every option that genuinely describes your business.
+                These selections describe your store, not every product you sell.
+                HairGrab may classify individual products separately using product type,
+                price, and other marketplace criteria.
+              </InfoBox>
             </Card>
 
             <Card
