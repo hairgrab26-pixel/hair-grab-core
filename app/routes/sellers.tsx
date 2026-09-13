@@ -35,6 +35,9 @@ export const loader = async ({
       where: {
         status:
           "ACTIVE",
+
+        storefrontPublished:
+          true,
       },
 
       select: {
@@ -350,7 +353,7 @@ export default function PublicSellerDirectoryPage() {
                   key={
                     seller.id
                   }
-                  to={`https://shops.hairgrab.com/seller-store/${seller.storeSlug}`}
+                  to={`/sellers/${seller.storeSlug}`}
                   style={{
                     color:
                       "inherit",
@@ -379,11 +382,8 @@ export default function PublicSellerDirectoryPage() {
                   >
                     <div
                       style={{
-                        width:
-                          "100%",
-
-                        aspectRatio:
-                          "4 / 1",
+                        height:
+                          "120px",
 
                         background:
                           seller.bannerUrl
@@ -418,12 +418,6 @@ export default function PublicSellerDirectoryPage() {
 
                             objectFit:
                               "cover",
-
-                            objectPosition:
-                              "center",
-
-                            display:
-                              "block",
                           }}
                         />
                       ) : (

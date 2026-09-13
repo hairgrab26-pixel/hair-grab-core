@@ -1,11 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { Form, Link, redirect, useActionData, useLoaderData } from "react-router";
-import { useState } from "react";
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
-import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
 
 type ShopifyMetafieldDefinition = {
   name: string;
@@ -25,6 +23,10 @@ type ProductMetafield = {
 const CLASSIFICATION_TAGS = [
   "Kosher Wig",
   "Medical Wig",
+  "Locs",
+];
+
+const LEGACY_CLASSIFICATION_TAGS = [
   "Crochet Hair",
   "Locs / Locks",
 ];
@@ -523,6 +525,7 @@ export const loader = async ({
                 id
                 title
                 price
+                compareAtPrice
                 sku
                 inventoryQuantity
 
@@ -712,13 +715,27 @@ export const loader = async ({
         CLASSIFICATION_TAGS.filter(
           (
             tag,
-          ) =>
-            (
-              product.tags ||
-              []
-            ).includes(
+          ) => {
+            const tags =
+              (
+                product.tags ||
+                []
+              ) as string[];
+
+            if (
+              tag ===
+                "Locs" &&
+              tags.includes(
+                "Locs / Locks",
+              )
+            ) {
+              return true;
+            }
+
+            return tags.includes(
               tag,
-            ),
+            );
+          },
         ),
     },
   };
@@ -975,6 +992,7 @@ export const action = async ({
         inventoryItemId:
           string;
         price: string;
+        salePrice: string;
         sku: string;
         inventory:
           string;
@@ -993,6 +1011,7 @@ export const action = async ({
             id: $id
           ) {
             tags
+            productType
           }
         }
         `,
@@ -1021,7 +1040,10 @@ export const action = async ({
         (
           tag,
         ) =>
-          !CLASSIFICATION_TAGS.includes(
+          ![
+            ...CLASSIFICATION_TAGS,
+            ...LEGACY_CLASSIFICATION_TAGS,
+          ].includes(
             tag,
           ),
       );
@@ -1033,6 +1055,75 @@ export const action = async ({
           ...searchClassifications,
         ]),
       ];
+
+    const currentProductType =
+      String(
+        currentJson?.data
+          ?.product
+          ?.productType ||
+        "",
+      ).trim();
+
+    const normalizedType =
+      currentProductType
+        .toLowerCase()
+        .replace(
+          /[^a-z0-9]+/g,
+          "",
+        );
+
+    let normalizedProductType =
+      currentProductType;
+
+    if (
+      normalizedType ===
+        "wig" ||
+      normalizedType ===
+        "wigs"
+    ) {
+      normalizedProductType =
+        "Wigs";
+    } else if (
+      normalizedType ===
+        "bundle" ||
+      normalizedType ===
+        "bundles"
+    ) {
+      normalizedProductType =
+        "Bundles";
+    } else if (
+      normalizedType.includes(
+        "closure",
+      ) ||
+      normalizedType.includes(
+        "frontal",
+      )
+    ) {
+      normalizedProductType =
+        "Closures & Frontals";
+    } else if (
+      normalizedType ===
+        "extension" ||
+      normalizedType ===
+        "extensions"
+    ) {
+      normalizedProductType =
+        "Extensions";
+    } else if (
+      normalizedType.includes(
+        "braiding",
+      )
+    ) {
+      normalizedProductType =
+        "Braiding Hair";
+    } else if (
+      normalizedType.includes(
+        "essential",
+      )
+    ) {
+      normalizedProductType =
+        "Hair Essentials";
+    }
 
     const productResponse =
       await admin.graphql(
@@ -1073,6 +1164,9 @@ export const action = async ({
                   "</p><p>",
                 )}</p>`,
 
+              productType:
+                normalizedProductType,
+
               tags,
             },
           },
@@ -1111,6 +1205,66 @@ export const action = async ({
       variants.length >
       0
     ) {
+      for (
+        const variant of
+        variants
+      ) {
+        const regularPrice =
+          Number(
+            variant.price,
+          );
+
+        if (
+          !Number.isFinite(
+            regularPrice,
+          ) ||
+          regularPrice < 0
+        ) {
+          return {
+            success: false,
+            message:
+              "Enter a valid regular price for every variant.",
+          };
+        }
+
+        const salePriceRaw =
+          String(
+            variant.salePrice ||
+            "",
+          ).trim();
+
+        if (salePriceRaw) {
+          const salePrice =
+            Number(
+              salePriceRaw,
+            );
+
+          if (
+            !Number.isFinite(
+              salePrice,
+            ) ||
+            salePrice < 0
+          ) {
+            return {
+              success: false,
+              message:
+                "Enter a valid sale price.",
+            };
+          }
+
+          if (
+            salePrice >=
+            regularPrice
+          ) {
+            return {
+              success: false,
+              message:
+                "Sale price must be lower than the regular price.",
+            };
+          }
+        }
+      }
+
       const variantResponse =
         await admin.graphql(
           `#graphql
@@ -1141,27 +1295,43 @@ export const action = async ({
                 coreProduct
                   .shopifyProductId,
 
-             variants:
-  variants.map(
-    (
-      variant,
-    ) => ({
-      id:
-        variant.id,
+                     variants:
+               variants.map(
+                 (
+                   variant,
+                 ) => {
+                   const salePrice =
+                     String(
+                       variant.salePrice ||
+                       "",
+                     ).trim();
 
-      price:
-        Number(
-          variant.price,
-        ),
+                   return {
+                     id:
+                       variant.id,
 
-      inventoryItem: {
-        sku:
-          variant.sku
-            .trim() ||
-          null,
-      },
-    }),
-  ),
+                     price:
+                       Number(
+                         salePrice ||
+                         variant.price,
+                       ),
+
+                     compareAtPrice:
+                       salePrice
+                         ? Number(
+                             variant.price,
+                           )
+                         : null,
+
+                     inventoryItem: {
+                       sku:
+                         variant.sku
+                           .trim() ||
+                         null,
+                     },
+                   };
+                 },
+               ),
             },
           },
         );
@@ -1451,24 +1621,6 @@ export const action = async ({
       metafields,
     });
 
-    const shippingLocationId =
-      await getPrimaryLocationId(
-        admin,
-      );
-
-    await syncHairGrabShippingProfile({
-      admin,
-      locationId:
-        shippingLocationId,
-      variantIds:
-        variants.map(
-          (variant) =>
-            variant.id,
-        ),
-      shippingMethod,
-      flatRateShipping,
-    });
-
     await db.sellerProduct.update({
       where: {
         id:
@@ -1530,32 +1682,6 @@ function stripHtml(
     .trim();
 }
 
-
-const aiButtonStyle = {
-  border: "none",
-  borderRadius: "10px",
-  background: "#4B1678",
-  color: "white",
-  padding: "10px 14px",
-  fontSize: "12px",
-  fontWeight: "800",
-  cursor: "pointer",
-} as const;
-
-const aiSecondaryButtonStyle = {
-  ...aiButtonStyle,
-  background: "#f5eef9",
-  color: "#4B1678",
-  border: "1px solid #d9c5e6",
-} as const;
-
-const aiMessageStyle = {
-  marginTop: "8px",
-  color: "#6c5a74",
-  fontSize: "12px",
-  lineHeight: 1.45,
-} as const;
-
 export default function SellerEditProductPage() {
   const {
     product,
@@ -1570,71 +1696,6 @@ export default function SellerEditProductPage() {
     useActionData<
       typeof action
     >();
-
-  const [description, setDescription] = useState(
-    stripHtml(product.descriptionHtml),
-  );
-  const [aiWriting, setAiWriting] = useState(false);
-  const [aiMessage, setAiMessage] = useState("");
-
-  async function generateHairGrabDescription(
-    mode: "write" | "improve",
-    form: HTMLFormElement,
-  ) {
-    setAiWriting(true);
-    setAiMessage("");
-
-    try {
-      const formData = new FormData(form);
-      const details: Record<string, string | string[]> = {};
-
-      for (const [key, value] of formData.entries()) {
-        if (
-          typeof value !== "string" ||
-          ["intent", "variants"].includes(key) ||
-          !value.trim()
-        ) {
-          continue;
-        }
-
-        const current = details[key];
-        if (current) {
-          details[key] = Array.isArray(current)
-            ? [...current, value]
-            : [current, value];
-        } else {
-          details[key] = value;
-        }
-      }
-
-      details.description = description;
-
-      const response = await fetch("/seller/ai-generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode,
-          details,
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok || !result?.text) {
-        throw new Error(result?.message || "HairGrab AI is unavailable right now.");
-      }
-
-      setDescription(String(result.text).trim());
-      setAiMessage("HairGrab AI updated the description. Review it before saving.");
-    } catch (error) {
-      setAiMessage(
-        error instanceof Error
-          ? error.message
-          : "HairGrab AI is unavailable right now.",
-      );
-    } finally {
-      setAiWriting(false);
-    }
-  }
 
   const variants =
     product
@@ -1828,7 +1889,16 @@ export default function SellerEditProductPage() {
                           `price_${variant.id}`,
                         ) as HTMLInputElement
                       )?.value ||
+                      variant.compareAtPrice ||
                       variant.price,
+
+                    salePrice:
+                      (
+                        form.elements.namedItem(
+                          `salePrice_${variant.id}`,
+                        ) as HTMLInputElement
+                      )?.value ||
+                      "",
 
                     sku:
                       (
@@ -1904,51 +1974,115 @@ export default function SellerEditProductPage() {
 
               <textarea
                 name="description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={7}
+                defaultValue={
+                  stripHtml(
+                    product.descriptionHtml,
+                  )
+                }
+                rows={
+                  7
+                }
                 style={{
                   ...fieldStyle,
-                  resize: "vertical",
+                  resize:
+                    "vertical",
                 }}
               />
 
               <div
                 style={{
-                  display: "flex",
-                  gap: "8px",
-                  flexWrap: "wrap",
-                  marginTop: "10px",
+                  marginTop:
+                    "14px",
+                  padding:
+                    "10px 12px",
+                  border:
+                    "1px solid #eee7f2",
+                  borderRadius:
+                    "9px",
+                  background:
+                    "#faf8fc",
+                  color:
+                    "#625868",
+                  fontSize:
+                    "11px",
                 }}
               >
-                <button
-                  type="button"
-                  disabled={aiWriting}
-                  onClick={(event) => {
-                    const form = event.currentTarget.closest("form");
-                    if (form) void generateHairGrabDescription("improve", form);
+                <strong
+                  style={{
+                    color:
+                      "#4B1678",
                   }}
-                  style={aiButtonStyle}
                 >
-                  {aiWriting ? "✨ HairGrab AI is writing..." : "✨ Improve with HairGrab AI"}
-                </button>
+                  HairGrab Category:
+                </strong>{" "}
+                {(() => {
+                  const value =
+                    String(
+                      product.productType ||
+                      "",
+                    )
+                      .toLowerCase()
+                      .replace(
+                        /[^a-z0-9]+/g,
+                        "",
+                      );
 
-                <button
-                  type="button"
-                  disabled={aiWriting}
-                  onClick={(event) => {
-                    const form = event.currentTarget.closest("form");
-                    if (form) void generateHairGrabDescription("write", form);
-                  }}
-                  style={aiSecondaryButtonStyle}
-                >
-                  ✨ Write New
-                </button>
+                  if (
+                    value === "wig" ||
+                    value === "wigs"
+                  ) {
+                    return "Wigs";
+                  }
+
+                  if (
+                    value === "bundle" ||
+                    value === "bundles"
+                  ) {
+                    return "Bundles";
+                  }
+
+                  if (
+                    value.includes(
+                      "closure",
+                    ) ||
+                    value.includes(
+                      "frontal",
+                    )
+                  ) {
+                    return "Closures & Frontals";
+                  }
+
+                  if (
+                    value ===
+                      "extension" ||
+                    value ===
+                      "extensions"
+                  ) {
+                    return "Extensions";
+                  }
+
+                  if (
+                    value.includes(
+                      "braiding",
+                    )
+                  ) {
+                    return "Braiding Hair";
+                  }
+
+                  if (
+                    value.includes(
+                      "essential",
+                    )
+                  ) {
+                    return "Hair Essentials";
+                  }
+
+                  return (
+                    product.productType ||
+                    "Other"
+                  );
+                })()}
               </div>
-
-              {aiMessage ? (
-                <div style={aiMessageStyle}>{aiMessage}</div>
-              ) : null}
             </Section>
 
             <Section
@@ -1966,7 +2100,7 @@ export default function SellerEditProductPage() {
                     "12px",
                 }}
               >
-                Select any specialized classification that applies. These help HairGrab place the product in the right shopper searches and filters.
+                Select any specialized classification that applies. HairGrab uses “Locs” consistently across seller and shopper views.
               </div>
 
               <div
@@ -2022,6 +2156,29 @@ export default function SellerEditProductPage() {
             >
               <div
                 style={{
+                  marginBottom:
+                    "12px",
+                  padding:
+                    "11px 12px",
+                  border:
+                    "1px solid #e2d5eb",
+                  borderRadius:
+                    "9px",
+                  background:
+                    "#fcf9fe",
+                  color:
+                    "#665b6b",
+                  fontSize:
+                    "11px",
+                  lineHeight:
+                    1.5,
+                }}
+              >
+                To put a product on sale, enter a <strong>Sale Price</strong> lower than the Regular Price. Leave Sale Price blank to sell at the regular price.
+              </div>
+
+              <div
+                style={{
                   display:
                     "grid",
                   gap:
@@ -2073,11 +2230,25 @@ export default function SellerEditProductPage() {
                         }}
                       >
                         <MiniField
-                          label="Price"
+                          label="Regular Price"
                           name={`price_${variant.id}`}
                           defaultValue={
+                            variant.compareAtPrice ||
                             variant.price ||
                             ""
+                          }
+                          type="number"
+                          step="0.01"
+                        />
+
+                        <MiniField
+                          label="Sale Price"
+                          name={`salePrice_${variant.id}`}
+                          defaultValue={
+                            variant.compareAtPrice
+                              ? variant.price ||
+                                ""
+                              : ""
                           }
                           type="number"
                           step="0.01"

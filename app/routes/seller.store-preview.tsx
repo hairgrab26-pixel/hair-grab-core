@@ -2039,7 +2039,9 @@ function ProductGrid({
         display:
           "grid",
         gridTemplateColumns:
-          "repeat(auto-fit, minmax(190px, 1fr))",
+          "repeat(auto-fill, minmax(190px, 220px))",
+        justifyContent:
+          "start",
         gap:
           "14px",
       }}
@@ -2060,23 +2062,55 @@ function ProductGrid({
                   ).toFixed(2)} Flat Rate`
                 : product.shippingMethod;
 
+          const productHref =
+            product.shopifyHandle
+              ? `https://hairgrab.com/products/${product.shopifyHandle}`
+              : "";
+
           return (
-            <article
+            <a
               key={product.id}
-              className="hg-product-card"
+              href={
+                productHref ||
+                undefined
+              }
+              aria-label={
+                productHref
+                  ? `View ${product.title}`
+                  : undefined
+              }
               style={{
-                background:
-                  "white",
-                border:
-                  "1px solid #e5dce9",
-                borderRadius:
-                  "14px",
-                overflow:
-                  "hidden",
-                boxShadow:
-                  "0 3px 12px rgba(45,27,54,.05)",
+                display:
+                  "block",
+                textDecoration:
+                  "none",
+                color:
+                  "inherit",
+                minWidth:
+                  0,
+                cursor:
+                  productHref
+                    ? "pointer"
+                    : "default",
               }}
             >
+              <article
+                className="hg-product-card"
+                style={{
+                  background:
+                    "white",
+                  border:
+                    "1px solid #e5dce9",
+                  borderRadius:
+                    "14px",
+                  overflow:
+                    "hidden",
+                  boxShadow:
+                    "0 3px 12px rgba(45,27,54,.05)",
+                  height:
+                    "100%",
+                }}
+              >
               <div
                 style={{
                   position:
@@ -2347,7 +2381,8 @@ function ProductGrid({
                   </div>
                 )}
               </div>
-            </article>
+              </article>
+            </a>
           );
         },
       )}
