@@ -505,6 +505,7 @@ export const loader = async ({
   const [
     activeProducts,
     featuredProducts,
+    featuredPicks,
     products,
     collections,
     media,
@@ -519,6 +520,12 @@ export const loader = async ({
 
     db.sellerHomepagePick.count({
       where: { sellerId: seller.id },
+    }),
+
+    db.sellerHomepagePick.findMany({
+      where: { sellerId: seller.id },
+      select: { sellerProductId: true },
+      orderBy: { rank: "asc" },
     }),
 
     db.sellerProduct.findMany({
@@ -617,6 +624,8 @@ export const loader = async ({
         seller.showStoreStatus,
       storeOpenOverride:
         seller.storeOpenOverride || "AUTO",
+      storefrontPublished:
+        seller.storefrontPublished,
     },
 
     stats: {
@@ -627,6 +636,9 @@ export const loader = async ({
     },
 
     products,
+
+    featuredProductIds:
+      featuredPicks.map((pick) => pick.sellerProductId),
 
     collections: collections.map(
       (collection) => ({
@@ -742,6 +754,21 @@ export const action = async ({
         ? "OPEN"
         : "AUTO";
 
+      const sellsNationwide =
+        formData.get("sellsNationwide") === "on";
+      const offersLocalPickup =
+        formData.get("offersLocalPickup") === "on";
+      const offersLocalDelivery =
+        formData.get("offersLocalDelivery") === "on";
+      const offersSameDayDelivery =
+        formData.get("offersSameDayDelivery") === "on";
+
+      const wantsStoreLive =
+        String(
+          formData.get("storefrontVisibility") ||
+            "HIDDEN",
+        ) === "LIVE";
+
       const logoFile =
         formData.get("logoImage");
       const bannerFile =
@@ -795,6 +822,43 @@ export const action = async ({
           );
       }
 
+      if (wantsStoreLive) {
+        const missing: string[] = [];
+
+        if (!logoUrl) missing.push("Store Logo");
+        if (!bannerUrl) missing.push("Hero / Banner");
+        if (!storeDescription) missing.push("About the Brand");
+
+        const activeProductCount =
+          await db.sellerProduct.count({
+            where: {
+              sellerId: seller.id,
+              status: "ACTIVE",
+            },
+          });
+
+        if (activeProductCount < 1) {
+          missing.push("at least 1 Active Product");
+        }
+
+        if (
+          !sellsNationwide &&
+          !offersLocalPickup &&
+          !offersLocalDelivery &&
+          !offersSameDayDelivery
+        ) {
+          missing.push("a Fulfillment option");
+        }
+
+        if (missing.length > 0) {
+          return {
+            success: false,
+            message:
+              `Your store is still hidden. Complete: ${missing.join(", ")}.`,
+          };
+        }
+      }
+
       await db.seller.update({
         where: { id: seller.id },
         data: {
@@ -803,22 +867,12 @@ export const action = async ({
           logoUrl: logoUrl || null,
           bannerUrl: bannerUrl || null,
           businessPositioning,
-          sellsNationwide:
-            formData.get(
-              "sellsNationwide",
-            ) === "on",
-          offersLocalPickup:
-            formData.get(
-              "offersLocalPickup",
-            ) === "on",
-          offersLocalDelivery:
-            formData.get(
-              "offersLocalDelivery",
-            ) === "on",
-          offersSameDayDelivery:
-            formData.get(
-              "offersSameDayDelivery",
-            ) === "on",
+          sellsNationwide,
+          offersLocalPickup,
+          offersLocalDelivery,
+          offersSameDayDelivery,
+          storefrontPublished:
+            wantsStoreLive,
           returnPolicy,
           showFeaturedCollection:
             formData.get(
@@ -914,6 +968,49 @@ export const action = async ({
         success: true,
         message:
           "Your HairGrab storefront settings were saved.",
+      };
+    }
+
+    if (intent === "saveFeaturedProducts") {
+      const requestedIds = formData
+        .getAll("featuredProductIds")
+        .map(String);
+
+      const uniqueIds = Array.from(
+        new Set(requestedIds),
+      ).slice(0, 5);
+
+      const validProducts =
+        await db.sellerProduct.findMany({
+          where: {
+            sellerId: seller.id,
+            status: "ACTIVE",
+            id: { in: uniqueIds },
+          },
+          select: { id: true },
+        });
+
+      await db.$transaction([
+        db.sellerHomepagePick.deleteMany({
+          where: { sellerId: seller.id },
+        }),
+        db.sellerHomepagePick.createMany({
+          data: validProducts.map(
+            (product, index) => ({
+              sellerId: seller.id,
+              sellerProductId: product.id,
+              rank: index + 1,
+            }),
+          ),
+        }),
+      ]);
+
+      return {
+        success: true,
+        message:
+          validProducts.length === 0
+            ? "Featured Products cleared."
+            : `${validProducts.length} Featured Product${validProducts.length === 1 ? "" : "s"} saved.`,
       };
     }
 
@@ -1397,6 +1494,7 @@ export default function SellerSettingsPage() {
     seller,
     stats,
     products,
+    featuredProductIds,
     collections,
     media,
     hours,
@@ -1622,6 +1720,52 @@ export default function SellerSettingsPage() {
           border-bottom: 1px solid #f4eef6;
         }
 
+        .hg-system-collection {
+          border: 1px solid #eadff0;
+          border-radius: 11px;
+          padding: 12px;
+          margin-top: 9px;
+          background: #fbf9fc;
+        }
+
+        .hg-system-collection-title {
+          color: #4B1678;
+          font-size: 12px;
+          font-weight: 900;
+        }
+
+        .hg-system-collection-text {
+          color: #756b79;
+          font-size: 10px;
+          line-height: 1.45;
+          margin-top: 3px;
+        }
+
+        .hg-visibility-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .hg-visibility-option {
+          border: 1px solid #dfd2e6;
+          border-radius: 12px;
+          padding: 13px;
+          cursor: pointer;
+          display: flex;
+          align-items: flex-start;
+          gap: 9px;
+          background: #fff;
+        }
+
+        .hg-visibility-option input {
+          width: 18px;
+          height: 18px;
+          accent-color: #4B1678;
+          flex: 0 0 auto;
+          margin-top: 1px;
+        }
+
         .hg-hours-row {
           display: grid;
           grid-template-columns: 95px 1fr 1fr auto;
@@ -1718,6 +1862,26 @@ export default function SellerSettingsPage() {
 
           .hg-media-grid {
             grid-template-columns: 1fr;
+          }
+
+          .hg-visibility-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .hg-button {
+            min-height: 44px;
+          }
+
+          .hg-product-check {
+            min-height: 44px;
+            align-items: center;
+            padding: 10px 6px;
+          }
+
+          .hg-product-check input {
+            width: 19px;
+            height: 19px;
+            flex: 0 0 auto;
           }
         }
       `}</style>
@@ -1825,7 +1989,7 @@ export default function SellerSettingsPage() {
             value={String(
               stats.featuredProducts,
             )}
-            label="Seller Picks"
+            label="Featured Products"
           />
           <MiniStat
             value={String(
@@ -1846,6 +2010,81 @@ export default function SellerSettingsPage() {
           />
 
           <div className="hg-grid">
+            <Card
+              title="Store Visibility"
+              subtitle="Control whether shoppers can see your storefront. Hidden does not deactivate your seller account."
+            >
+              <div className="hg-visibility-grid">
+                <label className="hg-visibility-option">
+                  <input
+                    type="radio"
+                    name="storefrontVisibility"
+                    value="LIVE"
+                    defaultChecked={
+                      seller.storefrontPublished
+                    }
+                  />
+                  <span>
+                    <strong
+                      style={{
+                        color: "#28743b",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Live
+                    </strong>
+                    <span
+                      style={{
+                        display: "block",
+                        color: "#756b79",
+                        fontSize: "10px",
+                        lineHeight: 1.45,
+                        marginTop: "3px",
+                      }}
+                    >
+                      Shoppers can find and open your HairGrab store.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="hg-visibility-option">
+                  <input
+                    type="radio"
+                    name="storefrontVisibility"
+                    value="HIDDEN"
+                    defaultChecked={
+                      !seller.storefrontPublished
+                    }
+                  />
+                  <span>
+                    <strong
+                      style={{
+                        color: "#4B1678",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Hidden
+                    </strong>
+                    <span
+                      style={{
+                        display: "block",
+                        color: "#756b79",
+                        fontSize: "10px",
+                        lineHeight: 1.45,
+                        marginTop: "3px",
+                      }}
+                    >
+                      Keep your storefront off the public marketplace while you finish setup or take a temporary pause.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <InfoBox>
+                To go Live, HairGrab requires a Store Logo, Hero / Banner, About the Brand, at least 1 Active Product, a fulfillment option, and a return policy. If anything is missing, HairGrab will keep the store Hidden and tell you exactly what to finish.
+              </InfoBox>
+            </Card>
+
             <Card
               title="Brand & About"
               subtitle="What shoppers see first."
@@ -1977,57 +2216,93 @@ export default function SellerSettingsPage() {
             </Card>
 
             <Card
-              title="Store Sections"
-              subtitle="All Products always stays available. Choose which additional sections shoppers see."
+              title="Storefront Sections"
+              subtitle="HairGrab fills the automatic sections for you. You only choose what to show and which products are Featured."
             >
-              <CheckRow
-                name="showFeaturedCollection"
-                defaultChecked={
-                  seller.showFeaturedCollection
-                }
-                label="Show Featured / Seller Picks"
-              />
-              <CheckRow
-                name="showNewArrivalsCollection"
-                defaultChecked={
-                  seller.showNewArrivalsCollection
-                }
-                label="Show New Arrivals"
-              />
-              <CheckRow
-                name="showOnSaleCollection"
-                defaultChecked={
-                  seller.showOnSaleCollection
-                }
-                label="Show On Sale"
-              />
-              <CheckRow
-                name="showCustomCollections"
-                defaultChecked={
-                  seller.showCustomCollections
-                }
-                label="Show Collections"
-              />
+              <div className="hg-system-collection">
+                <div className="hg-system-collection-title">
+                  Shop All — Automatic
+                </div>
+                <div className="hg-system-collection-text">
+                  Every Active HairGrab product appears here automatically. You never have to build this collection.
+                </div>
+              </div>
+
+              <div className="hg-system-collection">
+                <div className="hg-system-collection-title">
+                  New Arrivals — Automatic
+                </div>
+                <div className="hg-system-collection-text">
+                  HairGrab automatically fills this with your newest Active products.
+                </div>
+                <CheckRow
+                  name="showNewArrivalsCollection"
+                  defaultChecked={
+                    seller.showNewArrivalsCollection
+                  }
+                  label="Show New Arrivals on my store"
+                />
+              </div>
+
+              <div className="hg-system-collection">
+                <div className="hg-system-collection-title">
+                  On Sale — Automatic
+                </div>
+                <div className="hg-system-collection-text">
+                  HairGrab automatically adds products that currently have sale pricing.
+                </div>
+                <CheckRow
+                  name="showOnSaleCollection"
+                  defaultChecked={
+                    seller.showOnSaleCollection
+                  }
+                  label="Show On Sale on my store"
+                />
+              </div>
+
+              <div className="hg-system-collection">
+                <div className="hg-system-collection-title">
+                  Featured Products — You Choose
+                </div>
+                <div className="hg-system-collection-text">
+                  Select up to 5 Active products in the Featured Products section below.
+                </div>
+                <CheckRow
+                  name="showFeaturedCollection"
+                  defaultChecked={
+                    seller.showFeaturedCollection
+                  }
+                  label="Show Featured Products on my store"
+                />
+              </div>
+
+              <div className="hg-system-collection">
+                <div className="hg-system-collection-title">
+                  Custom Collections — You Build
+                </div>
+                <div className="hg-system-collection-text">
+                  Create groups such as Burmese Curly, Glueless Wigs, Raw Hair, or Under $200, then check the products that belong in each one.
+                </div>
+                <CheckRow
+                  name="showCustomCollections"
+                  defaultChecked={
+                    seller.showCustomCollections
+                  }
+                  label="Show Custom Collections on my store"
+                />
+              </div>
+
               <CheckRow
                 name="showGallery"
-                defaultChecked={
-                  seller.showGallery
-                }
+                defaultChecked={seller.showGallery}
                 label="Show Gallery & Video"
               />
+
               <CheckRow
                 name="showReviews"
-                defaultChecked={
-                  seller.showReviews
-                }
+                defaultChecked={seller.showReviews}
                 label="Show Reviews"
               />
-
-              <InfoBox>
-                All Products is automatic and cannot
-                be switched off, so shoppers can
-                always reach your full active catalog.
-              </InfoBox>
             </Card>
 
             <Card
@@ -2259,9 +2534,42 @@ export default function SellerSettingsPage() {
           style={{ marginTop: "16px" }}
         >
           <Card
-            title="Collections"
-            subtitle="Create a collection, choose its products, and save. Edit or delete it anytime."
+            title="Featured Products"
+            subtitle="Choose up to 5 Active products to feature on your storefront. This replaces the old Seller Picks page."
           >
+            <Form method="post">
+              <input
+                type="hidden"
+                name="intent"
+                value="saveFeaturedProducts"
+              />
+
+              <FeaturedProductPicker
+                products={products}
+                selectedIds={featuredProductIds}
+              />
+
+              <button
+                type="submit"
+                className="hg-button"
+                style={{
+                  marginTop: "12px",
+                  width: "100%",
+                }}
+              >
+                Save Featured Products
+              </button>
+            </Form>
+          </Card>
+
+          <Card
+            title="Custom Collections"
+            subtitle="These are optional groups you create yourself. Name it, choose an optional image, check the products that belong in it, then save."
+          >
+            <InfoBox>
+              Shop All, New Arrivals, and On Sale are automatic — you do not build those here. Use Custom Collections only when you want your own shopper-facing group, such as “Burmese Curly.”
+            </InfoBox>
+
             <Form
               method="post"
               encType="multipart/form-data"
@@ -2316,9 +2624,7 @@ export default function SellerSettingsPage() {
 
             {collections.length === 0 ? (
               <InfoBox>
-                No custom collections yet. Your
-                automatic All Products collection
-                is already active.
+                No Custom Collections yet. That is completely fine — Shop All, New Arrivals, and On Sale are handled automatically by HairGrab.
               </InfoBox>
             ) : (
               collections.map(
@@ -2946,6 +3252,65 @@ function CheckRow({
   );
 }
 
+function FeaturedProductPicker({
+  products,
+  selectedIds,
+}: {
+  products: Array<{
+    id: string;
+    title: string;
+    shopifyHandle: string | null;
+  }>;
+  selectedIds: string[];
+}) {
+  const selected = new Set(selectedIds);
+
+  return (
+    <div>
+      {products.length === 0 ? (
+        <InfoBox>
+          Add at least one Active product before choosing Featured Products.
+        </InfoBox>
+      ) : (
+        <>
+          <div className="hg-products">
+            {products.map((product) => (
+              <label
+                className="hg-product-check"
+                key={product.id}
+              >
+                <input
+                  type="checkbox"
+                  name="featuredProductIds"
+                  value={product.id}
+                  defaultChecked={selected.has(
+                    product.id,
+                  )}
+                  style={{
+                    accentColor: "#4B1678",
+                  }}
+                />
+                <span>{product.title}</span>
+              </label>
+            ))}
+          </div>
+
+          <div
+            style={{
+              color: "#817686",
+              fontSize: "9px",
+              marginTop: "6px",
+              lineHeight: 1.45,
+            }}
+          >
+            Choose up to 5. If more than 5 are checked, HairGrab saves the first 5.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ProductPicker({
   products,
   selectedIds,
@@ -2968,8 +3333,7 @@ function ProductPicker({
 
       {products.length === 0 ? (
         <div className="hg-info">
-          Add active products before creating
-          product collections.
+          You do not have any Active products to select yet.
         </div>
       ) : (
         <div className="hg-products">
@@ -3002,8 +3366,7 @@ function ProductPicker({
           marginTop: "5px",
         }}
       >
-        Check the active HairGrab products that
-        belong in this collection.
+        Tap each Active product that belongs in this Custom Collection.
       </div>
     </div>
   );

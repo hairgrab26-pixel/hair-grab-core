@@ -1474,6 +1474,18 @@ export default function SellerDashboard() {
           }
         }
 
+
+        @media (max-width: 520px) {
+          .hg-store-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .hg-store-tile {
+            min-height: 124px !important;
+            padding: 16px !important;
+          }
+        }
+
         @media (min-width: 721px) {
           .hg-mobile-only {
             display: none !important;
@@ -1727,14 +1739,14 @@ export default function SellerDashboard() {
             <CompactStoreTile
               icon="◇"
               title="Products"
-              text="Add, edit and manage your product listings."
+              text="Add, import and manage your product listings."
               to="/seller/products"
             />
 
             <CompactStoreTile
               icon="🛒"
               title="Orders"
-              text="View and manage your orders."
+              text="View and manage your orders and shipping."
               to="/seller/orders"
               gold
             />
@@ -1742,37 +1754,22 @@ export default function SellerDashboard() {
             <CompactStoreTile
               icon="▥"
               title="Sales & Earnings"
-              text="Track your sales, fees and payouts."
+              text="Sales, HairGrab fees, earnings, payouts and reports."
               to="/seller/financials"
             />
 
             <CompactStoreTile
               icon="▰"
               title="Store Settings"
-              text="Update your store info, fulfillment and shipping."
+              text="Storefront, visibility, featured products, collections and fulfillment."
               to="/seller/settings"
-            />
-
-            <CompactStoreTile
-              icon="★"
-              title="Seller Picks"
-              text="Manage your featured products."
-              to="/seller/picks"
-              gold
             />
 
             <CompactStoreTile
               icon="✦"
               title="Store Preview"
-              text="See how shoppers view your HairGrab store."
+              text="See exactly how shoppers view your HairGrab store."
               to="/seller/store-preview"
-            />
-
-            <CompactStoreTile
-              icon="⇄"
-              title="Shopify Catalog"
-              text="Connect or review products from Shopify."
-              to="/seller/shopify"
             />
 
             <CompactStoreTile
@@ -1784,91 +1781,6 @@ export default function SellerDashboard() {
           </div>
         </section>
 
-        <section
-          style={{
-            marginTop: "28px",
-            background: "white",
-            border: "1px solid #e5dce9",
-            borderRadius: "14px",
-            padding: "20px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: "12px",
-              flexWrap: "wrap",
-              marginBottom: "15px",
-            }}
-          >
-            <div>
-              <h2
-                style={{
-                  margin: 0,
-                  color: "#4B1678",
-                  fontSize: "19px",
-                }}
-              >
-                Financials
-              </h2>
-
-              <div
-                style={{
-                  color: "#756b79",
-                  fontSize: "11px",
-                  marginTop: "4px",
-                }}
-              >
-                Sales, HairGrab fees, earnings and payout-ready balance.
-              </div>
-            </div>
-
-            <Link
-              to="/seller/financials"
-              style={{
-                background: "#4B1678",
-                color: "white",
-                fontSize: "12px",
-                fontWeight: 800,
-                textDecoration: "none",
-                padding: "9px 12px",
-                borderRadius: "8px",
-              }}
-            >
-              View Financial Report
-            </Link>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
-              gap: "16px",
-            }}
-          >
-            <Financial
-              label="Gross Sales"
-              value={money(stats.grossSales)}
-            />
-
-            <Financial
-              label="HairGrab Fee"
-              value={money(stats.commission)}
-            />
-
-            <Financial
-              label="Your Earnings"
-              value={money(stats.sellerEarnings)}
-            />
-
-            <Financial
-              label="Payout Ready"
-              value={money(stats.payoutReady)}
-            />
-          </div>
-        </section>
       </main>
 
       <nav

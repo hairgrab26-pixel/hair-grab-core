@@ -117,6 +117,7 @@ model Seller {
   logoUrl             String?
   bannerUrl           String?
   businessPositioning String[] @default([])
+  storefrontPublished Boolean  @default(false)
 
   address1   String?
   address2   String?
