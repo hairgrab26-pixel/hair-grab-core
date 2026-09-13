@@ -204,8 +204,13 @@ model Seller {
   showGallery               Boolean @default(true)
   showReviews               Boolean @default(true)
 
+  // Seller-controlled store hours / status visibility
+  useStoreHours             Boolean @default(false)
+  showStoreHours            Boolean @default(false)
+  showStoreStatus           Boolean @default(false)
+
   // AUTO / OPEN / CLOSED
-  // AUTO follows the seller's saved business hours.
+  // AUTO follows the seller's saved business hours when useStoreHours is enabled.
   storeOpenOverride String @default("AUTO")
 
   // Homepage boutique merchandising

@@ -403,6 +403,12 @@ export const loader = async ({
         seller.showGallery,
       showReviews:
         seller.showReviews,
+      useStoreHours:
+        seller.useStoreHours,
+      showStoreHours:
+        seller.showStoreHours,
+      showStoreStatus:
+        seller.showStoreStatus,
       storeOpenOverride:
         seller.storeOpenOverride || "AUTO",
     },
@@ -627,6 +633,21 @@ export const action = async ({
           showReviews:
             formData.get(
               "showReviews",
+            ) === "on",
+          useStoreHours:
+            formData.get(
+              "useStoreHours",
+            ) === "on",
+          showStoreHours:
+            formData.get(
+              "useStoreHours",
+            ) === "on" &&
+            formData.get(
+              "showStoreHours",
+            ) === "on",
+          showStoreStatus:
+            formData.get(
+              "showStoreStatus",
             ) === "on",
           storeOpenOverride,
         },
@@ -1791,12 +1812,28 @@ export default function SellerStorePage() {
 
             <Card
               title="Store Status"
-              subtitle="Control local service availability without shutting off nationwide shopping."
+              subtitle="Choose whether shoppers see Open / Closed status."
             >
-              <label>
+              <CheckRow
+                name="showStoreStatus"
+                defaultChecked={
+                  seller.showStoreStatus
+                }
+                label="Show Open / Closed status to shoppers"
+              />
+
+              <label
+                style={{
+                  display:
+                    "block",
+                  marginTop:
+                    "14px",
+                }}
+              >
                 <div className="hg-label">
                   Store Status
                 </div>
+
                 <select
                   name="storeOpenOverride"
                   defaultValue={
@@ -1807,9 +1844,11 @@ export default function SellerStorePage() {
                   <option value="AUTO">
                     Auto — follow listed hours
                   </option>
+
                   <option value="OPEN">
                     Open — temporarily override hours
                   </option>
+
                   <option value="CLOSED">
                     Closed — temporarily override hours
                   </option>
@@ -1817,67 +1856,102 @@ export default function SellerStorePage() {
               </label>
 
               <InfoBox>
-                Closing outside your listed hours
-                affects local pickup, local delivery,
-                and same-day availability. It does
-                not turn off normal nationwide
-                online orders.
+                This display setting is optional.
+                Closed status affects local pickup,
+                local delivery, and same-day
+                availability only. Nationwide online
+                orders remain available.
               </InfoBox>
             </Card>
 
             <Card
               title="Business Hours"
-              subtitle="Used for local pickup, local delivery, and same-day availability."
+              subtitle="Hours are optional. Sellers choose whether to use them and whether shoppers see them."
             >
-              {hours.map((hour) => (
-                <div
-                  className="hg-hours-row"
-                  key={hour.dayOfWeek}
-                >
-                  <strong className="hg-hours-day">
-                    {hour.label}
-                  </strong>
+              <CheckRow
+                name="useStoreHours"
+                defaultChecked={
+                  seller.useStoreHours
+                }
+                label="Add business hours to my HairGrab store"
+              />
 
-                  <input
-                    type="time"
-                    name={`day_${hour.dayOfWeek}_open`}
-                    defaultValue={
-                      hour.openTime
-                    }
-                    className="hg-field"
-                  />
+              <CheckRow
+                name="showStoreHours"
+                defaultChecked={
+                  seller.showStoreHours
+                }
+                label="Show my business hours to shoppers"
+              />
 
-                  <input
-                    type="time"
-                    name={`day_${hour.dayOfWeek}_close`}
-                    defaultValue={
-                      hour.closeTime
-                    }
-                    className="hg-field"
-                  />
+              <InfoBox>
+                If you turn off business hours,
+                HairGrab keeps your saved times so
+                you can turn them back on later.
+                Store hours mainly guide local
+                pickup, local delivery, and
+                same-day availability.
+              </InfoBox>
 
-                  <label
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 800,
-                      whiteSpace: "nowrap",
-                    }}
+              <div
+                style={{
+                  marginTop:
+                    "14px",
+                }}
+              >
+                {hours.map((hour) => (
+                  <div
+                    className="hg-hours-row"
+                    key={hour.dayOfWeek}
                   >
+                    <strong className="hg-hours-day">
+                      {hour.label}
+                    </strong>
+
                     <input
-                      type="checkbox"
-                      name={`day_${hour.dayOfWeek}_closed`}
-                      defaultChecked={
-                        hour.isClosed
+                      type="time"
+                      name={`day_${hour.dayOfWeek}_open`}
+                      defaultValue={
+                        hour.openTime
                       }
+                      className="hg-field"
+                    />
+
+                    <input
+                      type="time"
+                      name={`day_${hour.dayOfWeek}_close`}
+                      defaultValue={
+                        hour.closeTime
+                      }
+                      className="hg-field"
+                    />
+
+                    <label
                       style={{
-                        accentColor:
-                          "#4B1678",
+                        fontSize:
+                          "10px",
+                        fontWeight:
+                          800,
+                        whiteSpace:
+                          "nowrap",
                       }}
-                    />{" "}
-                    Closed
-                  </label>
-                </div>
-              ))}
+                    >
+                      <input
+                        type="checkbox"
+                        name={`day_${hour.dayOfWeek}_closed`}
+                        defaultChecked={
+                          hour.isClosed
+                        }
+                        style={{
+                          accentColor:
+                            "#4B1678",
+                        }}
+                      />{" "}
+                      Closed
+                    </label>
+                  </div>
+                ))}
+              </div>
             </Card>
           </div>
 

@@ -763,6 +763,12 @@ export const loader = async ({
         seller.showGallery,
       showReviews:
         seller.showReviews,
+      useStoreHours:
+        seller.useStoreHours,
+      showStoreHours:
+        seller.showStoreHours,
+      showStoreStatus:
+        seller.showStoreStatus,
       storeOpenOverride:
         seller.storeOpenOverride || "AUTO",
     },
@@ -913,13 +919,15 @@ export default function PublicSellerStorefrontPage() {
   ];
 
   const storeStatusLabel =
-    seller.storeOpenOverride === "OPEN"
-      ? "Open"
-      : seller.storeOpenOverride === "CLOSED"
-        ? "Closed"
-        : storeHours.length > 0
-          ? "Hours Listed"
-          : "";
+    seller.showStoreStatus
+      ? seller.storeOpenOverride === "OPEN"
+        ? "Open"
+        : seller.storeOpenOverride === "CLOSED"
+          ? "Closed"
+          : seller.useStoreHours
+            ? "Hours Listed"
+            : ""
+      : "";
 
   const sellerReviewAverage =
     sellerReviews.length > 0
@@ -1286,61 +1294,73 @@ export default function PublicSellerStorefrontPage() {
                 </div>
               )}
 
-              {storeStatusLabel && (
+              {(storeStatusLabel ||
+                (seller.useStoreHours &&
+                  seller.showStoreHours &&
+                  storeHours.length > 0)) && (
                 <div
                   style={{
-                    color:
-                      seller.storeOpenOverride === "CLOSED"
-                        ? "#8a4d4d"
-                        : "#4B1678",
-                    fontSize: "10px",
-                    fontWeight: 900,
-                    marginBottom: "8px",
+                    display: "flex",
+                    gap: "7px",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    marginTop: "6px",
                   }}
                 >
-                  {storeStatusLabel}
+                  {storeStatusLabel && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        minHeight: "25px",
+                        padding: "5px 9px",
+                        borderRadius: "999px",
+                        background:
+                          seller.storeOpenOverride === "CLOSED"
+                            ? "#f8eeee"
+                            : "#f4ecf9",
+                        color:
+                          seller.storeOpenOverride === "CLOSED"
+                            ? "#8a4d4d"
+                            : "#4B1678",
+                        border:
+                          seller.storeOpenOverride === "CLOSED"
+                            ? "1px solid #ead1d1"
+                            : "1px solid #dfccec",
+                        fontSize: "9px",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {storeStatusLabel}
+                    </span>
+                  )}
+
+                  {seller.useStoreHours &&
+                    seller.showStoreHours &&
+                    storeHours.length > 0 && (
+                    <a
+                      href="#hours"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        minHeight: "25px",
+                        padding: "5px 9px",
+                        borderRadius: "999px",
+                        background: "white",
+                        color: "#4B1678",
+                        border: "1px solid #dfccec",
+                        textDecoration: "none",
+                        fontSize: "9px",
+                        fontWeight: 900,
+                      }}
+                    >
+                      Store Hours
+                    </a>
+                  )}
                 </div>
               )}
 
-              <div
-                style={{
-                  display:
-                    "flex",
-
-                  gap:
-                    "7px",
-
-                  flexWrap:
-                    "wrap",
-
-                  marginTop:
-                    "10px",
-                }}
-              >
-                {seller.sellsNationwide && (
-                  <Badge>
-                    Ships Nationwide
-                  </Badge>
-                )}
-
-                {seller.offersLocalPickup && (
-                  <Badge>
-                    Local Pickup
-                  </Badge>
-                )}
-
-                {seller.offersLocalDelivery && (
-                  <Badge>
-                    Local Delivery
-                  </Badge>
-                )}
-
-                {seller.offersSameDayDelivery && (
-                  <Badge>
-                    Same-Day
-                  </Badge>
-                )}
-              </div>
+              
             </div>
           </div>
 
@@ -1771,7 +1791,9 @@ export default function PublicSellerStorefrontPage() {
           </section>
         )}
 
-        {storeHours.length > 0 && (
+        {seller.useStoreHours &&
+          seller.showStoreHours &&
+          storeHours.length > 0 && (
           <section
             id="hours"
             style={{
