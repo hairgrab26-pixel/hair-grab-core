@@ -379,8 +379,11 @@ export default function PublicSellerDirectoryPage() {
                   >
                     <div
                       style={{
-                        height:
-                          "120px",
+                        width:
+                          "100%",
+
+                        aspectRatio:
+                          "4 / 1",
 
                         background:
                           seller.bannerUrl
@@ -415,6 +418,12 @@ export default function PublicSellerDirectoryPage() {
 
                             objectFit:
                               "cover",
+
+                            objectPosition:
+                              "center",
+
+                            display:
+                              "block",
                           }}
                         />
                       ) : (
