@@ -1230,27 +1230,6 @@ export default function SellerStorePreviewPage() {
           </nav>
         </section>
 
-        {seller.showFeaturedCollection && (
-          <section
-            id="home"
-            style={{
-              marginTop:
-                "24px",
-            }}
-          >
-            <SectionHeading
-              title="Featured"
-              subtitle="Seller-selected products."
-            />
-
-            {featured.length > 0 ? (
-              <ProductGrid products={featured} />
-            ) : (
-              <EmptyState text="Seller Picks will appear here." />
-            )}
-          </section>
-        )}
-
         <section
           id="collections"
           style={{
@@ -1273,7 +1252,28 @@ export default function SellerStorePreviewPage() {
             }}
           >
             <CollectionChip title="All Products" href="#shop" />
-            {seller.showNewArrivalsCollection && newArrivals.length > 0 && (
+            {seller.showFeaturedCollection && (
+          <section
+            id="home"
+            style={{
+              marginTop:
+                "24px",
+            }}
+          >
+            <SectionHeading
+              title="Featured"
+              subtitle="Seller-selected products."
+            />
+
+            {featured.length > 0 ? (
+              <ProductGrid products={featured} />
+            ) : (
+              <EmptyState text="Seller Picks will appear here." />
+            )}
+          </section>
+        )}
+
+        {seller.showNewArrivalsCollection && newArrivals.length > 0 && (
               <CollectionChip title="New Arrivals" href="#new-arrivals" />
             )}
             {seller.showOnSaleCollection && onSale.length > 0 && (
