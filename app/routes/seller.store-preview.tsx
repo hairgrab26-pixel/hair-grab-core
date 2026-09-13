@@ -20,11 +20,11 @@ type ShopifyProductInfo = {
   imageAlt: string;
   price: string;
   onSale: boolean;
-  shippingScope: string;
+  soldOut: boolean;
   shipsWithin: string;
-  shipsFromCity: string;
-  shipsFromState: string;
-  returnPolicy: string;
+  shippingMethod: string;
+  flatRateShipping: string;
+  localPickupAvailable: boolean;
 };
 
 
@@ -204,8 +204,16 @@ export const loader = async ({
                   title
                   handle
                   vendor
+                  totalInventory
 
-                  metafields(first: 50, namespace: "custom") {
+                  customMetafields: metafields(first: 50, namespace: "custom") {
+                    nodes {
+                      key
+                      value
+                    }
+                  }
+
+                  hairgrabMetafields: metafields(first: 20, namespace: "hairgrab") {
                     nodes {
                       key
                       value
@@ -352,24 +360,83 @@ export const loader = async ({
                   )}`;
           }
 
-          const metafields = new Map<string, string>(
-            (node?.metafields?.nodes || []).map(
-              (metafield: any) => [
-                String(metafield?.key || "").toLowerCase(),
-                String(metafield?.value || ""),
-              ],
-            ),
-          );
+          const customMetafields =
+            new Map<string, string>(
+              (
+                node?.customMetafields
+                  ?.nodes ||
+                []
+              ).map(
+                (
+                  metafield:
+                    any,
+                ) => [
+                  String(
+                    metafield?.key ||
+                    "",
+                  ).toLowerCase(),
+                  String(
+                    metafield?.value ||
+                    "",
+                  ),
+                ],
+              ),
+            );
 
-          const metafieldValue = (...keys: string[]) => {
-            for (const key of keys) {
-              const value = metafields.get(key.toLowerCase());
+          const hairgrabMetafields =
+            new Map<string, string>(
+              (
+                node?.hairgrabMetafields
+                  ?.nodes ||
+                []
+              ).map(
+                (
+                  metafield:
+                    any,
+                ) => [
+                  String(
+                    metafield?.key ||
+                    "",
+                  ).toLowerCase(),
+                  String(
+                    metafield?.value ||
+                    "",
+                  ),
+                ],
+              ),
+            );
+
+          const customValue = (
+            ...keys: string[]
+          ) => {
+            for (
+              const key of
+              keys
+            ) {
+              const value =
+                customMetafields.get(
+                  key.toLowerCase(),
+                );
+
               if (value) {
                 return value;
               }
             }
+
             return "";
           };
+
+          const hairgrabValue = (
+            key: string,
+          ) =>
+            hairgrabMetafields.get(
+              key.toLowerCase(),
+            ) || "";
+
+          const rawLocalPickup =
+            hairgrabValue(
+              "local_pickup_available",
+            );
 
           shopifyById.set(
             String(
@@ -394,32 +461,41 @@ export const loader = async ({
                   "",
                 ),
 
-              shippingScope:
-                metafieldValue(
-                  "shipping_scope",
-                  "shipping_territory",
-                ),
+              soldOut:
+                Number(
+                  node.totalInventory ??
+                  0,
+                ) <= 0,
 
               shipsWithin:
-                metafieldValue(
+                customValue(
                   "ships_within",
                   "ships_within_24_hours",
+                  "field-1788095152116",
                 ),
 
-              shipsFromCity:
-                metafieldValue(
-                  "ships_from_city",
+              shippingMethod:
+                hairgrabValue(
+                  "shipping_charge_type",
+                ) ||
+                customValue(
+                  "shipping_method_shipping_options",
+                  "shipping_method_shipping",
+                  "shipping_method",
+                  "shipping_methods",
+                  "field-1788297161425",
                 ),
 
-              shipsFromState:
-                metafieldValue(
-                  "ships_from_state",
+              flatRateShipping:
+                hairgrabValue(
+                  "flat_rate_shipping",
                 ),
 
-              returnPolicy:
-                metafieldValue(
-                  "return_policy",
-                ),
+              localPickupAvailable:
+                rawLocalPickup ===
+                  "true" ||
+                rawLocalPickup ===
+                  "1",
 
               imageUrl:
                 node
@@ -507,35 +583,32 @@ export const loader = async ({
               ?.vendor ||
             seller.businessName,
 
-          shippingScope:
-            shopifyProduct
-              ?.shippingScope ||
-            (seller.sellsNationwide
-              ? "Nationwide"
-              : ""),
+          soldOut:
+            Boolean(
+              shopifyProduct
+                ?.soldOut,
+            ),
 
           shipsWithin:
             shopifyProduct
               ?.shipsWithin ||
             "",
 
-          shipsFromCity:
+          shippingMethod:
             shopifyProduct
-              ?.shipsFromCity ||
-            seller.city ||
+              ?.shippingMethod ||
             "",
 
-          shipsFromState:
+          flatRateShipping:
             shopifyProduct
-              ?.shipsFromState ||
-            seller.state ||
+              ?.flatRateShipping ||
             "",
 
-          productReturnPolicy:
-            shopifyProduct
-              ?.returnPolicy ||
-            seller.returnPolicy ||
-            "",
+          localPickupAvailable:
+            Boolean(
+              shopifyProduct
+                ?.localPickupAvailable,
+            ),
 
           onSale:
             Boolean(
@@ -848,6 +921,11 @@ export default function SellerStorePreviewPage() {
           }
 
           .hg-product-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+          }
+
+          .hg-collection-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             gap: 10px !important;
           }
@@ -1335,7 +1413,7 @@ export default function SellerStorePreviewPage() {
           id="collections"
           style={{
             marginTop:
-              "30px",
+              "24px",
           }}
         >
           <SectionHeading
@@ -1344,60 +1422,12 @@ export default function SellerStorePreviewPage() {
           />
 
           <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              overflowX: "auto",
-              paddingBottom: "8px",
-              marginBottom: "12px",
-            }}
-          >
-            <CollectionChip title="All Products" href="#shop" />
-            {seller.showFeaturedCollection && (
-          <section
-            id="home"
-            style={{
-              marginTop:
-                "24px",
-            }}
-          >
-            <SectionHeading
-              title="Featured"
-              subtitle="Seller-selected products."
-            />
-
-            {featured.length > 0 ? (
-              <ProductGrid products={featured} />
-            ) : (
-              <EmptyState text="Seller Picks will appear here." />
-            )}
-          </section>
-        )}
-
-        {seller.showNewArrivalsCollection && newArrivals.length > 0 && (
-              <CollectionChip title="New Arrivals" href="#new-arrivals" />
-            )}
-            {seller.showOnSaleCollection && onSale.length > 0 && (
-              <CollectionChip title="On Sale" href="#on-sale" />
-            )}
-            {seller.showFeaturedCollection && featured.length > 0 && (
-              <CollectionChip title="Featured" href="#home" />
-            )}
-            {visibleCustomCollections.map((collection) => (
-              <CollectionChip
-                key={collection.id}
-                title={collection.name}
-                href={`#collection-${collection.slug}`}
-              />
-            ))}
-          </div>
-
-          <div
+            className="hg-collection-grid"
             style={{
               display:
                 "grid",
               gridTemplateColumns:
-                "repeat(auto-fit, minmax(180px, 1fr))",
+                "repeat(4, minmax(0, 1fr))",
               gap:
                 "12px",
             }}
@@ -1432,17 +1462,50 @@ export default function SellerStorePreviewPage() {
               />
             )}
 
-            {visibleCustomCollections.map((collection) => (
-              <CollectionCard
-                key={collection.id}
-                title={collection.name}
-                count={(collectionProductMap.get(collection.id) || []).length}
-                href={`#collection-${collection.slug}`}
-                imageUrl={collection.imageUrl}
-              />
-            ))}
+            {visibleCustomCollections.map(
+              (collection) => (
+                <CollectionCard
+                  key={collection.id}
+                  title={collection.name}
+                  count={
+                    (
+                      collectionProductMap.get(
+                        collection.id,
+                      ) || []
+                    ).length
+                  }
+                  href={`#collection-${collection.slug}`}
+                  imageUrl={
+                    collection.imageUrl
+                  }
+                />
+              ),
+            )}
           </div>
         </section>
+
+        {seller.showFeaturedCollection && (
+          <section
+            id="home"
+            style={{
+              marginTop:
+                "30px",
+            }}
+          >
+            <SectionHeading
+              title="Featured"
+              subtitle="Seller-selected products."
+            />
+
+            {featured.length > 0 ? (
+              <ProductGrid
+                products={featured}
+              />
+            ) : (
+              <EmptyState text="Seller Picks will appear here." />
+            )}
+          </section>
+        )}
 
         {seller.showNewArrivalsCollection &&
           newArrivals.length > 0 && (
@@ -1865,11 +1928,11 @@ function ProductGrid({
     imageAlt: string;
     price: string;
     vendor: string;
-    shippingScope: string;
+    soldOut: boolean;
     shipsWithin: string;
-    shipsFromCity: string;
-    shipsFromState: string;
-    productReturnPolicy: string;
+    shippingMethod: string;
+    flatRateShipping: string;
+    localPickupAvailable: boolean;
     onSale: boolean;
     featured: boolean;
     isNew: boolean;
@@ -1883,10 +1946,8 @@ function ProductGrid({
       style={{
         display:
           "grid",
-
         gridTemplateColumns:
           "repeat(auto-fit, minmax(190px, 1fr))",
-
         gap:
           "14px",
       }}
@@ -1894,282 +1955,309 @@ function ProductGrid({
       {products.map(
         (
           product,
-        ) => (
-          <article
-            key={
-              product.id
-            }
-            className="hg-product-card"
-            style={{
-              background:
-                "white",
+        ) => {
+          const shippingLine =
+            product.shippingMethod ===
+              "Free Shipping"
+              ? "Free Shipping"
+              : product.shippingMethod ===
+                    "Flat Rate Shipping" &&
+                  product.flatRateShipping
+                ? `$${Number(
+                    product.flatRateShipping,
+                  ).toFixed(2)} Flat Rate`
+                : product.shippingMethod;
 
-              border:
-                "1px solid #e5dce9",
-
-              borderRadius:
-                "13px",
-
-              padding:
-                "12px",
-
-              boxShadow:
-                "0 3px 12px rgba(45,27,54,.03)",
-            }}
-          >
-            <div
+          return (
+            <article
+              key={product.id}
+              className="hg-product-card"
               style={{
-                position:
-                  "relative",
-
-                aspectRatio:
-                  "1 / 1",
-
+                background:
+                  "white",
+                border:
+                  "1px solid #e5dce9",
                 borderRadius:
-                  "10px",
-
+                  "14px",
                 overflow:
                   "hidden",
-
-                background:
-                  "#f3edf7",
-
-                display:
-                  "flex",
-
-                alignItems:
-                  "center",
-
-                justifyContent:
-                  "center",
+                boxShadow:
+                  "0 3px 12px rgba(45,27,54,.05)",
               }}
             >
-              {product.imageUrl ? (
-                <img
-                  src={
-                    product.imageUrl
-                  }
-                  alt={
-                    product.imageAlt
-                  }
-                  style={{
-                    width:
-                      "100%",
+              <div
+                style={{
+                  position:
+                    "relative",
+                  aspectRatio:
+                    "1 / 1",
+                  overflow:
+                    "hidden",
+                  background:
+                    "#f3edf7",
+                }}
+              >
+                {product.imageUrl ? (
+                  <img
+                    src={
+                      product.imageUrl
+                    }
+                    alt={
+                      product.imageAlt
+                    }
+                    style={{
+                      width:
+                        "100%",
+                      height:
+                        "100%",
+                      objectFit:
+                        "cover",
+                      display:
+                        "block",
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width:
+                        "100%",
+                      height:
+                        "100%",
+                      display:
+                        "flex",
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "center",
+                      color:
+                        "#8a7b91",
+                      fontSize:
+                        "10px",
+                      fontWeight:
+                        800,
+                    }}
+                  >
+                    No Image
+                  </div>
+                )}
 
-                    height:
-                      "100%",
-
-                    objectFit:
-                      "cover",
-                  }}
-                />
-              ) : (
                 <div
-                  style={{
-                    color:
-                      "#8a7b91",
-
-                    fontSize:
-                      "10px",
-
-                    fontWeight:
-                      800,
-                  }}
-                >
-                  No Image
-                </div>
-              )}
-
-              {product.onSale && (
-                <span
+                  aria-hidden="true"
                   style={{
                     position:
                       "absolute",
-
                     top:
-                      "8px",
-
-                    left:
-                      "8px",
-
-                    background:
-                      "#D4AF37",
-
-                    color:
-                      "#2b1b35",
-
+                      "10px",
+                    right:
+                      "10px",
+                    width:
+                      "34px",
+                    height:
+                      "34px",
                     borderRadius:
-                      "999px",
-
-                    padding:
-                      "4px 7px",
-
+                      "50%",
+                    background:
+                      "white",
+                    border:
+                      "1px solid #eadff0",
+                    display:
+                      "flex",
+                    alignItems:
+                      "center",
+                    justifyContent:
+                      "center",
+                    color:
+                      "#4B1678",
                     fontSize:
-                      "8px",
+                      "21px",
+                    lineHeight:
+                      1,
+                    boxShadow:
+                      "0 2px 8px rgba(45,27,54,.08)",
+                  }}
+                >
+                  ♡
+                </div>
 
+                {product.soldOut && (
+                  <span
+                    style={{
+                      position:
+                        "absolute",
+                      left:
+                        "12px",
+                      bottom:
+                        "12px",
+                      background:
+                        "rgba(255,255,255,.94)",
+                      color:
+                        "#4f4554",
+                      borderRadius:
+                        "999px",
+                      padding:
+                        "6px 12px",
+                      fontSize:
+                        "10px",
+                      boxShadow:
+                        "0 2px 7px rgba(45,27,54,.08)",
+                    }}
+                  >
+                    Sold out
+                  </span>
+                )}
+              </div>
+
+              <div
+                style={{
+                  padding:
+                    "12px 12px 13px",
+                }}
+              >
+                <div
+                  className="hg-product-title"
+                  style={{
+                    color:
+                      "#2d2630",
+                    fontSize:
+                      "13px",
+                    lineHeight:
+                      1.28,
                     fontWeight:
                       900,
                   }}
                 >
-                  SALE
-                </span>
-              )}
-            </div>
+                  {product.title}
+                </div>
 
-            <div
-              className="hg-product-title"
-              style={{
-                marginTop:
-                  "9px",
+                <div
+                  style={{
+                    marginTop:
+                      "3px",
+                    color:
+                      "#756b79",
+                    fontSize:
+                      "10px",
+                    fontWeight:
+                      700,
+                  }}
+                >
+                  {product.vendor}
+                </div>
 
-                fontWeight:
-                  900,
+                {product.price && (
+                  <div
+                    style={{
+                      marginTop:
+                        "7px",
+                      color:
+                        "#4B1678",
+                      fontSize:
+                        "13px",
+                      fontWeight:
+                        900,
+                    }}
+                  >
+                    {product.price}
+                  </div>
+                )}
 
-                fontSize:
-                  "13px",
+                {product.shipsWithin && (
+                  <div
+                    style={{
+                      display:
+                        "flex",
+                      alignItems:
+                        "center",
+                      gap:
+                        "6px",
+                      marginTop:
+                        "9px",
+                      color:
+                        "#5f5564",
+                      fontSize:
+                        "9px",
+                      fontWeight:
+                        700,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        color:
+                          "#4B1678",
+                      }}
+                    >
+                      🚚
+                    </span>
 
-                lineHeight:
-                  1.3,
-              }}
-            >
-              {product.title}
-            </div>
+                    Ships within{" "}
+                    {product.shipsWithin}
+                  </div>
+                )}
 
-            <div
-              style={{
-                marginTop: "4px",
-                color: "#6f6575",
-                fontSize: "9px",
-                fontWeight: 800,
-              }}
-            >
-              {product.vendor}
-            </div>
+                {shippingLine && (
+                  <div
+                    style={{
+                      display:
+                        "flex",
+                      alignItems:
+                        "center",
+                      gap:
+                        "6px",
+                      marginTop:
+                        "6px",
+                      color:
+                        "#5f5564",
+                      fontSize:
+                        "9px",
+                      fontWeight:
+                        700,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        color:
+                          "#4B1678",
+                      }}
+                    >
+                      ▣
+                    </span>
 
-            {product.price && (
-              <div
-                style={{
-                  marginTop:
-                    "5px",
+                    {shippingLine}
+                  </div>
+                )}
 
-                  color:
-                    "#4B1678",
-
-                  fontSize:
-                    "12px",
-
-                  fontWeight:
-                    900,
-                }}
-              >
-                {product.price}
+                {product.localPickupAvailable && (
+                  <div
+                    style={{
+                      marginTop:
+                        "8px",
+                      display:
+                        "inline-block",
+                      background:
+                        "#f4ecf9",
+                      color:
+                        "#4B1678",
+                      border:
+                        "1px solid #dfccec",
+                      borderRadius:
+                        "999px",
+                      padding:
+                        "5px 8px",
+                      fontSize:
+                        "8px",
+                      fontWeight:
+                        900,
+                    }}
+                  >
+                    Local Pickup
+                  </div>
+                )}
               </div>
-            )}
-
-            <div
-              style={{
-                marginTop:
-                  "7px",
-
-                color:
-                  product.reviewCount > 0
-                    ? "#4B1678"
-                    : "#8a7b91",
-
-                fontSize:
-                  "9px",
-
-                fontWeight:
-                  800,
-              }}
-            >
-              {product.reviewCount > 0 && product.reviewAverage !== null
-                ? `${product.reviewAverage.toFixed(1)} ★ · ${product.reviewCount} ${
-                    product.reviewCount === 1 ? "review" : "reviews"
-                  }`
-                : "New on HairGrab"}
-            </div>
-
-            <div
-              style={{
-                marginTop: "8px",
-                paddingTop: "8px",
-                borderTop: "1px solid #f0e9f3",
-                display: "grid",
-                gap: "4px",
-                color: "#5f5564",
-                fontSize: "9px",
-                lineHeight: 1.35,
-              }}
-            >
-              {product.shippingScope && (
-                <div>
-                  <strong style={{ color: "#4B1678" }}>
-                    {product.shippingScope.toLowerCase().includes("nation")
-                      ? "Ships Nationwide"
-                      : product.shippingScope}
-                  </strong>
-                </div>
-              )}
-
-              {product.shipsWithin && (
-                <div>
-                  Ships Within <strong>{product.shipsWithin}</strong>
-                </div>
-              )}
-
-              {(product.shipsFromCity || product.shipsFromState) && (
-                <div>
-                  Ships From{" "}
-                  <strong>
-                    {[product.shipsFromCity, product.shipsFromState]
-                      .filter(Boolean)
-                      .join(", ")}
-                  </strong>
-                </div>
-              )}
-
-              {product.productReturnPolicy && (
-                <div>
-                  {product.productReturnPolicy === "14_DAY_RETURNS"
-                    ? "14-Day Returns"
-                    : product.productReturnPolicy === "FINAL_SALE"
-                      ? "Final Sale"
-                      : product.productReturnPolicy}
-                </div>
-              )}
-            </div>
-
-            {product.shopifyHandle && (
-              <a
-                href={`https://hairgrab.com/products/${product.shopifyHandle}`}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display:
-                    "inline-block",
-
-                  marginTop:
-                    "8px",
-
-                  color:
-                    "#4B1678",
-
-                  textDecoration:
-                    "none",
-
-                  fontSize:
-                    "10px",
-
-                  fontWeight:
-                    900,
-                }}
-              >
-                View Product →
-              </a>
-            )}
-          </article>
-        ),
+            </article>
+          );
+        },
       )}
     </div>
   );
@@ -2191,105 +2279,83 @@ function CollectionCard({
     <a
       href={href}
       style={{
+        display:
+          "block",
+        minWidth:
+          0,
         background:
           "white",
-
         border:
           "1px solid #e5dce9",
-
         borderRadius:
           "13px",
-
-        padding:
-          "15px",
-
+        overflow:
+          "hidden",
         textDecoration:
           "none",
-
         color:
           "#21152a",
-
         boxShadow:
-          "0 3px 12px rgba(45,27,54,.03)",
+          "0 3px 12px rgba(45,27,54,.035)",
       }}
     >
       {imageUrl && (
         <img
-          src={imageUrl}
+          src={
+            imageUrl
+          }
           alt={`${title} collection`}
           style={{
-            width: "100%",
-            aspectRatio: "16 / 9",
-            objectFit: "cover",
-            borderRadius: "9px",
-            marginBottom: "10px",
-            display: "block",
+            width:
+              "100%",
+            aspectRatio:
+              "16 / 9",
+            objectFit:
+              "cover",
+            display:
+              "block",
           }}
         />
       )}
 
       <div
         style={{
-          color:
-            "#4B1678",
-
-          fontSize:
-            "14px",
-
-          fontWeight:
-            900,
+          padding:
+            "13px",
         }}
       >
-        {title}
+        <div
+          style={{
+            color:
+              "#4B1678",
+            fontSize:
+              "13px",
+            fontWeight:
+              900,
+            lineHeight:
+              1.2,
+          }}
+        >
+          {title}
+        </div>
+
+        <div
+          style={{
+            color:
+              "#756b79",
+            fontSize:
+              "9px",
+            marginTop:
+              "5px",
+          }}
+        >
+          {count}{" "}
+          {count ===
+          1
+            ? "product"
+            : "products"}
+        </div>
       </div>
-
-      <div
-        style={{
-          color:
-            "#756b79",
-
-          fontSize:
-            "10px",
-
-          marginTop:
-            "5px",
-        }}
-      >
-        {count}{" "}
-        {count ===
-        1
-          ? "product"
-          : "products"}
-      </div>
-    </a>
-  );
-}
-
-
-function CollectionChip({
-  title,
-  href,
-}: {
-  title: string;
-  href: string;
-}) {
-  return (
-    <a
-      href={href}
-      style={{
-        flex: "0 0 auto",
-        background: "white",
-        color: "#4B1678",
-        border: "1px solid #e2d1ef",
-        borderRadius: "999px",
-        padding: "8px 11px",
-        textDecoration: "none",
-        fontSize: "10px",
-        fontWeight: 900,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {title}
     </a>
   );
 }
