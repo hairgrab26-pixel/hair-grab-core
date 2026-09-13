@@ -1246,7 +1246,6 @@ async function stageFiles(
   const uploaded:
     Array<{
       originalSource: string;
-      filename: string;
       contentType:
         | "IMAGE"
         | "VIDEO";
@@ -1307,9 +1306,6 @@ async function stageFiles(
     uploaded.push({
       originalSource:
         target.resourceUrl,
-
-      filename:
-        file.name,
 
       contentType:
         resource ===
@@ -5347,6 +5343,49 @@ export default function SellerAddProductPage() {
               }
             />
           </ReviewGrid>
+
+          {(images.length > 0 ||
+            videos.length > 0) && (
+            <div
+              style={{
+                marginTop:
+                  "18px",
+
+                paddingTop:
+                  "16px",
+
+                borderTop:
+                  "1px solid #eee7f2",
+              }}
+            >
+              <div
+                style={{
+                  color:
+                    "#4B1678",
+
+                  fontSize:
+                    "13px",
+
+                  fontWeight:
+                    "800",
+
+                  marginBottom:
+                    "8px",
+                }}
+              >
+                Media Preview
+              </div>
+
+              <ReviewMediaPreview
+                images={
+                  images
+                }
+                videos={
+                  videos
+                }
+              />
+            </div>
+          )}
         </div>
 
         <div
@@ -9209,6 +9248,32 @@ function FileList({
         number,
     ) => void;
 }) {
+  const previewUrls =
+    useMemo(
+      () =>
+        files.map(
+          (file) =>
+            URL.createObjectURL(
+              file,
+            ),
+        ),
+      [files],
+    );
+
+  useEffect(
+    () => () => {
+      for (
+        const url of
+        previewUrls
+      ) {
+        URL.revokeObjectURL(
+          url,
+        );
+      }
+    },
+    [previewUrls],
+  );
+
   return (
     <div
       style={{
@@ -9225,65 +9290,410 @@ function FileList({
         {title}
       </strong>
 
-      {files.map(
-        (
-          file,
-          index,
-        ) => (
-          <div
-            key={`${file.name}-${index}`}
-            style={{
-              display:
-                "flex",
+      <div
+        style={{
+          display:
+            "grid",
 
-              justifyContent:
-                "space-between",
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(220px, 1fr))",
 
-              padding:
-                "7px 9px",
+          gap:
+            "10px",
 
-              marginTop:
-                "5px",
-
-              background:
-                "#faf7fc",
-
-              borderRadius:
-                "7px",
-            }}
-          >
-            <span>
-              {index ===
-                0 &&
-              title ===
-                "Photos"
-                ? "Primary · "
-                : ""}
-              {file.name}
-            </span>
-
-            <button
-              type="button"
-              onClick={() =>
-                onRemove(
-                  index,
-                )
-              }
+          marginTop:
+            "8px",
+        }}
+      >
+        {files.map(
+          (
+            file,
+            index,
+          ) => (
+            <div
+              key={`${file.name}-${file.size}-${index}`}
               style={{
                 border:
-                  "none",
+                  "1px solid #e4d8eb",
+
+                borderRadius:
+                  "10px",
+
+                overflow:
+                  "hidden",
 
                 background:
-                  "transparent",
-
-                cursor:
-                  "pointer",
+                  "#faf7fc",
               }}
             >
-              ×
-            </button>
-          </div>
+              <video
+                src={
+                  previewUrls[index]
+                }
+                controls
+                preload="metadata"
+                playsInline
+                style={{
+                  display:
+                    "block",
+
+                  width:
+                    "100%",
+
+                  aspectRatio:
+                    "16 / 9",
+
+                  objectFit:
+                    "contain",
+
+                  background:
+                    "#140c18",
+                }}
+              />
+
+              <div
+                style={{
+                  display:
+                    "flex",
+
+                  justifyContent:
+                    "space-between",
+
+                  alignItems:
+                    "center",
+
+                  gap:
+                    "8px",
+
+                  padding:
+                    "9px",
+                }}
+              >
+                <div
+                  style={{
+                    minWidth:
+                      0,
+                  }}
+                >
+                  <div
+                    style={{
+                      color:
+                        "#4B1678",
+
+                      fontSize:
+                        "10px",
+
+                      fontWeight:
+                        "800",
+
+                      overflow:
+                        "hidden",
+
+                      textOverflow:
+                        "ellipsis",
+
+                      whiteSpace:
+                        "nowrap",
+                    }}
+                    title={
+                      file.name
+                    }
+                  >
+                    {file.name}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop:
+                        "2px",
+
+                      color:
+                        "#7d7480",
+
+                      fontSize:
+                        "9px",
+                    }}
+                  >
+                    {(file.size / 1024 / 1024).toFixed(1)} MB
+                    {" · "}
+                    Ready to upload
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onRemove(
+                      index,
+                    )
+                  }
+                  aria-label={`Remove ${file.name}`}
+                  style={{
+                    border:
+                      "1px solid #dacbe2",
+
+                    background:
+                      "#ffffff",
+
+                    color:
+                      "#4B1678",
+
+                    borderRadius:
+                      "7px",
+
+                    padding:
+                      "6px 9px",
+
+                    fontWeight:
+                      "800",
+
+                    cursor:
+                      "pointer",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+
+      <div
+        style={{
+          marginTop:
+            "7px",
+
+          color:
+            "#6f6575",
+
+          fontSize:
+            "9px",
+
+          lineHeight:
+            1.45,
+        }}
+      >
+        If the video plays here, HairGrab has the file selected and it will be included when you save the product.
+      </div>
+    </div>
+  );
+}
+
+
+function ReviewMediaPreview({
+  images,
+  videos,
+}: {
+  images:
+    File[];
+  videos:
+    File[];
+}) {
+  const imageUrls =
+    useMemo(
+      () =>
+        images.map(
+          (file) =>
+            URL.createObjectURL(
+              file,
+            ),
         ),
+      [images],
+    );
+
+  const videoUrls =
+    useMemo(
+      () =>
+        videos.map(
+          (file) =>
+            URL.createObjectURL(
+              file,
+            ),
+        ),
+      [videos],
+    );
+
+  useEffect(
+    () => () => {
+      for (
+        const url of
+        [
+          ...imageUrls,
+          ...videoUrls,
+        ]
+      ) {
+        URL.revokeObjectURL(
+          url,
+        );
+      }
+    },
+    [
+      imageUrls,
+      videoUrls,
+    ],
+  );
+
+  return (
+    <div>
+      {images.length > 0 && (
+        <div
+          style={{
+            display:
+              "grid",
+
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(110px, 1fr))",
+
+            gap:
+              "8px",
+          }}
+        >
+          {images.map(
+            (
+              file,
+              index,
+            ) => (
+              <div
+                key={`review-image-${file.name}-${index}`}
+                style={{
+                  border:
+                    "1px solid #eadff0",
+
+                  borderRadius:
+                    "9px",
+
+                  overflow:
+                    "hidden",
+
+                  background:
+                    "#faf7fc",
+                }}
+              >
+                <img
+                  src={
+                    imageUrls[index]
+                  }
+                  alt={
+                    file.name
+                  }
+                  style={{
+                    display:
+                      "block",
+
+                    width:
+                      "100%",
+
+                    aspectRatio:
+                      "1 / 1",
+
+                    objectFit:
+                      "cover",
+                  }}
+                />
+              </div>
+            ),
+          )}
+        </div>
+      )}
+
+      {videos.length > 0 && (
+        <div
+          style={{
+            display:
+              "grid",
+
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(220px, 1fr))",
+
+            gap:
+              "10px",
+
+            marginTop:
+              images.length > 0
+                ? "12px"
+                : "0",
+          }}
+        >
+          {videos.map(
+            (
+              file,
+              index,
+            ) => (
+              <div
+                key={`review-video-${file.name}-${index}`}
+                style={{
+                  border:
+                    "1px solid #eadff0",
+
+                  borderRadius:
+                    "9px",
+
+                  overflow:
+                    "hidden",
+
+                  background:
+                    "#faf7fc",
+                }}
+              >
+                <video
+                  src={
+                    videoUrls[index]
+                  }
+                  controls
+                  preload="metadata"
+                  playsInline
+                  style={{
+                    display:
+                      "block",
+
+                    width:
+                      "100%",
+
+                    aspectRatio:
+                      "16 / 9",
+
+                    objectFit:
+                      "contain",
+
+                    background:
+                      "#140c18",
+                  }}
+                />
+
+                <div
+                  style={{
+                    padding:
+                      "7px 9px",
+
+                    color:
+                      "#4B1678",
+
+                    fontSize:
+                      "9px",
+
+                    fontWeight:
+                      "800",
+
+                    overflow:
+                      "hidden",
+
+                    textOverflow:
+                      "ellipsis",
+
+                    whiteSpace:
+                      "nowrap",
+                  }}
+                  title={
+                    file.name
+                  }
+                >
+                  {file.name}
+                </div>
+              </div>
+            ),
+          )}
+        </div>
       )}
     </div>
   );
