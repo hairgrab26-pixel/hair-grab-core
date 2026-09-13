@@ -1430,14 +1430,6 @@ export const action =
           payloadRaw,
         ) as ProductPayload;
 
-      const saveAsDraft =
-        String(
-          formData.get(
-            "saveAsDraft",
-          ) ||
-          "",
-        ) === "true";
-
       if (
         payload.shippingMethod !==
           "Free Shipping" &&
@@ -1462,7 +1454,6 @@ export const action =
       }
 
       if (
-        !saveAsDraft &&
         !payload.description
           ?.trim()
       ) {
@@ -1490,44 +1481,17 @@ export const action =
         payload.variants
           .length === 0
       ) {
-        if (saveAsDraft) {
-          payload.variants = [
-            {
-              label: "Draft",
-              length: "",
-              option: "",
-              color:
-                payload.colors?.[0] ||
-                "Natural / 1B",
-              price: "0",
-              salePrice: "",
-              inventory: "",
-              sku: "",
-            },
-          ];
-        } else {
-          return {
-            success: false,
-            message:
-              "At least one product variant is required.",
-          };
-        }
+        return {
+          success: false,
+          message:
+            "At least one product variant is required.",
+        };
       }
 
       for (
         const variant of
         payload.variants
       ) {
-        if (
-          saveAsDraft &&
-          !String(
-            variant.price ||
-            "",
-          ).trim()
-        ) {
-          variant.price = "0";
-        }
-
         const price =
           Number(
             variant.price,
@@ -2052,24 +2016,12 @@ export const action =
       }> = [];
 
       const productTypeDisplay =
-        payload.productType === "WIG"
-          ? "Wigs"
-          : payload.productType === "BUNDLE"
-            ? "Bundles"
-            : payload.productType === "CLOSURE_FRONTAL"
-              ? "Closures & Frontals"
-              : payload.productType === "EXTENSION"
-                ? "Extensions"
-                : payload.productType === "BRAIDING_HAIR"
-                  ? "Braiding Hair"
-                  : payload.productType === "HAIR_ESSENTIAL"
-                    ? "Hair Essentials"
-                    : productTypes.find(
-                        (type) =>
-                          type.value ===
-                          payload.productType,
-                      )?.label ||
-                      payload.productType;
+        productTypes.find(
+          (type) =>
+            type.value ===
+            payload.productType,
+        )?.label ||
+        payload.productType;
 
       const selectedLengthValues =
         Array.from(
@@ -2799,12 +2751,7 @@ export const action =
         success: true,
 
         message:
-          saveAsDraft
-            ? "Draft saved. You can continue editing it from My Products."
-            : "Product saved successfully. HairGrab received it for review.",
-
-        draftSaved:
-          saveAsDraft,
+          "Product saved successfully as a Shopify draft.",
 
         shopifyProductId:
           String(
@@ -3512,24 +3459,6 @@ export default function SellerAddProductPage() {
     saveFetcher.data ||
     actionData;
 
-  useEffect(
-    () => {
-      if (
-        saveResult?.success &&
-        saveResult?.draftSaved &&
-        saveResult?.sellerProductId
-      ) {
-        window.location.href =
-          `/seller/edit-product/${saveResult.sellerProductId}`;
-      }
-    },
-    [
-      saveResult?.success,
-      saveResult?.draftSaved,
-      saveResult?.sellerProductId,
-    ],
-  );
-
   const [
     reviewing,
     setReviewing,
@@ -3673,17 +3602,11 @@ export default function SellerAddProductPage() {
   useEffect(
     () => {
       setOptionsAreVariants(
-        productType === "BUNDLE" &&
-        selectedOptions.includes(
-          "BUNDLE_DEAL",
-        )
-          ? false
-          : selectedOptions.length > 1,
+        selectedOptions.length > 1,
       );
     },
     [
-      productType,
-      selectedOptions,
+      selectedOptions.length,
     ],
   );
 
@@ -3954,13 +3877,6 @@ export default function SellerAddProductPage() {
       ],
     );
 
-  const isBundleDeal =
-    productType ===
-      "BUNDLE" &&
-    selectedOptions.includes(
-      "BUNDLE_DEAL",
-    );
-
   const variantRows =
     useMemo<
       VariantRow[]
@@ -3990,41 +3906,6 @@ export default function SellerAddProductPage() {
               option:
                 "",
 
-              color:
-                selectedColors[0] ||
-                "Natural / 1B",
-            },
-          ];
-        }
-
-        if (
-          isBundleDeal
-        ) {
-          if (
-            selectedLengths.length ===
-            0
-          ) {
-            return [];
-          }
-
-          return [
-            {
-              key:
-                `BUNDLE_DEAL__${selectedLengths.join(
-                  "_",
-                )}`,
-              label:
-                `${selectedLengths
-                  .map(
-                    (length) =>
-                      `${length}"`,
-                  )
-                  .join(
-                    " / ",
-                  )} Bundle Deal`,
-              length: "",
-              option:
-                "BUNDLE_DEAL",
               color:
                 selectedColors[0] ||
                 "Natural / 1B",
@@ -4114,7 +3995,6 @@ export default function SellerAddProductPage() {
       },
       [
         productType,
-        isBundleDeal,
         selectedLengths,
         optionsAreVariants,
         selectedOptions,
@@ -5175,14 +5055,10 @@ export default function SellerAddProductPage() {
   }, [csvImportFetcher.data]);
 
 
-  function saveProduct(
-    saveAsDraft = false,
-  ) {
+  function saveProduct() {
     if (
-      !productType ||
-      !title.trim() ||
-      (!saveAsDraft &&
-        !ready)
+      !ready ||
+      !productType
     ) {
       return;
     }
@@ -5249,22 +5125,7 @@ export default function SellerAddProductPage() {
         showOnMap,
 
         variants:
-          (variantRows.length > 0
-            ? variantRows
-            : saveAsDraft
-              ? [
-                  {
-                    key: "DRAFT",
-                    label: "Draft",
-                    length: "",
-                    option: "",
-                    color:
-                      selectedColors[0] ||
-                      "Natural / 1B",
-                  },
-                ]
-              : []
-          ).map(
+          variantRows.map(
             (
               row,
             ) => ({
@@ -5284,9 +5145,7 @@ export default function SellerAddProductPage() {
                 variantValues[
                   row.key
                 ]?.price ||
-                (saveAsDraft
-                  ? "0"
-                  : ""),
+                "",
 
               salePrice:
                 onSale
@@ -5320,13 +5179,6 @@ export default function SellerAddProductPage() {
       JSON.stringify(
         payload,
       ),
-    );
-
-    formData.append(
-      "saveAsDraft",
-      saveAsDraft
-        ? "true"
-        : "false",
     );
 
     for (
@@ -5736,16 +5588,8 @@ export default function SellerAddProductPage() {
                       thStyle
                     }
                   >
-                    {onSale
-                      ? "Regular Price"
-                      : "Price"}
+                    Price
                   </th>
-
-                  {onSale && (
-                    <th style={thStyle}>
-                      Sale Price
-                    </th>
-                  )}
 
                   <th
                     style={
@@ -5797,18 +5641,6 @@ export default function SellerAddProductPage() {
                           ]?.price
                         }
                       </td>
-
-                      {onSale && (
-                        <td style={tdStyle}>
-                          $
-                          {
-                            variantValues[
-                              row.key
-                            ]?.salePrice ||
-                            "—"
-                          }
-                        </td>
-                      )}
 
                       <td
                         style={
@@ -5883,8 +5715,8 @@ export default function SellerAddProductPage() {
                 saveResult?.success,
               )
             }
-            onClick={() =>
-              saveProduct(false)
+            onClick={
+              saveProduct
             }
             style={
               primaryButton
@@ -5896,34 +5728,6 @@ export default function SellerAddProductPage() {
                 ? "✓ Product Saved"
                 : "Save Product"}
           </button>
-
-          {saveResult?.success && (
-            <>
-              <a
-                href="/seller/add-product"
-                style={{
-                  ...primaryButton,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                }}
-              >
-                + Add Another Product
-              </a>
-
-              <a
-                href="/seller/products"
-                style={{
-                  ...secondaryButton,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                }}
-              >
-                View My Products
-              </a>
-            </>
-          )}
         </div>
 
         <div
@@ -5941,7 +5745,9 @@ export default function SellerAddProductPage() {
               "10px",
           }}
         >
-          Once you save your product, HairGrab receives it for review. After approval, it can be published to the marketplace.
+          Products are saved
+          to Shopify as DRAFT
+          during testing.
         </div>
       </PageShell>
     );
@@ -6985,39 +6791,13 @@ export default function SellerAddProductPage() {
                     }
                     onClick={() =>
                       setSelectedOptions(
-                        (current) => {
-                          if (
-                            productType ===
-                              "BUNDLE" &&
-                            item.value ===
-                              "BUNDLE_DEAL"
-                          ) {
-                            return current.includes(
-                              "BUNDLE_DEAL",
-                            )
-                              ? []
-                              : [
-                                  "BUNDLE_DEAL",
-                                ];
-                          }
-
-                          if (
-                            productType ===
-                              "BUNDLE" &&
-                            current.includes(
-                              "BUNDLE_DEAL",
-                            )
-                          ) {
-                            return [
-                              item.value,
-                            ];
-                          }
-
-                          return toggleValue(
+                        (
+                          current,
+                        ) =>
+                          toggleValue(
                             current,
                             item.value,
-                          );
-                        },
+                          ),
                       )
                     }
                   />
@@ -7702,25 +7482,6 @@ export default function SellerAddProductPage() {
               >
                 Select at least
                 one length above.
-              </div>
-            )}
-
-          {isBundleDeal &&
-            selectedLengths.length > 0 && (
-              <div
-                style={{
-                  marginBottom: "12px",
-                  padding: "12px",
-                  border: "1px solid #e2d1ef",
-                  borderRadius: "10px",
-                  background: "#f7f0fb",
-                  color: "#4B1678",
-                  fontSize: "11px",
-                  lineHeight: 1.5,
-                  fontWeight: 700,
-                }}
-              >
-                Bundle Deal pricing is one price for the complete set: {selectedLengths.map((length) => `${length}"`).join(" / ")}. Enter the full deal price below.
               </div>
             )}
 
@@ -8910,43 +8671,7 @@ export default function SellerAddProductPage() {
           sectionStyle
         }
       >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, .65fr) minmax(0, 1fr)",
-            gap: "10px",
-          }}
-        >
-          <button
-            type="button"
-            disabled={
-              saving ||
-              !productType ||
-              !title.trim()
-            }
-            onClick={() =>
-              saveProduct(true)
-            }
-            style={{
-              ...secondaryButton,
-              opacity:
-                !productType ||
-                !title.trim()
-                  ? 0.45
-                  : 1,
-              cursor:
-                !productType ||
-                !title.trim()
-                  ? "not-allowed"
-                  : "pointer",
-            }}
-          >
-            {saving
-              ? "Saving..."
-              : "Save Draft"}
-          </button>
-
-          <button
+        <button
           type="button"
           disabled={
             !ready
@@ -8975,7 +8700,6 @@ export default function SellerAddProductPage() {
         >
           Review Product
         </button>
-        </div>
       </div>
       </>)}
     </PageShell>
