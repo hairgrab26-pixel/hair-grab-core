@@ -903,7 +903,10 @@ export default function SellerStorePreviewPage() {
           }
 
           .hg-preview-banner {
-            height: 150px !important;
+            aspect-ratio: 2.2 / 1 !important;
+            min-height: 170px !important;
+            max-height: none !important;
+            height: auto !important;
           }
 
           .hg-preview-profile {
@@ -1094,8 +1097,17 @@ export default function SellerStorePreviewPage() {
           <div
             className="hg-preview-banner"
             style={{
-              height:
-                "230px",
+              width:
+                "100%",
+
+              aspectRatio:
+                "4 / 1",
+
+              minHeight:
+                "220px",
+
+              maxHeight:
+                "360px",
 
               background:
                 seller.bannerUrl
@@ -1130,6 +1142,12 @@ export default function SellerStorePreviewPage() {
 
                   objectFit:
                     "cover",
+
+                  objectPosition:
+                    "center",
+
+                  display:
+                    "block",
                 }}
               />
             ) : (
