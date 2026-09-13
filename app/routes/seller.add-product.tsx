@@ -51,6 +51,7 @@ type VariantRow = {
 
 type VariantData = {
   price: string;
+  salePrice: string;
   inventory: string;
   sku: string;
 };
@@ -95,6 +96,7 @@ type ProductPayload = {
     option: string;
     color: string;
     price: string;
+    salePrice?: string;
     inventory: string;
     sku: string;
     sourceOptionValues?: string[];
@@ -1509,6 +1511,42 @@ export const action =
               `Enter a valid price for ${variant.label}.`,
           };
         }
+
+        const salePriceRaw =
+          String(
+            variant.salePrice ||
+            "",
+          ).trim();
+
+        if (salePriceRaw) {
+          const salePrice =
+            Number(
+              salePriceRaw,
+            );
+
+          if (
+            !Number.isFinite(
+              salePrice,
+            ) ||
+            salePrice < 0
+          ) {
+            return {
+              success: false,
+              message:
+                `Enter a valid sale price for ${variant.label}.`,
+            };
+          }
+
+          if (
+            salePrice >= price
+          ) {
+            return {
+              success: false,
+              message:
+                `Sale price for ${variant.label} must be lower than the regular price.`,
+            };
+          }
+        }
       }
 
       const imageFiles =
@@ -1897,8 +1935,18 @@ export const action =
 
               price:
                 Number(
+                  variant.salePrice ||
                   variant.price,
                 ),
+
+              ...(variant.salePrice
+                ? {
+                    compareAtPrice:
+                      Number(
+                        variant.price,
+                      ),
+                  }
+                : {}),
 
               ...(variant.sku
                 ?.trim()
@@ -3734,6 +3782,12 @@ export default function SellerAddProductPage() {
     useState("");
 
   const [
+    onSale,
+    setOnSale,
+  ] =
+    useState(false);
+
+  const [
     quickInventory,
     setQuickInventory,
   ] =
@@ -3954,6 +4008,7 @@ export default function SellerAddProductPage() {
       string,
     field:
       | "price"
+      | "salePrice"
       | "inventory"
       | "sku",
     value:
@@ -3970,6 +4025,12 @@ export default function SellerAddProductPage() {
             current[
               key
             ]?.price ||
+            "",
+
+          salePrice:
+            current[
+              key
+            ]?.salePrice ||
             "",
 
           inventory:
@@ -4163,6 +4224,12 @@ export default function SellerAddProductPage() {
                 2,
               ),
 
+            salePrice:
+              next[
+                row.key
+              ]?.salePrice ||
+              "",
+
             inventory:
               next[
                 row.key
@@ -4205,6 +4272,12 @@ export default function SellerAddProductPage() {
           next[row.key] = {
             price:
               quickPrice,
+
+            salePrice:
+              next[
+                row.key
+              ]?.salePrice ||
+              "",
 
             inventory:
               next[
@@ -4250,6 +4323,12 @@ export default function SellerAddProductPage() {
               next[
                 row.key
               ]?.price ||
+              "",
+
+            salePrice:
+              next[
+                row.key
+              ]?.salePrice ||
               "",
 
             inventory:
@@ -4387,12 +4466,45 @@ export default function SellerAddProductPage() {
     variantRows.every(
       (
         row,
-      ) =>
-        Boolean(
-          variantValues[
-            row.key
-          ]?.price,
-        ),
+      ) => {
+        const regularPrice =
+          Number(
+            variantValues[
+              row.key
+            ]?.price ||
+            "",
+          );
+
+        if (
+          !Number.isFinite(
+            regularPrice,
+          ) ||
+          regularPrice < 0
+        ) {
+          return false;
+        }
+
+        if (!onSale) {
+          return true;
+        }
+
+        const salePrice =
+          Number(
+            variantValues[
+              row.key
+            ]?.salePrice ||
+            "",
+          );
+
+        return (
+          Number.isFinite(
+            salePrice,
+          ) &&
+          salePrice >= 0 &&
+          salePrice <
+            regularPrice
+        );
+      },
     );
 
   const flatRateIsValid =
@@ -5035,6 +5147,14 @@ export default function SellerAddProductPage() {
                 ]?.price ||
                 "",
 
+              salePrice:
+                onSale
+                  ? variantValues[
+                      row.key
+                    ]?.salePrice ||
+                    ""
+                  : "",
+
               inventory:
                 variantValues[
                   row.key
@@ -5137,6 +5257,38 @@ export default function SellerAddProductPage() {
             }
           </strong>
         </p>
+
+        {onSale && (
+          <div
+            style={{
+              margin:
+                "12px 0 16px",
+
+              padding:
+                "11px 12px",
+
+              border:
+                "1px solid #edd8a6",
+
+              borderRadius:
+                "9px",
+
+              background:
+                "#fff8e8",
+
+              color:
+                "#6f5516",
+
+              fontSize:
+                "11px",
+
+              fontWeight:
+                "800",
+            }}
+          >
+            SALE PRODUCT — each variant will use the Sale Price as the shopper price and the Regular Price as the crossed-out compare-at price.
+          </div>
+        )}
 
         {saveResult?.message && (
           <div
@@ -7338,6 +7490,104 @@ export default function SellerAddProductPage() {
             <>
               <div
                 style={{
+                  marginBottom:
+                    "14px",
+
+                  padding:
+                    "13px",
+
+                  border:
+                    "1px solid #e2d5eb",
+
+                  borderRadius:
+                    "10px",
+
+                  background:
+                    onSale
+                      ? "#fff8e8"
+                      : "#fcf9fe",
+                }}
+              >
+                <label
+                  style={{
+                    display:
+                      "flex",
+
+                    gap:
+                      "9px",
+
+                    alignItems:
+                      "flex-start",
+
+                    cursor:
+                      "pointer",
+
+                    color:
+                      "#4B1678",
+
+                    fontWeight:
+                      "800",
+
+                    fontSize:
+                      "12px",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={
+                      onSale
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      setOnSale(
+                        event.target
+                          .checked,
+                      )
+                    }
+                    style={{
+                      width:
+                        "17px",
+
+                      height:
+                        "17px",
+
+                      accentColor:
+                        "#4B1678",
+                    }}
+                  />
+
+                  <span>
+                    This product is on sale
+                    <span
+                      style={{
+                        display:
+                          "block",
+
+                        marginTop:
+                          "3px",
+
+                        color:
+                          "#756b79",
+
+                        fontSize:
+                          "10px",
+
+                        fontWeight:
+                          "400",
+
+                        lineHeight:
+                          1.45,
+                      }}
+                    >
+                      Turn this on to enter a Sale Price for each variant. HairGrab will send the regular price and sale price to Shopify so the product can appear automatically in On Sale.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <div
+                style={{
                   overflowX:
                     "auto",
                 }}
@@ -7348,7 +7598,9 @@ export default function SellerAddProductPage() {
                       "100%",
 
                     minWidth:
-                      "620px",
+                      onSale
+                        ? "760px"
+                        : "620px",
 
                     borderCollapse:
                       "collapse",
@@ -7374,8 +7626,20 @@ export default function SellerAddProductPage() {
                           thStyle
                         }
                       >
-                        Price *
+                        {onSale
+                          ? "Regular Price *"
+                          : "Price *"}
                       </th>
+
+                      {onSale && (
+                        <th
+                          style={
+                            thStyle
+                          }
+                        >
+                          Sale Price *
+                        </th>
+                      )}
 
                       <th
                         style={
@@ -7405,6 +7669,9 @@ export default function SellerAddProductPage() {
                             row.key
                           ] || {
                             price:
+                              "",
+
+                            salePrice:
                               "",
 
                             inventory:
@@ -7457,6 +7724,38 @@ export default function SellerAddProductPage() {
                                 }
                               />
                             </td>
+
+                            {onSale && (
+                              <td
+                                style={
+                                  tdStyle
+                                }
+                              >
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={
+                                    data.salePrice
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) =>
+                                    setVariantField(
+                                      row.key,
+                                      "salePrice",
+                                      event
+                                        .target
+                                        .value,
+                                    )
+                                  }
+                                  placeholder="Sale price"
+                                  style={
+                                    fieldStyle
+                                  }
+                                />
+                              </td>
+                            )}
 
                             <td
                               style={
