@@ -874,30 +874,6 @@ export const action = async ({
           storefrontPublished:
             wantsStoreLive,
           returnPolicy,
-          showFeaturedCollection:
-            formData.get(
-              "showFeaturedCollection",
-            ) === "on",
-          showNewArrivalsCollection:
-            formData.get(
-              "showNewArrivalsCollection",
-            ) === "on",
-          showOnSaleCollection:
-            formData.get(
-              "showOnSaleCollection",
-            ) === "on",
-          showCustomCollections:
-            formData.get(
-              "showCustomCollections",
-            ) === "on",
-          showGallery:
-            formData.get(
-              "showGallery",
-            ) === "on",
-          showReviews:
-            formData.get(
-              "showReviews",
-            ) === "on",
           useStoreHours: !alwaysOpen,
           showStoreHours:
             !alwaysOpen &&
@@ -968,6 +944,44 @@ export const action = async ({
         success: true,
         message:
           "Your HairGrab storefront settings were saved.",
+      };
+    }
+
+    if (intent === "saveStoreSections") {
+      await db.seller.update({
+        where: { id: seller.id },
+        data: {
+          showFeaturedCollection:
+            formData.get(
+              "showFeaturedCollection",
+            ) === "on",
+          showNewArrivalsCollection:
+            formData.get(
+              "showNewArrivalsCollection",
+            ) === "on",
+          showOnSaleCollection:
+            formData.get(
+              "showOnSaleCollection",
+            ) === "on",
+          showCustomCollections:
+            formData.get(
+              "showCustomCollections",
+            ) === "on",
+          showGallery:
+            formData.get(
+              "showGallery",
+            ) === "on",
+          showReviews:
+            formData.get(
+              "showReviews",
+            ) === "on",
+        },
+      });
+
+      return {
+        success: true,
+        message:
+          "Your storefront sections were saved.",
       };
     }
 
@@ -1516,6 +1530,53 @@ export default function SellerSettingsPage() {
     actionData?.message ===
       "Your HairGrab storefront settings were saved.";
 
+  const hasBrandBasics =
+    Boolean(seller.storeDescription) &&
+    Boolean(seller.logoUrl) &&
+    Boolean(seller.bannerUrl);
+
+  const hasFulfillment =
+    seller.sellsNationwide ||
+    seller.offersLocalPickup ||
+    seller.offersLocalDelivery ||
+    seller.offersSameDayDelivery;
+
+  const setupItems = [
+    {
+      label: "Brand",
+      complete: hasBrandBasics,
+      detail: "About, logo and banner",
+    },
+    {
+      label: "Fulfillment",
+      complete: hasFulfillment,
+      detail: "At least one delivery option",
+    },
+    {
+      label: "Returns",
+      complete: Boolean(seller.returnPolicy),
+      detail: "Return policy selected",
+    },
+    {
+      label: "Products",
+      complete: stats.activeProducts > 0,
+      detail:
+        stats.activeProducts > 0
+          ? `${stats.activeProducts} Active`
+          : "Add your first Active product",
+    },
+    {
+      label: "Store",
+      complete: seller.storefrontPublished,
+      detail: seller.storefrontPublished
+        ? "Live to shoppers"
+        : "Hidden until you publish",
+    },
+  ];
+
+  const completedSetupItems =
+    setupItems.filter((item) => item.complete).length;
+
   return (
     <div className="hg-page">
       <style>{`
@@ -1572,6 +1633,116 @@ export default function SellerSettingsPage() {
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 10px;
           margin: 18px 0 22px;
+        }
+
+        .hg-setup {
+          background: white;
+          border: 1px solid #e5dce9;
+          border-radius: 15px;
+          padding: 16px;
+          margin: 18px 0 22px;
+          box-shadow: 0 3px 12px rgba(45,27,54,.035);
+        }
+
+        .hg-setup-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+
+        .hg-setup-title {
+          color: #4B1678;
+          font-size: 15px;
+          font-weight: 900;
+        }
+
+        .hg-setup-count {
+          color: #4B1678;
+          font-size: 11px;
+          font-weight: 900;
+          background: #f2eafa;
+          border: 1px solid #e2d1ef;
+          border-radius: 999px;
+          padding: 6px 9px;
+        }
+
+        .hg-setup-grid {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        .hg-setup-item {
+          border: 1px solid #eee7f2;
+          border-radius: 10px;
+          padding: 10px;
+          min-height: 70px;
+          background: #fbf9fc;
+        }
+
+        .hg-setup-item strong {
+          display: block;
+          font-size: 11px;
+          color: #35263e;
+          margin-bottom: 4px;
+        }
+
+        .hg-setup-item span {
+          display: block;
+          color: #817686;
+          font-size: 9px;
+          line-height: 1.35;
+        }
+
+        .hg-section-heading {
+          grid-column: 1 / -1;
+          margin-top: 8px;
+          padding: 4px 2px 0;
+        }
+
+        .hg-section-heading h2 {
+          margin: 0;
+          color: #4B1678;
+          font-size: 20px;
+        }
+
+        .hg-section-heading p {
+          margin: 4px 0 0;
+          color: #756b79;
+          font-size: 11px;
+          line-height: 1.45;
+        }
+
+        .hg-span-2 {
+          grid-column: 1 / -1;
+        }
+
+        .hg-hours-details {
+          margin-top: 12px;
+          border: 1px solid #e7dced;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+
+        .hg-hours-details summary {
+          cursor: pointer;
+          list-style: none;
+          padding: 12px;
+          color: #4B1678;
+          font-size: 11px;
+          font-weight: 900;
+          background: #fbf9fc;
+        }
+
+        .hg-hours-details summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .hg-hours-details-body {
+          padding: 0 12px 10px;
         }
 
         .hg-card {
@@ -1847,6 +2018,18 @@ export default function SellerSettingsPage() {
             grid-template-columns: repeat(3, minmax(0, 1fr));
           }
 
+          .hg-setup-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .hg-span-2 {
+            grid-column: 1;
+          }
+
+          .hg-section-heading {
+            grid-column: 1;
+          }
+
           .hg-preview-button {
             width: 100%;
             justify-content: center;
@@ -1978,25 +2161,42 @@ export default function SellerSettingsPage() {
           />
         )}
 
-        <div className="hg-stats">
-          <MiniStat
-            value={String(
-              stats.activeProducts,
-            )}
-            label="Active Products"
-          />
-          <MiniStat
-            value={String(
-              stats.featuredProducts,
-            )}
-            label="Featured Products"
-          />
-          <MiniStat
-            value={String(
-              stats.customCollections,
-            )}
-            label="Collections"
-          />
+        <div className="hg-setup">
+          <div className="hg-setup-head">
+            <div>
+              <div className="hg-setup-title">
+                Store Setup
+              </div>
+              <div
+                style={{
+                  color: "#756b79",
+                  fontSize: "10px",
+                  marginTop: "3px",
+                }}
+              >
+                Finish the essentials, then publish when you are ready.
+              </div>
+            </div>
+
+            <div className="hg-setup-count">
+              {completedSetupItems}/5 complete
+            </div>
+          </div>
+
+          <div className="hg-setup-grid">
+            {setupItems.map((item) => (
+              <div
+                className="hg-setup-item"
+                key={item.label}
+              >
+                <strong>
+                  {item.complete ? "✓" : "○"}{" "}
+                  {item.label}
+                </strong>
+                <span>{item.detail}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         <Form
@@ -2010,491 +2210,420 @@ export default function SellerSettingsPage() {
           />
 
           <div className="hg-grid">
-            <Card
-              title="Store Visibility"
-              subtitle="Control whether shoppers can see your storefront. Hidden does not deactivate your seller account."
-            >
-              <div className="hg-visibility-grid">
-                <label className="hg-visibility-option">
-                  <input
-                    type="radio"
-                    name="storefrontVisibility"
-                    value="LIVE"
-                    defaultChecked={
-                      seller.storefrontPublished
-                    }
-                  />
-                  <span>
-                    <strong
-                      style={{
-                        color: "#28743b",
-                        fontSize: "12px",
-                      }}
-                    >
-                      Live
-                    </strong>
-                    <span
-                      style={{
-                        display: "block",
-                        color: "#756b79",
-                        fontSize: "10px",
-                        lineHeight: 1.45,
-                        marginTop: "3px",
-                      }}
-                    >
-                      Shoppers can find and open your HairGrab store.
-                    </span>
-                  </span>
-                </label>
-
-                <label className="hg-visibility-option">
-                  <input
-                    type="radio"
-                    name="storefrontVisibility"
-                    value="HIDDEN"
-                    defaultChecked={
-                      !seller.storefrontPublished
-                    }
-                  />
-                  <span>
-                    <strong
-                      style={{
-                        color: "#4B1678",
-                        fontSize: "12px",
-                      }}
-                    >
-                      Hidden
-                    </strong>
-                    <span
-                      style={{
-                        display: "block",
-                        color: "#756b79",
-                        fontSize: "10px",
-                        lineHeight: 1.45,
-                        marginTop: "3px",
-                      }}
-                    >
-                      Keep your storefront off the public marketplace while you finish setup or take a temporary pause.
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <InfoBox>
-                To go Live, HairGrab requires a Store Logo, Hero / Banner, About the Brand, at least 1 Active Product, a fulfillment option, and a return policy. If anything is missing, HairGrab will keep the store Hidden and tell you exactly what to finish.
-              </InfoBox>
-            </Card>
+            <div className="hg-section-heading">
+              <h2>1. Brand & Store Status</h2>
+              <p>
+                Set up how your business appears on HairGrab and decide when shoppers can see it.
+              </p>
+            </div>
 
             <Card
-              title="Brand & About"
-              subtitle="What shoppers see first."
-            >
-              <Field
-                label="About the Brand"
-                name="storeDescription"
-                defaultValue={
-                  seller.storeDescription
-                }
-                multiline
-                help="Keep it short and easy to scan. Maximum 600 characters."
-              />
+                          title="Store Visibility"
+                          subtitle="Control whether shoppers can see your storefront. Hidden does not deactivate your seller account."
+                        >
+                          <div className="hg-visibility-grid">
+                            <label className="hg-visibility-option">
+                              <input
+                                type="radio"
+                                name="storefrontVisibility"
+                                value="LIVE"
+                                defaultChecked={
+                                  seller.storefrontPublished
+                                }
+                              />
+                              <span>
+                                <strong
+                                  style={{
+                                    color: "#28743b",
+                                    fontSize: "12px",
+                                  }}
+                                >
+                                  Live
+                                </strong>
+                                <span
+                                  style={{
+                                    display: "block",
+                                    color: "#756b79",
+                                    fontSize: "10px",
+                                    lineHeight: 1.45,
+                                    marginTop: "3px",
+                                  }}
+                                >
+                                  Shoppers can find and open your HairGrab store.
+                                </span>
+                              </span>
+                            </label>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: "12px",
-                  marginTop: "14px",
-                }}
-              >
-                <ImageUpload
-                  label="Store Logo"
-                  name="logoImage"
-                  currentUrl={seller.logoUrl}
-                  help="Recommended size: 1000 × 1000 px (square). Use a clear logo with space around the edges."
-                />
+                            <label className="hg-visibility-option">
+                              <input
+                                type="radio"
+                                name="storefrontVisibility"
+                                value="HIDDEN"
+                                defaultChecked={
+                                  !seller.storefrontPublished
+                                }
+                              />
+                              <span>
+                                <strong
+                                  style={{
+                                    color: "#4B1678",
+                                    fontSize: "12px",
+                                  }}
+                                >
+                                  Hidden
+                                </strong>
+                                <span
+                                  style={{
+                                    display: "block",
+                                    color: "#756b79",
+                                    fontSize: "10px",
+                                    lineHeight: 1.45,
+                                    marginTop: "3px",
+                                  }}
+                                >
+                                  Keep your storefront off the public marketplace while you finish setup or take a temporary pause.
+                                </span>
+                              </span>
+                            </label>
+                          </div>
 
-                <ImageUpload
-                  label="Hero / Banner"
-                  name="bannerImage"
-                  currentUrl={
-                    seller.bannerUrl
-                  }
-                  help="Recommended size: 1800 × 450 px (4:1). Keep important text, logos, and faces centered for the best desktop and mobile display."
-                  banner
-                />
-              </div>
-            </Card>
-
-            <Card
-              title="Business Positioning"
-              subtitle="Help HairGrab understand your business and help shoppers discover stores that fit what they are looking for. Select all that apply."
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gap: "10px",
-                }}
-              >
-                {[
-                  {
-                    value: "LUXURY",
-                    label: "Luxury Hair",
-                    description:
-                      "High-end hair business focused on exceptional quality, craftsmanship, customization, and/or an elevated shopping experience. Typically carries products in HairGrab's higher price ranges.",
-                  },
-                  {
-                    value: "PREMIUM",
-                    label: "Premium Hair",
-                    description:
-                      "Higher-quality hair and construction positioned above everyday or value offerings, without necessarily being luxury-priced.",
-                  },
-                  {
-                    value: "EVERYDAY",
-                    label: "Everyday Hair",
-                    description:
-                      "Hair designed for regular wear at accessible mid-range prices, balancing quality and affordability.",
-                  },
-                  {
-                    value: "VALUE",
-                    label: "Value Hair",
-                    description:
-                      "Budget-conscious hair focused on affordability and accessible pricing. Value does not mean low quality.",
-                  },
-                  {
-                    value: "CUSTOM_MADE_TO_ORDER",
-                    label: "Custom / Made-to-Order",
-                    description:
-                      "Specializes in products made, colored, constructed, customized, or prepared specifically for the shopper.",
-                  },
-                ].map((option) => (
-                  <label
-                    key={option.value}
-                    className="hg-check"
-                    style={{
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      name="businessPositioning"
-                      value={option.value}
-                      defaultChecked={seller.businessPositioning.includes(
-                        option.value,
-                      )}
-                      style={{
-                        accentColor: "#4B1678",
-                        marginTop: "3px",
-                      }}
-                    />
-                    <span>
-                      <strong>{option.label}</strong>
-                      <span
-                        style={{
-                          display: "block",
-                          color: "#756b79",
-                          fontSize: "10px",
-                          fontWeight: 400,
-                          lineHeight: 1.45,
-                          marginTop: "2px",
-                        }}
-                      >
-                        {option.description}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-
-              <InfoBox>
-                Select every option that genuinely describes your business.
-                These selections describe your store, not every product you sell.
-                HairGrab may classify individual products separately using product type,
-                price, and other marketplace criteria.
-              </InfoBox>
-            </Card>
+                          <InfoBox>
+                            To go Live, HairGrab requires a Store Logo, Hero / Banner, About the Brand, at least 1 Active Product, a fulfillment option, and a return policy. If anything is missing, HairGrab will keep the store Hidden and tell you exactly what to finish.
+                          </InfoBox>
+                        </Card>
 
             <Card
-              title="Storefront Sections"
-              subtitle="HairGrab fills the automatic sections for you. You only choose what to show and which products are Featured."
-            >
-              <div className="hg-system-collection">
-                <div className="hg-system-collection-title">
-                  Shop All — Automatic
-                </div>
-                <div className="hg-system-collection-text">
-                  Every Active HairGrab product appears here automatically. You never have to build this collection.
-                </div>
-              </div>
+                          title="Brand & About"
+                          subtitle="What shoppers see first."
+                        >
+                          <Field
+                            label="About the Brand"
+                            name="storeDescription"
+                            defaultValue={
+                              seller.storeDescription
+                            }
+                            multiline
+                            help="Keep it short and easy to scan. Maximum 600 characters."
+                          />
 
-              <div className="hg-system-collection">
-                <div className="hg-system-collection-title">
-                  New Arrivals — Automatic
-                </div>
-                <div className="hg-system-collection-text">
-                  HairGrab automatically fills this with your newest Active products.
-                </div>
-                <CheckRow
-                  name="showNewArrivalsCollection"
-                  defaultChecked={
-                    seller.showNewArrivalsCollection
-                  }
-                  label="Show New Arrivals on my store"
-                />
-              </div>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns:
+                                "repeat(auto-fit, minmax(180px, 1fr))",
+                              gap: "12px",
+                              marginTop: "14px",
+                            }}
+                          >
+                            <ImageUpload
+                              label="Store Logo"
+                              name="logoImage"
+                              currentUrl={seller.logoUrl}
+                              help="Recommended size: 1000 × 1000 px (square). Use a clear logo with space around the edges."
+                            />
 
-              <div className="hg-system-collection">
-                <div className="hg-system-collection-title">
-                  On Sale — Automatic
-                </div>
-                <div className="hg-system-collection-text">
-                  HairGrab automatically adds products that currently have sale pricing.
-                </div>
-                <CheckRow
-                  name="showOnSaleCollection"
-                  defaultChecked={
-                    seller.showOnSaleCollection
-                  }
-                  label="Show On Sale on my store"
-                />
-              </div>
+                            <ImageUpload
+                              label="Hero / Banner"
+                              name="bannerImage"
+                              currentUrl={
+                                seller.bannerUrl
+                              }
+                              help="Recommended size: 1800 × 450 px (4:1). Keep important text, logos, and faces centered for the best desktop and mobile display."
+                              banner
+                            />
+                          </div>
+                        </Card>
 
-              <div className="hg-system-collection">
-                <div className="hg-system-collection-title">
-                  Featured Products — You Choose
-                </div>
-                <div className="hg-system-collection-text">
-                  Select up to 5 Active products in the Featured Products section below.
-                </div>
-                <CheckRow
-                  name="showFeaturedCollection"
-                  defaultChecked={
-                    seller.showFeaturedCollection
-                  }
-                  label="Show Featured Products on my store"
-                />
-              </div>
+            <div className="hg-span-2">
+              <Card
+                            title="Business Positioning"
+                            subtitle="Help HairGrab understand your business and help shoppers discover stores that fit what they are looking for. Select all that apply."
+                          >
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: "10px",
+                              }}
+                            >
+                              {[
+                                {
+                                  value: "LUXURY",
+                                  label: "Luxury Hair",
+                                  description:
+                                    "High-end hair business focused on exceptional quality, craftsmanship, customization, and/or an elevated shopping experience. Typically carries products in HairGrab's higher price ranges.",
+                                },
+                                {
+                                  value: "PREMIUM",
+                                  label: "Premium Hair",
+                                  description:
+                                    "Higher-quality hair and construction positioned above everyday or value offerings, without necessarily being luxury-priced.",
+                                },
+                                {
+                                  value: "EVERYDAY",
+                                  label: "Everyday Hair",
+                                  description:
+                                    "Hair designed for regular wear at accessible mid-range prices, balancing quality and affordability.",
+                                },
+                                {
+                                  value: "VALUE",
+                                  label: "Value Hair",
+                                  description:
+                                    "Budget-conscious hair focused on affordability and accessible pricing. Value does not mean low quality.",
+                                },
+                                {
+                                  value: "CUSTOM_MADE_TO_ORDER",
+                                  label: "Custom / Made-to-Order",
+                                  description:
+                                    "Specializes in products made, colored, constructed, customized, or prepared specifically for the shopper.",
+                                },
+                              ].map((option) => (
+                                <label
+                                  key={option.value}
+                                  className="hg-check"
+                                  style={{
+                                    alignItems: "flex-start",
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    name="businessPositioning"
+                                    value={option.value}
+                                    defaultChecked={seller.businessPositioning.includes(
+                                      option.value,
+                                    )}
+                                    style={{
+                                      accentColor: "#4B1678",
+                                      marginTop: "3px",
+                                    }}
+                                  />
+                                  <span>
+                                    <strong>{option.label}</strong>
+                                    <span
+                                      style={{
+                                        display: "block",
+                                        color: "#756b79",
+                                        fontSize: "10px",
+                                        fontWeight: 400,
+                                        lineHeight: 1.45,
+                                        marginTop: "2px",
+                                      }}
+                                    >
+                                      {option.description}
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
 
-              <div className="hg-system-collection">
-                <div className="hg-system-collection-title">
-                  Custom Collections — You Build
-                </div>
-                <div className="hg-system-collection-text">
-                  Create groups such as Burmese Curly, Glueless Wigs, Raw Hair, or Under $200, then check the products that belong in each one.
-                </div>
-                <CheckRow
-                  name="showCustomCollections"
-                  defaultChecked={
-                    seller.showCustomCollections
-                  }
-                  label="Show Custom Collections on my store"
-                />
-              </div>
+                            <InfoBox>
+                              Select every option that genuinely describes your business.
+                              These selections describe your store, not every product you sell.
+                              HairGrab may classify individual products separately using product type,
+                              price, and other marketplace criteria.
+                            </InfoBox>
+                          </Card>
+            </div>
 
-              <CheckRow
-                name="showGallery"
-                defaultChecked={seller.showGallery}
-                label="Show Gallery & Video"
-              />
-
-              <CheckRow
-                name="showReviews"
-                defaultChecked={seller.showReviews}
-                label="Show Reviews"
-              />
-            </Card>
-
-            <Card
-              title="Shipping & Fulfillment"
-              subtitle="These become shopper-facing store badges."
-            >
-              <CheckRow
-                name="sellsNationwide"
-                defaultChecked={
-                  seller.sellsNationwide
-                }
-                label="Nationwide Shipping"
-              />
-              <CheckRow
-                name="offersLocalPickup"
-                defaultChecked={
-                  seller.offersLocalPickup
-                }
-                label="Local Pickup"
-              />
-              <CheckRow
-                name="offersLocalDelivery"
-                defaultChecked={
-                  seller.offersLocalDelivery
-                }
-                label="Local Delivery"
-              />
-              <CheckRow
-                name="offersSameDayDelivery"
-                defaultChecked={
-                  seller.offersSameDayDelivery
-                }
-                label="Same-Day Delivery"
-              />
-
-              {(seller.city ||
-                seller.state) && (
-                <div
-                  style={{
-                    marginTop: "12px",
-                    color: "#756b79",
-                    fontSize: "11px",
-                  }}
-                >
-                  Store location shown to
-                  shoppers:{" "}
-                  {[
-                    seller.city,
-                    seller.state,
-                  ]
-                    .filter(Boolean)
-                    .join(", ")}
-                </div>
-              )}
-            </Card>
+            <div className="hg-section-heading">
+              <h2>2. How You Sell</h2>
+              <p>
+                Set your fulfillment, return policy, and availability.
+              </p>
+            </div>
 
             <Card
-              title="Returns"
-              subtitle="Choose the return window you offer shoppers."
-            >
-              <label>
-                <div className="hg-label">
-                  Return Policy
-                </div>
-                <select
-                  name="returnPolicy"
-                  defaultValue={
-                    seller.returnPolicy
-                  }
-                  className="hg-field"
-                >
-                  <option value="FINAL_SALE">
-                    Final Sale
-                  </option>
-                  <option value="7_DAY_RETURNS">
-                    7-Day Returns
-                  </option>
-                  <option value="14_DAY_RETURNS">
-                    14-Day Returns
-                  </option>
-                </select>
-              </label>
-            </Card>
+                          title="Shipping & Fulfillment"
+                          subtitle="These become shopper-facing store badges."
+                        >
+                          <CheckRow
+                            name="sellsNationwide"
+                            defaultChecked={
+                              seller.sellsNationwide
+                            }
+                            label="Nationwide Shipping"
+                          />
+                          <CheckRow
+                            name="offersLocalPickup"
+                            defaultChecked={
+                              seller.offersLocalPickup
+                            }
+                            label="Local Pickup"
+                          />
+                          <CheckRow
+                            name="offersLocalDelivery"
+                            defaultChecked={
+                              seller.offersLocalDelivery
+                            }
+                            label="Local Delivery"
+                          />
+                          <CheckRow
+                            name="offersSameDayDelivery"
+                            defaultChecked={
+                              seller.offersSameDayDelivery
+                            }
+                            label="Same-Day Delivery"
+                          />
+
+                          {(seller.city ||
+                            seller.state) && (
+                            <div
+                              style={{
+                                marginTop: "12px",
+                                color: "#756b79",
+                                fontSize: "11px",
+                              }}
+                            >
+                              Store location shown to
+                              shoppers:{" "}
+                              {[
+                                seller.city,
+                                seller.state,
+                              ]
+                                .filter(Boolean)
+                                .join(", ")}
+                            </div>
+                          )}
+                        </Card>
 
             <Card
-              title="Store Hours & Availability"
-              subtitle="Choose Always Open or set weekly hours. HairGrab keeps this simple."
-            >
-              <label className="hg-check">
-                <input
-                  type="checkbox"
-                  name="alwaysOpen"
-                  defaultChecked={
-                    seller.storeOpenOverride === "OPEN"
-                  }
-                  style={{
-                    accentColor: "#4B1678",
-                  }}
-                />
-                <span>
-                  <strong>Always Open — 24/7</strong>
-                  <span
-                    style={{
-                      display: "block",
-                      color: "#756b79",
-                      fontSize: "10px",
-                      fontWeight: 400,
-                      marginTop: "2px",
-                    }}
-                  >
-                    Choose this if you do not want HairGrab to use weekly business hours.
-                  </span>
-                </span>
-              </label>
+                          title="Returns"
+                          subtitle="Choose the return window you offer shoppers."
+                        >
+                          <label>
+                            <div className="hg-label">
+                              Return Policy
+                            </div>
+                            <select
+                              name="returnPolicy"
+                              defaultValue={
+                                seller.returnPolicy
+                              }
+                              className="hg-field"
+                            >
+                              <option value="FINAL_SALE">
+                                Final Sale
+                              </option>
+                              <option value="7_DAY_RETURNS">
+                                7-Day Returns
+                              </option>
+                              <option value="14_DAY_RETURNS">
+                                14-Day Returns
+                              </option>
+                            </select>
+                          </label>
+                        </Card>
 
-              <CheckRow
-                name="showStoreStatus"
-                defaultChecked={
-                  seller.showStoreStatus
-                }
-                label="Show Open / Closed status to shoppers"
-              />
+            <div className="hg-span-2">
+              <Card
+                            title="Store Hours & Availability"
+                            subtitle="Choose Always Open or set weekly hours. HairGrab keeps this simple."
+                          >
+                            <label className="hg-check">
+                              <input
+                                type="checkbox"
+                                name="alwaysOpen"
+                                defaultChecked={
+                                  seller.storeOpenOverride === "OPEN"
+                                }
+                                style={{
+                                  accentColor: "#4B1678",
+                                }}
+                              />
+                              <span>
+                                <strong>Always Open — 24/7</strong>
+                                <span
+                                  style={{
+                                    display: "block",
+                                    color: "#756b79",
+                                    fontSize: "10px",
+                                    fontWeight: 400,
+                                    marginTop: "2px",
+                                  }}
+                                >
+                                  Choose this if you do not want HairGrab to use weekly business hours.
+                                </span>
+                              </span>
+                            </label>
 
-              <CheckRow
-                name="showStoreHours"
-                defaultChecked={
-                  seller.showStoreHours
-                }
-                label="Show my weekly hours to shoppers"
-              />
+                            <CheckRow
+                              name="showStoreStatus"
+                              defaultChecked={
+                                seller.showStoreStatus
+                              }
+                              label="Show Open / Closed status to shoppers"
+                            />
 
-              <InfoBox>
-                If Always Open is off, HairGrab follows the weekly hours below.
-                These hours mainly guide local pickup, local delivery, and same-day availability.
-                Nationwide shipping remains available based on each product.
-              </InfoBox>
+                            <CheckRow
+                              name="showStoreHours"
+                              defaultChecked={
+                                seller.showStoreHours
+                              }
+                              label="Show my weekly hours to shoppers"
+                            />
 
-              <div
-                style={{
-                  marginTop: "14px",
-                }}
-              >
-                {hours.map((hour) => (
-                  <div
-                    className="hg-hours-row"
-                    key={hour.dayOfWeek}
-                  >
-                    <strong className="hg-hours-day">
-                      {hour.label}
-                    </strong>
+                            <InfoBox>
+                              If Always Open is off, HairGrab follows the weekly hours below.
+                              These hours mainly guide local pickup, local delivery, and same-day availability.
+                              Nationwide shipping remains available based on each product.
+                            </InfoBox>
 
-                    <input
-                      type="time"
-                      name={`day_${hour.dayOfWeek}_open`}
-                      defaultValue={
-                        hour.openTime
-                      }
-                      className="hg-field"
-                    />
+                            <details className="hg-hours-details">
+                              <summary>
+                                Edit Weekly Hours ▾
+                              </summary>
+                              <div className="hg-hours-details-body">
+                                {hours.map((hour) => (
+                                <div
+                                  className="hg-hours-row"
+                                  key={hour.dayOfWeek}
+                                >
+                                  <strong className="hg-hours-day">
+                                    {hour.label}
+                                  </strong>
 
-                    <input
-                      type="time"
-                      name={`day_${hour.dayOfWeek}_close`}
-                      defaultValue={
-                        hour.closeTime
-                      }
-                      className="hg-field"
-                    />
+                                  <input
+                                    type="time"
+                                    name={`day_${hour.dayOfWeek}_open`}
+                                    defaultValue={
+                                      hour.openTime
+                                    }
+                                    className="hg-field"
+                                  />
 
-                    <label
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 800,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        name={`day_${hour.dayOfWeek}_closed`}
-                        defaultChecked={
-                          hour.isClosed
-                        }
-                        style={{
-                          accentColor: "#4B1678",
-                        }}
-                      />{" "}
-                      Closed
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </Card>
+                                  <input
+                                    type="time"
+                                    name={`day_${hour.dayOfWeek}_close`}
+                                    defaultValue={
+                                      hour.closeTime
+                                    }
+                                    className="hg-field"
+                                  />
+
+                                  <label
+                                    style={{
+                                      fontSize: "10px",
+                                      fontWeight: 800,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      name={`day_${hour.dayOfWeek}_closed`}
+                                      defaultChecked={
+                                        hour.isClosed
+                                      }
+                                      style={{
+                                        accentColor: "#4B1678",
+                                      }}
+                                    />{" "}
+                                    Closed
+                                  </label>
+                                </div>
+                                ))}
+                              </div>
+                            </details>
+                          </Card>
+            </div>
           </div>
 
           <div className="hg-sticky">
@@ -2507,8 +2636,8 @@ export default function SellerSettingsPage() {
               {isSavingStore
                 ? "Saving your changes…"
                 : storeSaveSucceeded
-                  ? "✓ Your store settings were saved successfully."
-                  : "Save all store settings from this one page."}
+                  ? "✓ Your store basics were saved successfully."
+                  : "Save your brand, selling, and availability settings."}
             </div>
 
             <button
@@ -2524,495 +2653,576 @@ export default function SellerSettingsPage() {
                 ? "Saving…"
                 : storeSaveSucceeded
                   ? "✓ Saved"
-                  : "Save Store Settings"}
+                  : "Save Store Basics"}
             </button>
           </div>
         </Form>
 
+        <div className="hg-section-heading" style={{ marginTop: "24px" }}>
+          <h2>3. Build Your Storefront</h2>
+          <p>
+            Decide what shoppers see, then choose Featured Products and build any Custom Collections you want.
+          </p>
+        </div>
+
         <div
           className="hg-grid"
-          style={{ marginTop: "16px" }}
+          style={{ marginTop: "12px" }}
+        >
+          <Form method="post" className="hg-span-2">
+            <input
+              type="hidden"
+              name="intent"
+              value="saveStoreSections"
+            />
+
+            <Card
+                          title="Storefront Sections"
+                          subtitle="Choose which storefront sections shoppers see. HairGrab fills the automatic sections for you."
+                        >
+                          <div className="hg-system-collection">
+                            <div className="hg-system-collection-title">
+                              Shop All — Automatic
+                            </div>
+                            <div className="hg-system-collection-text">
+                              Every Active HairGrab product appears here automatically. You never have to build this collection.
+                            </div>
+                          </div>
+
+                          <div className="hg-system-collection">
+                            <div className="hg-system-collection-title">
+                              New Arrivals — Automatic
+                            </div>
+                            <div className="hg-system-collection-text">
+                              HairGrab automatically fills this with your newest Active products.
+                            </div>
+                            <CheckRow
+                              name="showNewArrivalsCollection"
+                              defaultChecked={
+                                seller.showNewArrivalsCollection
+                              }
+                              label="Show New Arrivals on my store"
+                            />
+                          </div>
+
+                          <div className="hg-system-collection">
+                            <div className="hg-system-collection-title">
+                              On Sale — Automatic
+                            </div>
+                            <div className="hg-system-collection-text">
+                              HairGrab automatically adds products that currently have sale pricing.
+                            </div>
+                            <CheckRow
+                              name="showOnSaleCollection"
+                              defaultChecked={
+                                seller.showOnSaleCollection
+                              }
+                              label="Show On Sale on my store"
+                            />
+                          </div>
+
+                          <div className="hg-system-collection">
+                            <div className="hg-system-collection-title">
+                              Featured Products — You Choose
+                            </div>
+                            <div className="hg-system-collection-text">
+                              Select up to 5 Active products in the Featured Products section below.
+                            </div>
+                            <CheckRow
+                              name="showFeaturedCollection"
+                              defaultChecked={
+                                seller.showFeaturedCollection
+                              }
+                              label="Show Featured Products on my store"
+                            />
+                          </div>
+
+                          <div className="hg-system-collection">
+                            <div className="hg-system-collection-title">
+                              Custom Collections — You Build
+                            </div>
+                            <div className="hg-system-collection-text">
+                              Create groups such as Burmese Curly, Glueless Wigs, Raw Hair, or Under $200, then check the products that belong in each one.
+                            </div>
+                            <CheckRow
+                              name="showCustomCollections"
+                              defaultChecked={
+                                seller.showCustomCollections
+                              }
+                              label="Show Custom Collections on my store"
+                            />
+                          </div>
+
+                          <CheckRow
+                            name="showGallery"
+                            defaultChecked={seller.showGallery}
+                            label="Show Gallery & Video"
+                          />
+
+                          <CheckRow
+                            name="showReviews"
+                            defaultChecked={seller.showReviews}
+                            label="Show Reviews"
+                          />
+                        </Card>
+
+            <button
+              type="submit"
+              className="hg-button"
+              style={{
+                marginTop: "12px",
+                width: "100%",
+              }}
+            >
+              Save Storefront Sections
+            </button>
+          </Form>
+
+          <Card
+                      title="Featured Products"
+                      subtitle="Choose up to 5 Active products shoppers should see first."
+                    >
+                      <Form method="post">
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="saveFeaturedProducts"
+                        />
+
+                        <FeaturedProductPicker
+                          products={products}
+                          selectedIds={featuredProductIds}
+                        />
+
+                        <button
+                          type="submit"
+                          className="hg-button"
+                          style={{
+                            marginTop: "12px",
+                            width: "100%",
+                          }}
+                        >
+                          Save Featured Products
+                        </button>
+                      </Form>
+                    </Card>
+
+          <Card
+                      title="Custom Collections"
+                      subtitle="These are optional groups you create yourself. Name it, choose an optional image, check the products that belong in it, then save."
+                    >
+                      <InfoBox>
+                        Shop All, New Arrivals, and On Sale are automatic — you do not build those here. Use Custom Collections only when you want your own shopper-facing group, such as “Burmese Curly.”
+                      </InfoBox>
+
+                      <Form
+                        method="post"
+                        encType="multipart/form-data"
+                      >
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="createCollection"
+                        />
+
+                        <Field
+                          label="Collection Name"
+                          name="collectionName"
+                          defaultValue=""
+                          help="Give shoppers a short, clear collection name."
+                        />
+
+                        <div
+                          style={{
+                            marginTop: "12px",
+                          }}
+                        >
+                          <div className="hg-label">
+                            Collection Image (Optional)
+                          </div>
+                          <input
+                            type="file"
+                            name="collectionImage"
+                            accept="image/*"
+                            style={{
+                              width: "100%",
+                              fontSize: "11px",
+                            }}
+                          />
+                        </div>
+
+                        <ProductPicker
+                          products={products}
+                          selectedIds={[]}
+                        />
+
+                        <button
+                          type="submit"
+                          className="hg-button"
+                          style={{
+                            marginTop: "12px",
+                          }}
+                        >
+                          Add Collection
+                        </button>
+                      </Form>
+
+                      {collections.length === 0 ? (
+                        <InfoBox>
+                          No Custom Collections yet. That is completely fine — Shop All, New Arrivals, and On Sale are handled automatically by HairGrab.
+                        </InfoBox>
+                      ) : (
+                        collections.map(
+                          (collection) => (
+                            <Form
+                              method="post"
+                              encType="multipart/form-data"
+                              key={collection.id}
+                              className="hg-collection"
+                            >
+                              <input
+                                type="hidden"
+                                name="collectionId"
+                                value={collection.id}
+                              />
+
+                              {collection.imageUrl && (
+                                <img
+                                  src={
+                                    collection.imageUrl
+                                  }
+                                  alt={
+                                    collection.name
+                                  }
+                                  style={{
+                                    width: "100%",
+                                    height: "110px",
+                                    objectFit: "cover",
+                                    borderRadius:
+                                      "9px",
+                                    marginBottom:
+                                      "10px",
+                                  }}
+                                />
+                              )}
+
+                              <Field
+                                label="Collection Name"
+                                name="collectionName"
+                                defaultValue={
+                                  collection.name
+                                }
+                              />
+
+                              <label className="hg-check">
+                                <input
+                                  type="checkbox"
+                                  name="collectionVisible"
+                                  defaultChecked={
+                                    collection.isVisible
+                                  }
+                                />
+                                Show this collection
+                              </label>
+
+                              <div
+                                style={{
+                                  marginTop: "10px",
+                                }}
+                              >
+                                <div className="hg-label">
+                                  Collection Image (Optional)
+                                </div>
+                                <input
+                                  type="file"
+                                  name="collectionImage"
+                                  accept="image/*"
+                                  style={{
+                                    width: "100%",
+                                    fontSize: "11px",
+                                  }}
+                                />
+                              </div>
+
+                              <ProductPicker
+                                products={products}
+                                selectedIds={
+                                  collection.productIds
+                                }
+                              />
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "8px",
+                                  flexWrap: "wrap",
+                                  marginTop: "12px",
+                                }}
+                              >
+                                <button
+                                  type="submit"
+                                  name="intent"
+                                  value="updateCollection"
+                                  className="hg-button"
+                                >
+                                  Save Collection
+                                </button>
+
+                                <button
+                                  type="submit"
+                                  name="intent"
+                                  value="deleteCollection"
+                                  className="hg-button hg-button-danger"
+                                  onClick={(event) => {
+                                    if (
+                                      !window.confirm(
+                                        `Remove "${collection.name}"? This does not delete the products.`,
+                                      )
+                                    ) {
+                                      event.preventDefault();
+                                    }
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </Form>
+                          ),
+                        )
+                      )}
+                    </Card>
+        </div>
+
+        <div className="hg-section-heading" style={{ marginTop: "24px" }}>
+          <h2>4. Store Content</h2>
+          <p>
+            Add optional media and understand how HairGrab reviews appear on your storefront.
+          </p>
+        </div>
+
+        <div
+          className="hg-grid"
+          style={{ marginTop: "12px" }}
         >
           <Card
-            title="Featured Products"
-            subtitle="Choose up to 5 Active products to feature on your storefront. This replaces the old Seller Picks page."
-          >
-            <Form method="post">
-              <input
-                type="hidden"
-                name="intent"
-                value="saveFeaturedProducts"
-              />
-
-              <FeaturedProductPicker
-                products={products}
-                selectedIds={featuredProductIds}
-              />
-
-              <button
-                type="submit"
-                className="hg-button"
-                style={{
-                  marginTop: "12px",
-                  width: "100%",
-                }}
-              >
-                Save Featured Products
-              </button>
-            </Form>
-          </Card>
-
-          <Card
-            title="Custom Collections"
-            subtitle="These are optional groups you create yourself. Name it, choose an optional image, check the products that belong in it, then save."
-          >
-            <InfoBox>
-              Shop All, New Arrivals, and On Sale are automatic — you do not build those here. Use Custom Collections only when you want your own shopper-facing group, such as “Burmese Curly.”
-            </InfoBox>
-
-            <Form
-              method="post"
-              encType="multipart/form-data"
-            >
-              <input
-                type="hidden"
-                name="intent"
-                value="createCollection"
-              />
-
-              <Field
-                label="Collection Name"
-                name="collectionName"
-                defaultValue=""
-                help="Give shoppers a short, clear collection name."
-              />
-
-              <div
-                style={{
-                  marginTop: "12px",
-                }}
-              >
-                <div className="hg-label">
-                  Collection Image (Optional)
-                </div>
-                <input
-                  type="file"
-                  name="collectionImage"
-                  accept="image/*"
-                  style={{
-                    width: "100%",
-                    fontSize: "11px",
-                  }}
-                />
-              </div>
-
-              <ProductPicker
-                products={products}
-                selectedIds={[]}
-              />
-
-              <button
-                type="submit"
-                className="hg-button"
-                style={{
-                  marginTop: "12px",
-                }}
-              >
-                Add Collection
-              </button>
-            </Form>
-
-            {collections.length === 0 ? (
-              <InfoBox>
-                No Custom Collections yet. That is completely fine — Shop All, New Arrivals, and On Sale are handled automatically by HairGrab.
-              </InfoBox>
-            ) : (
-              collections.map(
-                (collection) => (
-                  <Form
-                    method="post"
-                    encType="multipart/form-data"
-                    key={collection.id}
-                    className="hg-collection"
-                  >
-                    <input
-                      type="hidden"
-                      name="collectionId"
-                      value={collection.id}
-                    />
-
-                    {collection.imageUrl && (
-                      <img
-                        src={
-                          collection.imageUrl
-                        }
-                        alt={
-                          collection.name
-                        }
-                        style={{
-                          width: "100%",
-                          height: "110px",
-                          objectFit: "cover",
-                          borderRadius:
-                            "9px",
-                          marginBottom:
-                            "10px",
-                        }}
-                      />
-                    )}
-
-                    <Field
-                      label="Collection Name"
-                      name="collectionName"
-                      defaultValue={
-                        collection.name
-                      }
-                    />
-
-                    <label className="hg-check">
-                      <input
-                        type="checkbox"
-                        name="collectionVisible"
-                        defaultChecked={
-                          collection.isVisible
-                        }
-                      />
-                      Show this collection
-                    </label>
-
-                    <div
-                      style={{
-                        marginTop: "10px",
-                      }}
+                      title="Gallery & Video"
+                      subtitle="Add brand, lifestyle, and product media to make your HairGrab store feel like your own site."
                     >
-                      <div className="hg-label">
-                        Collection Image (Optional)
-                      </div>
-                      <input
-                        type="file"
-                        name="collectionImage"
-                        accept="image/*"
-                        style={{
-                          width: "100%",
-                          fontSize: "11px",
-                        }}
-                      />
-                    </div>
-
-                    <ProductPicker
-                      products={products}
-                      selectedIds={
-                        collection.productIds
-                      }
-                    />
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "8px",
-                        flexWrap: "wrap",
-                        marginTop: "12px",
-                      }}
-                    >
-                      <button
-                        type="submit"
-                        name="intent"
-                        value="updateCollection"
-                        className="hg-button"
+                      <Form
+                        method="post"
+                        encType="multipart/form-data"
                       >
-                        Save Collection
-                      </button>
-
-                      <button
-                        type="submit"
-                        name="intent"
-                        value="deleteCollection"
-                        className="hg-button hg-button-danger"
-                        onClick={(event) => {
-                          if (
-                            !window.confirm(
-                              `Remove "${collection.name}"? This does not delete the products.`,
-                            )
-                          ) {
-                            event.preventDefault();
-                          }
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </Form>
-                ),
-              )
-            )}
-          </Card>
-
-          <Card
-            title="Gallery & Video"
-            subtitle="Add brand, lifestyle, and product media to make your HairGrab store feel like your own site."
-          >
-            <Form
-              method="post"
-              encType="multipart/form-data"
-            >
-              <input
-                type="hidden"
-                name="intent"
-                value="addGalleryImage"
-              />
-
-              <div className="hg-label">
-                Add Gallery Image
-              </div>
-              <input
-                type="file"
-                name="galleryImage"
-                accept="image/*"
-                style={{
-                  width: "100%",
-                  fontSize: "11px",
-                }}
-              />
-
-              <button
-                type="submit"
-                className="hg-button"
-                style={{
-                  marginTop: "10px",
-                }}
-              >
-                Upload Image
-              </button>
-            </Form>
-
-            <Form
-              method="post"
-              encType="multipart/form-data"
-              style={{
-                marginTop: "18px",
-                paddingTop: "16px",
-                borderTop:
-                  "1px solid #eee7f2",
-              }}
-            >
-              <input
-                type="hidden"
-                name="intent"
-                value="addVideo"
-              />
-
-              <div className="hg-label">
-                Upload Brand / Product Video
-              </div>
-              <input
-                type="file"
-                name="videoFile"
-                accept="video/*"
-                style={{
-                  width: "100%",
-                  fontSize: "11px",
-                }}
-              />
-              <div
-                style={{
-                  color: "#8a7b91",
-                  fontSize: "10px",
-                  lineHeight: 1.45,
-                  marginTop: "5px",
-                }}
-              >
-                Upload the video directly. Sellers do not need to paste a video URL.
-              </div>
-
-              <button
-                type="submit"
-                className="hg-button"
-                style={{
-                  marginTop: "10px",
-                }}
-              >
-                Upload Video
-              </button>
-            </Form>
-
-            {media.length === 0 ? (
-              <InfoBox>
-                No gallery media yet.
-              </InfoBox>
-            ) : (
-              <div className="hg-media-grid">
-                {media.map((item) => (
-                  <div
-                    className="hg-media-item"
-                    key={item.id}
-                  >
-                    {item.mediaType ===
-                    "IMAGE" ? (
-                      <img
-                        src={item.url}
-                        alt={
-                          item.altText ||
-                          "Store gallery"
-                        }
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          height: "130px",
-                          display: "flex",
-                          alignItems:
-                            "center",
-                          justifyContent:
-                            "center",
-                          textAlign:
-                            "center",
-                          padding: "12px",
-                          color: "#4B1678",
-                          fontWeight: 900,
-                          fontSize: "12px",
-                        }}
-                      >
-                        ▶ Storefront Video
-                      </div>
-                    )}
-
-                    <div className="hg-media-actions">
-                      <Form method="post">
                         <input
                           type="hidden"
                           name="intent"
-                          value="toggleMedia"
+                          value="addGalleryImage"
                         />
+
+                        <div className="hg-label">
+                          Add Gallery Image
+                        </div>
                         <input
-                          type="hidden"
-                          name="mediaId"
-                          value={item.id}
+                          type="file"
+                          name="galleryImage"
+                          accept="image/*"
+                          style={{
+                            width: "100%",
+                            fontSize: "11px",
+                          }}
                         />
+
                         <button
                           type="submit"
-                          className="hg-mini-button"
+                          className="hg-button"
+                          style={{
+                            marginTop: "10px",
+                          }}
                         >
-                          {item.isVisible
-                            ? "Hide"
-                            : "Show"}
+                          Upload Image
                         </button>
                       </Form>
 
-                      <Form method="post">
+                      <Form
+                        method="post"
+                        encType="multipart/form-data"
+                        style={{
+                          marginTop: "18px",
+                          paddingTop: "16px",
+                          borderTop:
+                            "1px solid #eee7f2",
+                        }}
+                      >
                         <input
                           type="hidden"
                           name="intent"
-                          value="deleteMedia"
+                          value="addVideo"
                         />
+
+                        <div className="hg-label">
+                          Upload Brand / Product Video
+                        </div>
                         <input
-                          type="hidden"
-                          name="mediaId"
-                          value={item.id}
+                          type="file"
+                          name="videoFile"
+                          accept="video/*"
+                          style={{
+                            width: "100%",
+                            fontSize: "11px",
+                          }}
                         />
+                        <div
+                          style={{
+                            color: "#8a7b91",
+                            fontSize: "10px",
+                            lineHeight: 1.45,
+                            marginTop: "5px",
+                          }}
+                        >
+                          Upload the video directly. Sellers do not need to paste a video URL.
+                        </div>
+
                         <button
                           type="submit"
-                          className="hg-mini-button"
+                          className="hg-button"
+                          style={{
+                            marginTop: "10px",
+                          }}
                         >
-                          Remove
+                          Upload Video
                         </button>
                       </Form>
 
-                      <span
-                        style={{
-                          fontSize: "9px",
-                          color:
-                            item.isVisible
-                              ? "#28743b"
-                              : "#8a7b91",
-                          fontWeight: 800,
-                          alignSelf:
-                            "center",
-                        }}
-                      >
-                        {item.isVisible
-                          ? "VISIBLE"
-                          : "HIDDEN"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                      {media.length === 0 ? (
+                        <InfoBox>
+                          No gallery media yet.
+                        </InfoBox>
+                      ) : (
+                        <div className="hg-media-grid">
+                          {media.map((item) => (
+                            <div
+                              className="hg-media-item"
+                              key={item.id}
+                            >
+                              {item.mediaType ===
+                              "IMAGE" ? (
+                                <img
+                                  src={item.url}
+                                  alt={
+                                    item.altText ||
+                                    "Store gallery"
+                                  }
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    height: "130px",
+                                    display: "flex",
+                                    alignItems:
+                                      "center",
+                                    justifyContent:
+                                      "center",
+                                    textAlign:
+                                      "center",
+                                    padding: "12px",
+                                    color: "#4B1678",
+                                    fontWeight: 900,
+                                    fontSize: "12px",
+                                  }}
+                                >
+                                  ▶ Storefront Video
+                                </div>
+                              )}
 
-            <InfoBox>
-              HairGrab keeps shoppers on HairGrab.
-              Seller websites, Instagram, TikTok,
-              and other off-site shopping links are
-              not part of the storefront.
-            </InfoBox>
-          </Card>
+                              <div className="hg-media-actions">
+                                <Form method="post">
+                                  <input
+                                    type="hidden"
+                                    name="intent"
+                                    value="toggleMedia"
+                                  />
+                                  <input
+                                    type="hidden"
+                                    name="mediaId"
+                                    value={item.id}
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="hg-mini-button"
+                                  >
+                                    {item.isVisible
+                                      ? "Hide"
+                                      : "Show"}
+                                  </button>
+                                </Form>
+
+                                <Form method="post">
+                                  <input
+                                    type="hidden"
+                                    name="intent"
+                                    value="deleteMedia"
+                                  />
+                                  <input
+                                    type="hidden"
+                                    name="mediaId"
+                                    value={item.id}
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="hg-mini-button"
+                                  >
+                                    Remove
+                                  </button>
+                                </Form>
+
+                                <span
+                                  style={{
+                                    fontSize: "9px",
+                                    color:
+                                      item.isVisible
+                                        ? "#28743b"
+                                        : "#8a7b91",
+                                    fontWeight: 800,
+                                    alignSelf:
+                                      "center",
+                                  }}
+                                >
+                                  {item.isVisible
+                                    ? "VISIBLE"
+                                    : "HIDDEN"}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <InfoBox>
+                        HairGrab keeps shoppers on HairGrab.
+                        Seller websites, Instagram, TikTok,
+                        and other off-site shopping links are
+                        not part of the storefront.
+                      </InfoBox>
+                    </Card>
 
           <Card
-            title="Reviews"
-            subtitle="HairGrab controls review authenticity; sellers control only whether the review section is displayed."
-          >
-            <ReviewRule
-              title="Product Reviews"
-              text='Products with no HairGrab reviews display "New on HairGrab" instead of empty stars.'
-            />
-            <ReviewRule
-              title="Seller Reviews"
-              text="Your store reputation stays separate from individual product ratings."
-            />
-            <ReviewRule
-              title="Verified Purchase"
-              text="Verified Purchase is controlled by HairGrab order data, not by sellers."
-            />
-          </Card>
-
-          <Card
-            title="Store Navigation"
-            subtitle="Built automatically for every seller."
-          >
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "7px",
-              }}
-            >
-              {[
-                "Home",
-                "Shop",
-                "Collections",
-                "About",
-                "Reviews",
-                "Policies",
-              ].map((item) => (
-                <span
-                  key={item}
-                  style={{
-                    background:
-                      "#f2eafa",
-                    color: "#4B1678",
-                    border:
-                      "1px solid #e2d1ef",
-                    borderRadius:
-                      "999px",
-                    padding: "7px 10px",
-                    fontSize: "10px",
-                    fontWeight: 800,
-                  }}
-                >
-                  {item}
-                </span>
-              ))}
-            </div>
-
-            <InfoBox>
-              Sellers do not build menus or pages.
-              HairGrab creates the navigation
-              automatically. The shopper storefront
-              will make these links clickable and
-              horizontally scrollable on mobile.
-            </InfoBox>
-          </Card>
+                      title="Reviews"
+                      subtitle="HairGrab controls review authenticity; sellers control only whether the review section is displayed."
+                    >
+                      <ReviewRule
+                        title="Product Reviews"
+                        text='Products with no HairGrab reviews display "New on HairGrab" instead of empty stars.'
+                      />
+                      <ReviewRule
+                        title="Seller Reviews"
+                        text="Your store reputation stays separate from individual product ratings."
+                      />
+                      <ReviewRule
+                        title="Verified Purchase"
+                        text="Verified Purchase is controlled by HairGrab order data, not by sellers."
+                      />
+                    </Card>
         </div>
+
       </main>
     </div>
   );
@@ -3213,7 +3423,7 @@ function ImageUpload({
             marginTop: "6px",
           }}
         >
-          New image selected — preview shown above. Click Save Store Settings to publish it.
+          New image selected — preview shown above. Click Save Store Basics to publish it.
         </div>
       )}
 
