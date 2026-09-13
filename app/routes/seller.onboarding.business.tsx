@@ -1,4 +1,4 @@
-import type { LoaderFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 import {
   redirect,
@@ -338,6 +338,126 @@ export const loader = async ({
         portalAccount.email,
     },
   };
+};
+
+
+// ==========================================================
+// ACTION
+// Confirms the application-carried business information and
+// advances the seller to the Storefront step.
+// ==========================================================
+
+export const action = async ({
+  request,
+}: ActionFunctionArgs) => {
+
+  const session =
+    readSellerSession(
+      request,
+    );
+
+  if (!session) {
+    return redirect(
+      "/seller/login",
+    );
+  }
+
+  const portalAccount =
+    await db.sellerPortalAccount.findUnique({
+      where: {
+        id:
+          session.portalAccountId,
+      },
+    });
+
+  if (
+    !portalAccount ||
+    portalAccount.sellerId !==
+      session.sellerId ||
+    portalAccount.status !==
+      "ACTIVE"
+  ) {
+    return redirect(
+      "/seller/login",
+    );
+  }
+
+  const seller =
+    await db.seller.findUnique({
+      where: {
+        id:
+          session.sellerId,
+      },
+    });
+
+  if (
+    !seller ||
+    seller.status ===
+      "SUSPENDED" ||
+    seller.status ===
+      "INACTIVE" ||
+    seller.status ===
+      "CLOSED"
+  ) {
+    return redirect(
+      "/seller/login",
+    );
+  }
+
+  const onboarding =
+    await db.sellerOnboarding.findUnique({
+      where: {
+        sellerId:
+          seller.id,
+      },
+    });
+
+  if (!onboarding) {
+    throw new Response(
+      "Seller onboarding record was not found.",
+      {
+        status: 404,
+      },
+    );
+  }
+
+  const now =
+    new Date();
+
+  await db.sellerOnboarding.update({
+    where: {
+      sellerId:
+        seller.id,
+    },
+    data: {
+      businessComplete:
+        true,
+
+      businessCompletedAt:
+        onboarding.businessCompletedAt ||
+        now,
+
+      currentStep:
+        "STOREFRONT",
+
+      status:
+        onboarding.status ===
+          "COMPLETE"
+          ? "COMPLETE"
+          : "IN_PROGRESS",
+
+      startedAt:
+        onboarding.startedAt ||
+        now,
+
+      lastSavedAt:
+        now,
+    },
+  });
+
+  return redirect(
+    "/seller/onboarding/storefront",
+  );
 };
 
 
@@ -1071,26 +1191,28 @@ export default function SellerOnboardingPage() {
                 "1px solid #eee7f2",
             }}
           >
-            <a
-              href="/seller/onboarding/business"
-              style={{
-                display: "block",
-                width: "100%",
-                boxSizing: "border-box",
-                textAlign: "center",
-                border: "none",
-                borderRadius: "10px",
-                background: "#4B1678",
-                color: "#ffffff",
-                padding: "14px 18px",
-                fontSize: "14px",
-                fontWeight: "800",
-                cursor: "pointer",
-                textDecoration: "none",
-              }}
-            >
-              Continue Seller Setup
-            </a>
+            <form method="post">
+              <button
+                type="submit"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  textAlign: "center",
+                  border: "none",
+                  borderRadius: "10px",
+                  background: "#4B1678",
+                  color: "#ffffff",
+                  padding: "14px 18px",
+                  fontSize: "14px",
+                  fontWeight: "800",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Continue Seller Setup
+              </button>
+            </form>
 
 
             <div
