@@ -190,6 +190,30 @@ model Seller {
 
   // Homepage merchandising
   homepagePicks SellerHomepagePick[]
+
+  // Seller storefront
+  storeCollections SellerStoreCollection[]
+  storeMedia       SellerStoreMedia[]
+  storeHours       SellerStoreHour[]
+  sellerReviews    SellerReview[]
+
+  // Storefront section visibility
+  showFeaturedCollection    Boolean @default(true)
+  showNewArrivalsCollection Boolean @default(true)
+  showOnSaleCollection      Boolean @default(true)
+  showCustomCollections     Boolean @default(true)
+  showGallery               Boolean @default(true)
+  showReviews               Boolean @default(true)
+
+  // Seller-controlled store hours / status visibility
+  useStoreHours   Boolean @default(false)
+  showStoreHours  Boolean @default(false)
+  showStoreStatus Boolean @default(false)
+
+  // AUTO / OPEN / CLOSED
+  // AUTO follows the seller's saved business hours when useStoreHours is enabled.
+  storeOpenOverride String @default("AUTO")
+
   // Homepage boutique merchandising
   homepageFeatured     Boolean @default(false)
   homepageFeaturedRank Int?
@@ -369,11 +393,174 @@ model SellerProduct {
   // Shopper favorites
   customerFavorites CustomerFavorite[]
 
+  // Seller storefront merchandising + HairGrab reviews
+  storeCollectionItems SellerStoreCollectionProduct[]
+  productReviews       ProductReview[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([sellerId])
   @@index([status])
+}
+
+// ==========================================================
+// SELLER STOREFRONT COLLECTIONS
+// Custom seller-created collections inside HairGrab.
+// Automatic collections (All Products, New Arrivals, On Sale,
+// Featured) are controlled by Seller visibility fields above.
+// ==========================================================
+
+model SellerStoreCollection {
+  id String @id @default(cuid())
+
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  name     String
+  slug     String
+  imageUrl String?
+
+  isVisible Boolean @default(true)
+  rank      Int     @default(1)
+
+  products SellerStoreCollectionProduct[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sellerId, slug])
+  @@index([sellerId, rank])
+  @@index([sellerId, isVisible])
+}
+
+model SellerStoreCollectionProduct {
+  id String @id @default(cuid())
+
+  collectionId String
+  collection   SellerStoreCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  sellerProductId String
+  sellerProduct   SellerProduct @relation(fields: [sellerProductId], references: [id], onDelete: Cascade)
+
+  rank Int @default(1)
+
+  createdAt DateTime @default(now())
+
+  @@unique([collectionId, sellerProductId])
+  @@index([collectionId, rank])
+  @@index([sellerProductId])
+}
+
+// ==========================================================
+// SELLER STOREFRONT MEDIA
+// Seller-controlled gallery images and brand/product video.
+// Media is hosted by HairGrab's Shopify files system.
+// ==========================================================
+
+model SellerStoreMedia {
+  id String @id @default(cuid())
+
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  // IMAGE / VIDEO
+  mediaType String
+
+  url       String
+  altText   String?
+  isVisible Boolean @default(true)
+  rank      Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId, rank])
+  @@index([sellerId, isVisible])
+}
+
+// ==========================================================
+// SELLER STORE HOURS
+// Used for local pickup/delivery/same-day availability.
+// dayOfWeek: 0 Sunday through 6 Saturday.
+// ==========================================================
+
+model SellerStoreHour {
+  id String @id @default(cuid())
+
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  dayOfWeek Int
+  isClosed  Boolean @default(false)
+
+  // Stored as local HH:MM strings to avoid timezone shifting.
+  openTime  String?
+  closeTime String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sellerId, dayOfWeek])
+  @@index([sellerId])
+}
+
+// ==========================================================
+// HAIRGRAB SELLER REVIEWS
+// Marketplace-controlled. Sellers cannot create/edit ratings.
+// ==========================================================
+
+model SellerReview {
+  id String @id @default(cuid())
+
+  sellerId String
+  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  shopifyCustomerId String?
+  shopifyOrderId    String?
+
+  rating Int
+  title  String?
+  body   String?
+
+  verifiedPurchase Boolean @default(false)
+  status           String  @default("PUBLISHED")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId, status])
+  @@index([shopifyCustomerId])
+  @@index([shopifyOrderId])
+}
+
+// ==========================================================
+// HAIRGRAB PRODUCT REVIEWS
+// Marketplace-controlled. Sellers cannot create/edit ratings.
+// ==========================================================
+
+model ProductReview {
+  id String @id @default(cuid())
+
+  sellerProductId String
+  sellerProduct   SellerProduct @relation(fields: [sellerProductId], references: [id], onDelete: Cascade)
+
+  shopifyCustomerId String?
+  shopifyOrderId    String?
+
+  rating Int
+  title  String?
+  body   String?
+
+  verifiedPurchase Boolean @default(false)
+  status           String  @default("PUBLISHED")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerProductId, status])
+  @@index([shopifyCustomerId])
+  @@index([shopifyOrderId])
 }
 
 // ==========================================================
