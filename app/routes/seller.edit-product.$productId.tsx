@@ -32,6 +32,17 @@ const LEGACY_CLASSIFICATION_TAGS = [
   "Locs / Locks",
 ];
 
+// Which of CLASSIFICATION_TAGS actually apply to a given canonical
+// shopper category (see ../product-categories.ts for the category
+// labels). Bundles, Closures & Frontals, Extensions, and Hair
+// Essentials have no specialized classification today, so they
+// are intentionally absent here — add an entry only when there is
+// an approved, category-specific classification for them.
+const CLASSIFICATION_TAGS_BY_CATEGORY: Record<string, string[]> = {
+  Wigs: ["Kosher Wig", "Medical Wig"],
+  "Braiding Hair": ["Locs"],
+};
+
 async function getShopifyAdmin() {
   const offlineSession = await db.session.findFirst({
     where: { isOnline: false },
@@ -654,6 +665,17 @@ export const loader = async ({
 
       offersLocalDelivery:
         seller.offersLocalDelivery,
+
+      // Needed to build the seller's own public storefront link
+      // (see the "Store View" button below) using the same
+      // convention already established in
+      // app/routes/api.featured-boutiques.tsx:
+      // https://shops.hairgrab.com/seller-store/${storeSlug}
+      storeSlug:
+        seller.storeSlug || "",
+
+      storefrontPublished:
+        seller.storefrontPublished,
     },
 
     coreProductId:
@@ -1036,26 +1058,64 @@ export const action = async ({
         []
       ) as string[];
 
+    // The classification checkboxes only render on the client when
+    // they're applicable to this product's current category (see
+    // CLASSIFICATION_TAGS_BY_CATEGORY / applicableClassificationTags
+    // in the component). When they're hidden, `searchClassifications`
+    // above is always empty — NOT because the seller cleared
+    // anything, but because there was no control to submit. So a
+    // save on a category with no applicable classification must
+    // leave whatever classification-family tags currently exist
+    // completely untouched, rather than stripping them because the
+    // (absent) checkboxes came back unchecked.
+    const currentProductTypeForClassification =
+      String(
+        currentJson?.data
+          ?.product
+          ?.productType ||
+        "",
+      ).trim();
+
+    const applicableClassificationTags =
+      CLASSIFICATION_TAGS_BY_CATEGORY[
+        displayProductCategory(
+          currentProductTypeForClassification,
+        )
+      ] || [];
+
     const preservedTags =
-      currentTags.filter(
-        (
-          tag,
-        ) =>
-          ![
-            ...CLASSIFICATION_TAGS,
-            ...LEGACY_CLASSIFICATION_TAGS,
-          ].includes(
-            tag,
-          ),
-      );
+      applicableClassificationTags.length ===
+      0
+        ? currentTags
+        : currentTags.filter(
+            (
+              tag,
+            ) =>
+              ![
+                ...CLASSIFICATION_TAGS,
+                ...LEGACY_CLASSIFICATION_TAGS,
+              ].includes(
+                tag,
+              ),
+          );
 
     const tags =
-      [
-        ...new Set([
-          ...preservedTags,
-          ...searchClassifications,
-        ]),
-      ];
+      applicableClassificationTags.length ===
+      0
+        ? preservedTags
+        : [
+            ...new Set([
+              ...preservedTags,
+              ...searchClassifications.filter(
+                (
+                  value,
+                ) =>
+                  applicableClassificationTags.includes(
+                    value,
+                  ),
+              ),
+            ]),
+          ];
 
     // This screen does not currently expose a control that lets
     // a seller change Product Type / HairGrab Category — editing
@@ -1668,6 +1728,32 @@ export default function SellerEditProductPage() {
       ?.nodes ||
     [];
 
+  // Which specialized classification checkboxes (if any) apply to
+  // THIS product's category. Kept in sync with the category ->
+  // classification mapping used by Add Product.
+  const applicableClassificationTags =
+    CLASSIFICATION_TAGS_BY_CATEGORY[
+      displayProductCategory(
+        product.productType,
+      )
+    ] || [];
+
+  // "Store View" must open THIS seller's own HairGrab storefront —
+  // never a generic marketplace/product page. Reuses the exact
+  // convention already established in
+  // app/routes/api.featured-boutiques.tsx for linking to the
+  // public storefront route (app/routes/seller-store.$storeSlug.tsx):
+  // https://shops.hairgrab.com/seller-store/${storeSlug}
+  //
+  // If the storefront isn't published yet (Hidden), that public
+  // URL would 404 for shoppers, so we send the seller to their own
+  // private Store Preview instead rather than produce a dead link.
+  const storefrontHref =
+    seller.storeSlug &&
+    seller.storefrontPublished
+      ? `https://shops.hairgrab.com/seller-store/${seller.storeSlug}`
+      : "/seller/store-preview";
+
   return (
     <div
       style={{
@@ -1775,7 +1861,7 @@ export default function SellerEditProductPage() {
             </div>
 
             <a
-              href={`https://hairgrab.com/products/${product.handle}`}
+              href={storefrontHref}
               target="_blank"
               rel="noreferrer"
               style={{
@@ -1986,71 +2072,73 @@ export default function SellerEditProductPage() {
               </div>
             </Section>
 
-            <Section
-              title="Search & Product Classification"
-            >
-              <div
-                style={{
-                  color:
-                    "#756b79",
-                  fontSize:
-                    "12px",
-                  lineHeight:
-                    1.5,
-                  marginBottom:
-                    "12px",
-                }}
+            {applicableClassificationTags.length > 0 && (
+              <Section
+                title="Search & Product Classification"
               >
-                Select any specialized classification that applies. HairGrab uses “Locs” consistently across seller and shopper views.
-              </div>
+                <div
+                  style={{
+                    color:
+                      "#756b79",
+                    fontSize:
+                      "12px",
+                    lineHeight:
+                      1.5,
+                    marginBottom:
+                      "12px",
+                  }}
+                >
+                  Select any specialized classification that applies. HairGrab uses “Locs” consistently across seller and shopper views.
+                </div>
 
-              <div
-                style={{
-                  display:
-                    "flex",
-                  gap:
-                    "9px",
-                  flexWrap:
-                    "wrap",
-                }}
-              >
-                {CLASSIFICATION_TAGS.map(
-                  (
-                    classification,
-                  ) => (
-                    <label
-                      key={
-                        classification
-                      }
-                      style={
-                        choiceCardStyle
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        name="searchClassifications"
-                        value={
+                <div
+                  style={{
+                    display:
+                      "flex",
+                    gap:
+                      "9px",
+                    flexWrap:
+                      "wrap",
+                  }}
+                >
+                  {applicableClassificationTags.map(
+                    (
+                      classification,
+                    ) => (
+                      <label
+                        key={
                           classification
                         }
-                        defaultChecked={
-                          settings
-                            .searchClassifications
-                            .includes(
-                              classification,
-                            )
+                        style={
+                          choiceCardStyle
                         }
-                      />
+                      >
+                        <input
+                          type="checkbox"
+                          name="searchClassifications"
+                          value={
+                            classification
+                          }
+                          defaultChecked={
+                            settings
+                              .searchClassifications
+                              .includes(
+                                classification,
+                              )
+                          }
+                        />
 
-                      <span>
-                        {
-                          classification
-                        }
-                      </span>
-                    </label>
-                  ),
-                )}
-              </div>
-            </Section>
+                        <span>
+                          {
+                            classification
+                          }
+                        </span>
+                      </label>
+                    ),
+                  )}
+                </div>
+              </Section>
+            )}
 
             <Section
               title="Price & Inventory"

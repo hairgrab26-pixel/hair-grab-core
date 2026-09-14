@@ -13,6 +13,7 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
 } from "react";
@@ -3509,6 +3510,35 @@ export default function SellerAddProductPage() {
     ],
   );
 
+  // Final Save Product (non-draft) does not navigate away — it
+  // re-renders the same Review Product screen with saveResult set.
+  // The success confirmation banner lives near the top of that
+  // screen, but the seller is typically scrolled down near the
+  // Save Product button when the save completes, so without this
+  // the confirmation is invisible unless they manually scroll up.
+  // Bring it into view automatically instead.
+  const successBannerRef =
+    useRef<HTMLDivElement | null>(null);
+
+  useEffect(
+    () => {
+      if (
+        saveResult?.success &&
+        !saveResult?.draftSaved &&
+        successBannerRef.current
+      ) {
+        successBannerRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+    },
+    [
+      saveResult?.success,
+      saveResult?.draftSaved,
+    ],
+  );
+
   const [
     reviewing,
     setReviewing,
@@ -5419,6 +5449,9 @@ export default function SellerAddProductPage() {
 
         {saveResult?.message && (
           <div
+            ref={
+              successBannerRef
+            }
             style={{
               padding:
                 "14px",

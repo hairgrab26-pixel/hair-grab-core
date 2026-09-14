@@ -873,23 +873,42 @@ function ProductTile({
             "0 14px 14px",
         }}
       >
-        <a
-          href={`https://hairgrab.com/products/${product.handle}`}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            color:
-              "#6f6575",
-            fontSize:
-              "11px",
-            fontWeight:
-              "800",
-            textDecoration:
-              "none",
-          }}
-        >
-          Store View ↗
-        </a>
+        {String(
+          product.status,
+        ).toUpperCase() ===
+        "ACTIVE" ? (
+          <a
+            href={`https://hairgrab.com/products/${product.handle}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              color:
+                "#6f6575",
+              fontSize:
+                "11px",
+              fontWeight:
+                "800",
+              textDecoration:
+                "none",
+            }}
+          >
+            Store View ↗
+          </a>
+        ) : (
+          <span
+            title="Store View is available once this product is Active on the marketplace."
+            style={{
+              color:
+                "#b7aec0",
+              fontSize:
+                "11px",
+              fontWeight:
+                "800",
+            }}
+          >
+            Store View (not yet live)
+          </span>
+        )}
       </div>
     </div>
   );
@@ -1034,16 +1053,34 @@ function ProductRow({
           Edit
         </Link>
 
-        <a
-          href={`https://hairgrab.com/products/${product.handle}`}
-          target="_blank"
-          rel="noreferrer"
-          style={
-            secondaryLink
-          }
-        >
-          Store View
-        </a>
+        {String(
+          product.status,
+        ).toUpperCase() ===
+        "ACTIVE" ? (
+          <a
+            href={`https://hairgrab.com/products/${product.handle}`}
+            target="_blank"
+            rel="noreferrer"
+            style={
+              secondaryLink
+            }
+          >
+            Store View
+          </a>
+        ) : (
+          <span
+            title="Store View is available once this product is Active on the marketplace."
+            style={{
+              ...secondaryLink,
+              color:
+                "#b7aec0",
+              cursor:
+                "default",
+            }}
+          >
+            Store View
+          </span>
+        )}
       </div>
     </div>
   );
