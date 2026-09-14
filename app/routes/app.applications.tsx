@@ -145,10 +145,15 @@ async function createSellerLoginLink({
     },
   });
 
-  const requestUrl =
-    new URL(request.url);
-
-  return `${requestUrl.origin}/seller/login/verify?token=${rawToken}`;
+  // Hardcoded to the branded seller portal domain (matches
+  // shopify.app.toml's application_url and the CALLBACK_URL
+  // constant in app/seller-shopify.server.ts) rather than
+  // request.url's origin. Deriving this from the incoming
+  // request's host is unsafe: if this admin route is ever hit
+  // through the raw backend hosting domain (e.g. Railway)
+  // instead of seller.hairgrab.com, the emailed login link would
+  // silently point sellers at that infrastructure domain.
+  return `https://seller.hairgrab.com/seller/login/verify?token=${rawToken}`;
 }
 
 

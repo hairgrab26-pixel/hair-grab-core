@@ -52,10 +52,15 @@ async function createSellerLoginLink({
     },
   });
 
-  const requestUrl =
-    new URL(request.url);
-
-  return `${requestUrl.origin}/seller/login/verify?token=${rawToken}`;
+  // Hardcoded to the branded seller portal domain (matches
+  // shopify.app.toml's application_url and the CALLBACK_URL
+  // constant in app/seller-shopify.server.ts) rather than
+  // request.url's origin. Deriving this from the incoming
+  // request's host is unsafe: if this admin route is ever hit
+  // through the raw backend hosting domain (e.g. Railway)
+  // instead of seller.hairgrab.com, the emailed/regenerated login
+  // link would silently point sellers at that infrastructure domain.
+  return `https://seller.hairgrab.com/seller/login/verify?token=${rawToken}`;
 }
 
 
@@ -353,11 +358,11 @@ export const action = async ({
           },
         });
 
-      if (featuredSellers.length >= 5) {
+      if (featuredSellers.length >= 15) {
         return {
           success: false,
           message:
-            "The homepage already has 5 Featured Boutiques. Remove one before featuring another seller.",
+            "The homepage already has 15 Featured Boutiques. Remove one before featuring another seller.",
           intent,
         };
       }
@@ -1213,7 +1218,7 @@ export default function SellerDetailPage() {
           >
             <div style={labelStyle}>Homepage Slots</div>
             <div style={valueStyle}>
-              {featuredBoutiqueCount} / 5 used
+              {featuredBoutiqueCount} / 15 used
             </div>
           </div>
 
@@ -1313,14 +1318,14 @@ export default function SellerDetailPage() {
                 disabled={
                   isSubmitting ||
                   seller.status !== "ACTIVE" ||
-                  featuredBoutiqueCount >= 5
+                  featuredBoutiqueCount >= 15
                 }
                 style={{
                   border: "none",
                   borderRadius: "9px",
                   background:
                     seller.status === "ACTIVE" &&
-                    featuredBoutiqueCount < 5
+                    featuredBoutiqueCount < 15
                       ? "#4B1678"
                       : "#c8bdce",
                   color: "#ffffff",
@@ -1329,7 +1334,7 @@ export default function SellerDetailPage() {
                   cursor:
                     isSubmitting ||
                     seller.status !== "ACTIVE" ||
-                    featuredBoutiqueCount >= 5
+                    featuredBoutiqueCount >= 15
                       ? "not-allowed"
                       : "pointer",
                   opacity: isSubmitting
@@ -1359,7 +1364,7 @@ export default function SellerDetailPage() {
         )}
 
         {!seller.homepageFeatured &&
-          featuredBoutiqueCount >= 5 && (
+          featuredBoutiqueCount >= 15 && (
             <div
               style={{
                 marginTop: "10px",
@@ -1368,7 +1373,7 @@ export default function SellerDetailPage() {
                 fontWeight: "700",
               }}
             >
-              All 5 homepage boutique slots are currently filled.
+              All 15 homepage boutique slots are currently filled.
             </div>
           )}
       </div>

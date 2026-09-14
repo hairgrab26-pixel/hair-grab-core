@@ -3,7 +3,6 @@ import type {
 } from "react-router";
 
 import {
-  Link,
   useLoaderData,
 } from "react-router";
 
@@ -349,11 +348,21 @@ export default function PublicSellerDirectoryPage() {
           >
             {sellers.map(
               (seller) => (
-                <Link
+                <a
                   key={
                     seller.id
                   }
-                  to={`/sellers/${seller.storeSlug}`}
+                  // Public seller storefront URL, matching the
+                  // established HairGrab convention used elsewhere
+                  // in this codebase (app/routes/api.featured-boutiques.tsx,
+                  // app/routes/app.seller.$sellerCode.tsx,
+                  // app/routes/seller.edit-product.$productId.tsx).
+                  // Was previously a relative <Link to={`/sellers/${slug}`}>,
+                  // which is not a registered route (404) and also
+                  // resolves against whatever host served this page
+                  // (e.g. the Railway backend domain) instead of the
+                  // branded public storefront domain.
+                  href={`https://shops.hairgrab.com/seller-store/${seller.storeSlug}`}
                   style={{
                     color:
                       "inherit",
@@ -664,7 +673,7 @@ export default function PublicSellerDirectoryPage() {
                       </div>
                     </div>
                   </article>
-                </Link>
+                </a>
               ),
             )}
           </div>
