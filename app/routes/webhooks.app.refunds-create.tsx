@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { calculateRefundReversal } from "../refund-safety.server";
 
 
 // ==========================================================
@@ -190,38 +191,6 @@ export const action = async ({
     }
 
 
-    // Never refund more seller gross than the original SALE.
-    refundedGrossCents =
-      Math.min(
-        refundedGrossCents,
-        saleEntry.grossAmountCents,
-      );
-
-
-    if (refundedGrossCents <= 0) {
-      continue;
-    }
-
-
-    const commissionRate =
-      saleEntry.commissionRate;
-
-
-    const commissionRefundCents =
-      Math.round(
-        refundedGrossCents *
-          (commissionRate / 100),
-      );
-
-
-    const sellerRefundResponsibilityCents =
-      Math.max(
-        refundedGrossCents -
-          commissionRefundCents,
-        0,
-      );
-
-
     // One unique REFUND ledger record per Shopify refund +
     // Shopify line item.
     const idempotencyKey =
@@ -245,19 +214,79 @@ export const action = async ({
     }
 
 
-    await db.$transaction(
+    const reversal = await db.$transaction(
       async (tx) => {
+
+        const currentSale =
+          await tx.sellerLedgerEntry.findUnique({
+            where: { id: saleEntry.id },
+          });
+
+        if (!currentSale || currentSale.entryType !== "SALE") {
+          return null;
+        }
+
+        const existingRefunds =
+          await tx.sellerLedgerEntry.findMany({
+            where: {
+              sellerId: currentSale.sellerId,
+              shopifyOrderId: currentSale.shopifyOrderId,
+              shopifyLineItemId:
+                currentSale.shopifyLineItemId,
+              entryType: "REFUND",
+            },
+            select: {
+              commissionAmountCents: true,
+              sellerEarningsCents: true,
+            },
+          });
+
+        const commissionAlreadyReversedCents =
+          existingRefunds.reduce(
+            (total, entry) =>
+              total +
+              Math.max(-entry.commissionAmountCents, 0),
+            0,
+          );
+        const sellerAlreadyReversedCents =
+          existingRefunds.reduce(
+            (total, entry) =>
+              total +
+              Math.max(-entry.sellerEarningsCents, 0),
+            0,
+          );
+
+        const reversal = calculateRefundReversal({
+          requestedGrossCents: refundedGrossCents,
+          originalGrossCents: currentSale.grossAmountCents,
+          cumulativeRefundedGrossCents:
+            currentSale.refundAmountCents,
+          originalCommissionCents:
+            currentSale.commissionAmountCents,
+          originalSellerEarningsCents:
+            currentSale.sellerEarningsCents,
+          priorCommissionReversalCents:
+            commissionAlreadyReversedCents,
+          priorSellerReversalCents:
+            sellerAlreadyReversedCents,
+          commissionRate:
+            currentSale.commissionRate,
+        });
+
+        if (!reversal) {
+          return null;
+        }
 
         await tx.sellerLedgerEntry.create({
           data: {
             sellerId:
-              saleEntry.sellerId,
+              currentSale.sellerId,
 
             shopifyOrderId:
               orderId,
 
             shopifyOrderName:
-              saleEntry.shopifyOrderName,
+              currentSale.shopifyOrderName,
 
             shopifyLineItemId,
 
@@ -270,9 +299,10 @@ export const action = async ({
               "ELIGIBLE",
 
             currency:
-              saleEntry.currency,
+              currentSale.currency,
 
-            commissionRate,
+            commissionRate:
+              currentSale.commissionRate,
 
             // Refunds are stored as zero gross SALE value
             // plus explicit refundAmountCents.
@@ -280,19 +310,19 @@ export const action = async ({
               0,
 
             commissionAmountCents:
-              -commissionRefundCents,
+              -reversal.commissionRefundCents,
 
             sellerEarningsCents:
-              -sellerRefundResponsibilityCents,
+              -reversal.sellerRefundResponsibilityCents,
 
             refundAmountCents:
-              refundedGrossCents,
+              reversal.refundedGrossCents,
 
             payoutAmountCents:
               0,
 
             description:
-              `Refund for ${saleEntry.shopifyOrderName || orderId}`,
+              `Refund for ${currentSale.shopifyOrderName || orderId}`,
 
             fundsStatus:
               "CLEARED",
@@ -312,18 +342,42 @@ export const action = async ({
         await tx.sellerLedgerEntry.update({
           where: {
             id:
-              saleEntry.id,
+              currentSale.id,
           },
 
           data: {
             refundAmountCents: {
               increment:
-                refundedGrossCents,
+                reversal.refundedGrossCents,
             },
           },
         });
+
+        return {
+          refundedGrossCents: reversal.refundedGrossCents,
+          commissionRefundCents: reversal.commissionRefundCents,
+          sellerRefundResponsibilityCents:
+            reversal.sellerRefundResponsibilityCents,
+        };
+      },
+      {
+        isolationLevel: "Serializable",
       },
     );
+
+    if (!reversal) {
+      console.log(
+        `[HairGrab Core] Refund ${refundId}: no refundable seller balance remains for line ${shopifyLineItemId}.`,
+      );
+      continue;
+    }
+
+    const commissionRefundCents =
+      reversal.commissionRefundCents;
+    const sellerRefundResponsibilityCents =
+      reversal.sellerRefundResponsibilityCents;
+    refundedGrossCents =
+      reversal.refundedGrossCents;
 
 
     console.log(

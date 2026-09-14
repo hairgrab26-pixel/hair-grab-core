@@ -11,6 +11,7 @@ import {
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { netSaleRemainingCents } from "../payout-netting.server";
 
 
 export const loader = async ({
@@ -53,14 +54,16 @@ export const loader = async ({
 
   const payoutSellers = sellers
     .map((seller) => {
+      const refundEntries = seller.ledgerEntries.filter(
+        (entry) => entry.entryType === "REFUND",
+      );
       const entries = seller.ledgerEntries
+        .filter((entry) => entry.entryType === "SALE")
         .map((entry) => {
-          const remainingCents =
-            Math.max(
-              0,
-              entry.sellerEarningsCents -
-                entry.payoutAmountCents,
-            );
+          const remainingCents = netSaleRemainingCents(
+            entry,
+            refundEntries,
+          );
 
           return {
             id: entry.id,
@@ -411,21 +414,19 @@ export const action = async ({
           }
 
 
+          const refundEntries = seller.ledgerEntries.filter(
+            (entry) => entry.entryType === "REFUND",
+          );
           const entries =
             seller.ledgerEntries
+              .filter((entry) => entry.entryType === "SALE")
               .map((entry) => ({
                 ...entry,
 
-                remainingCents:
-                  Math.max(
-                    0,
-
-                    entry
-                      .sellerEarningsCents -
-
-                      entry
-                        .payoutAmountCents,
-                  ),
+                remainingCents: netSaleRemainingCents(
+                  entry,
+                  refundEntries,
+                ),
               }))
 
               .filter(

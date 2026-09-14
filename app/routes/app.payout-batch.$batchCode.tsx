@@ -11,6 +11,7 @@ import {
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { netSaleRemainingCents } from "../payout-netting.server";
 
 
 export const loader = async ({
@@ -52,6 +53,19 @@ export const loader = async ({
       status: 404,
     });
   }
+
+  const refundEntries = await db.sellerLedgerEntry.findMany({
+    where: {
+      sellerId: batch.seller.id,
+      entryType: "REFUND",
+      status: "ELIGIBLE",
+      shopifyOrderId: {
+        in: batch.items.map(
+          (item) => item.ledgerEntry.shopifyOrderId,
+        ),
+      },
+    },
+  });
 
   const payoutConnected =
     batch.seller.payoutStatus === "CONNECTED" &&
@@ -97,10 +111,9 @@ export const loader = async ({
       items: batch.items.map((item) => {
         const entry = item.ledgerEntry;
 
-        const remainingCents = Math.max(
-          0,
-          entry.sellerEarningsCents -
-            entry.payoutAmountCents,
+        const remainingCents = netSaleRemainingCents(
+          entry,
+          refundEntries,
         );
 
         return {
@@ -203,6 +216,21 @@ export const action = async ({
             );
           }
 
+          const refundEntries =
+            await tx.sellerLedgerEntry.findMany({
+              where: {
+                sellerId: batch.sellerId,
+                entryType: "REFUND",
+                status: "ELIGIBLE",
+                shopifyOrderId: {
+                  in: batch.items.map(
+                    (item) =>
+                      item.ledgerEntry.shopifyOrderId,
+                  ),
+                },
+              },
+            });
+
           let verifiedTotalCents = 0;
 
           for (const item of batch.items) {
@@ -232,10 +260,9 @@ export const action = async ({
               );
             }
 
-            const remainingCents = Math.max(
-              0,
-              entry.sellerEarningsCents -
-                entry.payoutAmountCents,
+            const remainingCents = netSaleRemainingCents(
+              entry,
+              refundEntries,
             );
 
             if (
