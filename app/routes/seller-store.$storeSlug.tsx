@@ -118,38 +118,32 @@ export const loader = async ({
     );
   }
 
-  const ownedProducts =
-    await db.sellerProduct.findMany({
-      where: {
-        sellerId:
-          seller.id,
-
-        status:
-          "ACTIVE",
-      },
-
-      select: {
-        id:
-          true,
-
-        title:
-          true,
-
-        shopifyProductId:
-          true,
-
-        shopifyHandle:
-          true,
-      },
-
-      orderBy: {
-        updatedAt:
-          "desc",
-      },
-
-      take:
-        24,
-    });
+  const [ownedProducts, sellerPicks, storeCollections, storeMedia, sellerReviews] = await Promise.all([
+    db.sellerProduct.findMany({
+      where: { sellerId: seller.id, status: "ACTIVE" },
+      select: { id: true, title: true, shopifyProductId: true, shopifyHandle: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.sellerHomepagePick.findMany({
+      where: { sellerId: seller.id },
+      orderBy: { rank: "asc" },
+      select: { sellerProductId: true },
+    }),
+    db.sellerStoreCollection.findMany({
+      where: { sellerId: seller.id, isVisible: true },
+      orderBy: { rank: "asc" },
+      include: { products: { orderBy: { rank: "asc" }, select: { sellerProductId: true } } },
+    }),
+    db.sellerStoreMedia.findMany({
+      where: { sellerId: seller.id, isVisible: true },
+      orderBy: { rank: "asc" },
+    }),
+    db.sellerReview.findMany({
+      where: { sellerId: seller.id, status: "PUBLISHED" },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+  ]);
 
   const shopifyIds =
     ownedProducts
@@ -571,6 +565,9 @@ export const loader = async ({
               ?.onSale ||
             false,
 
+          featured: sellerPicks.some((pick) => pick.sellerProductId === product.id),
+          isNew: product.createdAt.getTime() >= Date.now() - 45 * 24 * 60 * 60 * 1000,
+
           regularPrice:
             shopifyProduct
               ?.regularPrice ||
@@ -625,9 +622,36 @@ export const loader = async ({
 
       offersLocalDelivery:
         seller.offersLocalDelivery,
+
+      showFeaturedCollection: seller.showFeaturedCollection,
+      showNewArrivalsCollection: seller.showNewArrivalsCollection,
+      showOnSaleCollection: seller.showOnSaleCollection,
+      showCustomCollections: seller.showCustomCollections,
+      showGallery: seller.showGallery,
+      showReviews: seller.showReviews,
     },
 
     products,
+    customCollections: storeCollections.map((collection) => ({
+      id: collection.id,
+      name: collection.name,
+      slug: collection.slug,
+      imageUrl: collection.imageUrl || "",
+      productIds: collection.products.map((item) => item.sellerProductId),
+    })),
+    storeMedia: storeMedia.map((media) => ({
+      id: media.id,
+      mediaType: media.mediaType,
+      url: media.url,
+      altText: media.altText || "",
+    })),
+    sellerReviews: sellerReviews.map((review) => ({
+      id: review.id,
+      rating: review.rating,
+      title: review.title || "",
+      body: review.body || "",
+      verifiedPurchase: review.verifiedPurchase,
+    })),
   };
 };
 
@@ -636,10 +660,367 @@ export default function PublicSellerStorefrontPage() {
   const {
     seller,
     products,
+    customCollections,
+    storeMedia,
+    sellerReviews,
   } =
     useLoaderData<
       typeof loader
     >();
+
+  const renderProductGrid = (displayProducts: typeof products) => (
+            <div
+              style={{
+                display:
+                  "grid",
+
+                gridTemplateColumns:
+                  "repeat(auto-fill, minmax(190px, 220px))",
+
+                justifyContent:
+                  "start",
+
+                gap:
+                  "14px",
+              }}
+            >
+              {displayProducts.map(
+                (product) => {
+                  const shippingLine =
+                    product.shippingMethod ===
+                      "Free Shipping"
+                      ? "Free Shipping"
+                      : product.shippingMethod ===
+                            "Flat Rate Shipping" &&
+                          product.flatRateShipping
+                        ? `$${Number(
+                            product.flatRateShipping,
+                          ).toFixed(2)} Flat Rate`
+                        : product.shippingMethod;
+
+                  return (
+                  <a
+                    key={
+                      product.id
+                    }
+                    href={
+                      product.handle
+                        ? `https://hairgrab.com/products/${product.handle}`
+                        : "#"
+                    }
+                    style={{
+                      color:
+                        "inherit",
+
+                      textDecoration:
+                        "none",
+
+                      background:
+                        "white",
+
+                      border:
+                        "1px solid #eadff0",
+
+                      borderRadius:
+                        "12px",
+
+                      overflow:
+                        "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        aspectRatio:
+                          "1 / 1",
+
+                        background:
+                          "#f5f1f7",
+
+                        display:
+                          "flex",
+
+                        alignItems:
+                          "center",
+
+                        justifyContent:
+                          "center",
+
+                        overflow:
+                          "hidden",
+                      }}
+                    >
+                      {product.imageUrl ? (
+                        <img
+                          src={
+                            product.imageUrl
+                          }
+                          alt={
+                            product.imageAlt
+                          }
+                          style={{
+                            width:
+                              "100%",
+
+                            height:
+                              "100%",
+
+                            objectFit:
+                              "cover",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            color:
+                              "#8a7b91",
+
+                            fontSize:
+                              "11px",
+
+                            textAlign:
+                              "center",
+
+                            padding:
+                              "10px",
+                          }}
+                        >
+                          No product image
+                        </div>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        padding:
+                          "12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight:
+                            "800",
+
+                          fontSize:
+                            "13px",
+
+                          lineHeight:
+                            1.35,
+                        }}
+                      >
+                        {product.title}
+                      </div>
+
+                      {product.price && (
+                        <div
+                          style={{
+                            display:
+                              "flex",
+
+                            alignItems:
+                              "baseline",
+
+                            gap:
+                              "6px",
+
+                            flexWrap:
+                              "wrap",
+
+                            marginTop:
+                              "7px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              color:
+                                "#4B1678",
+
+                              fontWeight:
+                                "800",
+
+                              fontSize:
+                                "13px",
+                            }}
+                          >
+                            {product.price}
+                          </span>
+
+                          {product.onSale &&
+                            product.regularPrice && (
+                              <span
+                                style={{
+                                  color:
+                                    "#948a9c",
+
+                                  fontSize:
+                                    "11px",
+
+                                  textDecoration:
+                                    "line-through",
+                                }}
+                              >
+                                {product.regularPrice}
+                              </span>
+                            )}
+
+                          {product.onSale && (
+                            <span
+                              style={{
+                                color:
+                                  "#4B1678",
+
+                                background:
+                                  "#f3e6c8",
+
+                                fontSize:
+                                  "9px",
+
+                                fontWeight:
+                                  "800",
+
+                                letterSpacing:
+                                  "0.03em",
+
+                                textTransform:
+                                  "uppercase",
+
+                                padding:
+                                  "2px 6px",
+
+                                borderRadius:
+                                  "5px",
+                              }}
+                            >
+                              Sale
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {product.shipsWithin && (
+                        <div
+                          style={{
+                            display:
+                              "flex",
+
+                            alignItems:
+                              "center",
+
+                            gap:
+                              "6px",
+
+                            marginTop:
+                              "9px",
+
+                            color:
+                              "#5f5564",
+
+                            fontSize:
+                              "9px",
+
+                            fontWeight:
+                              700,
+                          }}
+                        >
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              color:
+                                "#4B1678",
+                            }}
+                          >
+                            🚚
+                          </span>
+
+                          Ships within{" "}
+                          {product.shipsWithin}
+                        </div>
+                      )}
+
+                      {shippingLine && (
+                        <div
+                          style={{
+                            display:
+                              "flex",
+
+                            alignItems:
+                              "center",
+
+                            gap:
+                              "6px",
+
+                            marginTop:
+                              "6px",
+
+                            color:
+                              "#5f5564",
+
+                            fontSize:
+                              "9px",
+
+                            fontWeight:
+                              700,
+                          }}
+                        >
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              color:
+                                "#4B1678",
+                            }}
+                          >
+                            ▣
+                          </span>
+
+                          {shippingLine}
+                        </div>
+                      )}
+
+                      {product.localPickupAvailable && (
+                        <div
+                          style={{
+                            marginTop:
+                              "8px",
+
+                            display:
+                              "inline-block",
+
+                            background:
+                              "#f4ecf9",
+
+                            color:
+                              "#4B1678",
+
+                            border:
+                              "1px solid #dfccec",
+
+                            borderRadius:
+                              "999px",
+
+                            padding:
+                              "5px 8px",
+
+                            fontSize:
+                              "8px",
+
+                            fontWeight:
+                              900,
+                          }}
+                        >
+                          Local Pickup
+                        </div>
+                      )}
+                    </div>
+                  </a>
+                  );
+                },
+              )}
+            </div>
+  );
+
+  const featured = products.filter((product) => product.featured);
+  const newArrivals = products.filter((product) => product.isNew).slice(0, 8);
+  const onSale = products.filter((product) => product.onSale);
+  const visibleCollections = seller.showCustomCollections ? customCollections : [];
 
   return (
     <div
@@ -992,6 +1373,47 @@ export default function PublicSellerStorefrontPage() {
           </div>
         </section>
 
+        {seller.showFeaturedCollection && (
+          <StoreSection title="Featured" id="featured" products={featured} renderProductGrid={renderProductGrid} showEmpty />
+        )}
+        {seller.showNewArrivalsCollection && newArrivals.length > 0 && (
+          <StoreSection title="New Arrivals" id="new-arrivals" products={newArrivals} renderProductGrid={renderProductGrid} />
+        )}
+        {seller.showOnSaleCollection && onSale.length > 0 && (
+          <StoreSection title="On Sale" id="on-sale" products={onSale} renderProductGrid={renderProductGrid} />
+        )}
+        {visibleCollections.map((collection) => {
+          const collectionProducts = products.filter((product) => collection.productIds.includes(product.id));
+          return <StoreSection key={collection.id} title={collection.name} id={`collection-${collection.slug}`}
+            products={collectionProducts} renderProductGrid={renderProductGrid} showEmpty imageUrl={collection.imageUrl} />;
+        })}
+        {seller.showGallery && storeMedia.length > 0 && (
+          <section id="gallery" style={{ marginTop: 26 }}>
+            <h2 style={{ color: "#4B1678", fontSize: 22 }}>Gallery</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 220px))", gap: 14 }}>
+              {storeMedia.map((media) => media.mediaType === "VIDEO" ? (
+                <video key={media.id} controls src={media.url} style={{ width: "100%", borderRadius: 12 }} />
+              ) : (
+                <img key={media.id} src={media.url} alt={media.altText || `${seller.businessName} gallery image`}
+                  style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 12 }} />
+              ))}
+            </div>
+          </section>
+        )}
+        {seller.showReviews && (
+          <section id="reviews" style={{ marginTop: 26 }}>
+            <h2 style={{ color: "#4B1678", fontSize: 22 }}>Reviews</h2>
+            {sellerReviews.length ? sellerReviews.map((review) => (
+              <div key={review.id} style={{ border: "1px solid #eadff0", borderRadius: 12, padding: 16, marginBottom: 12 }}>
+                <div aria-label={`${review.rating} out of 5 stars`} style={{ color: "#4B1678" }}>{"★".repeat(Math.max(1, Math.min(5, review.rating)))}</div>
+                {review.title && <strong>{review.title}</strong>}
+                {review.body && <p>{review.body}</p>}
+                {review.verifiedPurchase && <small>Verified purchase</small>}
+              </div>
+            )) : <p>Seller reviews will appear here after verified HairGrab purchases.</p>}
+          </section>
+        )}
+
         <section
           style={{
             marginTop:
@@ -1096,352 +1518,7 @@ export default function PublicSellerStorefrontPage() {
               This seller does not have active products yet.
             </div>
           ) : (
-            <div
-              style={{
-                display:
-                  "grid",
-
-                gridTemplateColumns:
-                  "repeat(auto-fill, minmax(190px, 220px))",
-
-                justifyContent:
-                  "start",
-
-                gap:
-                  "14px",
-              }}
-            >
-              {products.map(
-                (product) => {
-                  const shippingLine =
-                    product.shippingMethod ===
-                      "Free Shipping"
-                      ? "Free Shipping"
-                      : product.shippingMethod ===
-                            "Flat Rate Shipping" &&
-                          product.flatRateShipping
-                        ? `$${Number(
-                            product.flatRateShipping,
-                          ).toFixed(2)} Flat Rate`
-                        : product.shippingMethod;
-
-                  return (
-                  <a
-                    key={
-                      product.id
-                    }
-                    href={
-                      product.handle
-                        ? `https://hairgrab.com/products/${product.handle}`
-                        : "#"
-                    }
-                    style={{
-                      color:
-                        "inherit",
-
-                      textDecoration:
-                        "none",
-
-                      background:
-                        "white",
-
-                      border:
-                        "1px solid #eadff0",
-
-                      borderRadius:
-                        "12px",
-
-                      overflow:
-                        "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        aspectRatio:
-                          "1 / 1",
-
-                        background:
-                          "#f5f1f7",
-
-                        display:
-                          "flex",
-
-                        alignItems:
-                          "center",
-
-                        justifyContent:
-                          "center",
-
-                        overflow:
-                          "hidden",
-                      }}
-                    >
-                      {product.imageUrl ? (
-                        <img
-                          src={
-                            product.imageUrl
-                          }
-                          alt={
-                            product.imageAlt
-                          }
-                          style={{
-                            width:
-                              "100%",
-
-                            height:
-                              "100%",
-
-                            objectFit:
-                              "cover",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            color:
-                              "#8a7b91",
-
-                            fontSize:
-                              "11px",
-
-                            textAlign:
-                              "center",
-
-                            padding:
-                              "10px",
-                          }}
-                        >
-                          No product image
-                        </div>
-                      )}
-                    </div>
-
-                    <div
-                      style={{
-                        padding:
-                          "12px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight:
-                            "800",
-
-                          fontSize:
-                            "13px",
-
-                          lineHeight:
-                            1.35,
-                        }}
-                      >
-                        {product.title}
-                      </div>
-
-                      {product.price && (
-                        <div
-                          style={{
-                            display:
-                              "flex",
-
-                            alignItems:
-                              "baseline",
-
-                            gap:
-                              "6px",
-
-                            flexWrap:
-                              "wrap",
-
-                            marginTop:
-                              "7px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              color:
-                                "#4B1678",
-
-                              fontWeight:
-                                "800",
-
-                              fontSize:
-                                "13px",
-                            }}
-                          >
-                            {product.price}
-                          </span>
-
-                          {product.onSale &&
-                            product.regularPrice && (
-                              <span
-                                style={{
-                                  color:
-                                    "#948a9c",
-
-                                  fontSize:
-                                    "11px",
-
-                                  textDecoration:
-                                    "line-through",
-                                }}
-                              >
-                                {product.regularPrice}
-                              </span>
-                            )}
-
-                          {product.onSale && (
-                            <span
-                              style={{
-                                color:
-                                  "#4B1678",
-
-                                background:
-                                  "#f3e6c8",
-
-                                fontSize:
-                                  "9px",
-
-                                fontWeight:
-                                  "800",
-
-                                letterSpacing:
-                                  "0.03em",
-
-                                textTransform:
-                                  "uppercase",
-
-                                padding:
-                                  "2px 6px",
-
-                                borderRadius:
-                                  "5px",
-                              }}
-                            >
-                              Sale
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {product.shipsWithin && (
-                        <div
-                          style={{
-                            display:
-                              "flex",
-
-                            alignItems:
-                              "center",
-
-                            gap:
-                              "6px",
-
-                            marginTop:
-                              "9px",
-
-                            color:
-                              "#5f5564",
-
-                            fontSize:
-                              "9px",
-
-                            fontWeight:
-                              700,
-                          }}
-                        >
-                          <span
-                            aria-hidden="true"
-                            style={{
-                              color:
-                                "#4B1678",
-                            }}
-                          >
-                            🚚
-                          </span>
-
-                          Ships within{" "}
-                          {product.shipsWithin}
-                        </div>
-                      )}
-
-                      {shippingLine && (
-                        <div
-                          style={{
-                            display:
-                              "flex",
-
-                            alignItems:
-                              "center",
-
-                            gap:
-                              "6px",
-
-                            marginTop:
-                              "6px",
-
-                            color:
-                              "#5f5564",
-
-                            fontSize:
-                              "9px",
-
-                            fontWeight:
-                              700,
-                          }}
-                        >
-                          <span
-                            aria-hidden="true"
-                            style={{
-                              color:
-                                "#4B1678",
-                            }}
-                          >
-                            ▣
-                          </span>
-
-                          {shippingLine}
-                        </div>
-                      )}
-
-                      {product.localPickupAvailable && (
-                        <div
-                          style={{
-                            marginTop:
-                              "8px",
-
-                            display:
-                              "inline-block",
-
-                            background:
-                              "#f4ecf9",
-
-                            color:
-                              "#4B1678",
-
-                            border:
-                              "1px solid #dfccec",
-
-                            borderRadius:
-                              "999px",
-
-                            padding:
-                              "5px 8px",
-
-                            fontSize:
-                              "8px",
-
-                            fontWeight:
-                              900,
-                          }}
-                        >
-                          Local Pickup
-                        </div>
-                      )}
-                    </div>
-                  </a>
-                  );
-                },
-              )}
-            </div>
+            renderProductGrid(products)
           )}
         </section>
       </main>
@@ -1480,5 +1557,22 @@ function Badge({
     >
       {children}
     </span>
+  );
+}
+
+function StoreSection<T>({ title, id, products, renderProductGrid, showEmpty, imageUrl }: {
+  title: string;
+  id: string;
+  products: T[];
+  renderProductGrid: (products: T[]) => React.ReactNode;
+  showEmpty?: boolean;
+  imageUrl?: string;
+}) {
+  return (
+    <section id={id} style={{ marginTop: 26 }}>
+      <h2 style={{ color: "#4B1678", fontSize: 22 }}>{title}</h2>
+      {imageUrl && <img src={imageUrl} alt={`${title} collection`} style={{ maxWidth: 220, borderRadius: 12, marginBottom: 14 }} />}
+      {products.length ? renderProductGrid(products) : showEmpty ? <p>Products will appear here when this collection is stocked.</p> : null}
+    </section>
   );
 }
