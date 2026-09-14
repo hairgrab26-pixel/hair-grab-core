@@ -141,6 +141,6 @@ export async function reconcileMedia(admin: Admin, productId: string,
     await mutate(admin, `#graphql
       mutation HairGrabEditReorderMedia($id: ID!, $moves: [MoveInput!]!) {
         productReorderMedia(id: $id, moves: $moves) { job { id } mediaUserErrors { field message } }
-      }`, { id: productId, moves: desiredIds.map((id, index) => ({ id, newPosition: index })) }, "productReorderMedia");
+      }`, { id: productId, moves: desiredIds.map((id, index) => ({ id, newPosition: String(index) })) }, "productReorderMedia");
   }
 }

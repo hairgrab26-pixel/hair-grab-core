@@ -690,6 +690,13 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
   const [removedMediaIds, setRemovedMediaIds] = useState<string[]>([]);
   const [mediaOrder, setMediaOrder] = useState<string[]>(initialMediaEdit?.order || []);
   const [newMedia, setNewMedia] = useState<Array<{ key: string; file: File; kind: "IMAGE" | "VIDEO" }>>([]);
+  const newMediaPreviewUrls = useMemo(() => new Map(
+    newMedia.map((item) => [item.key, URL.createObjectURL(item.file)]),
+  ), [newMedia]);
+
+  useEffect(() => () => {
+    for (const url of newMediaPreviewUrls.values()) URL.revokeObjectURL(url);
+  }, [newMediaPreviewUrls]);
   const [optionOverrides, setOptionOverrides] = useState<Record<string, Array<{ name: string; value: string }>>>({});
   const [manualCombinations, setManualCombinations] = useState<Array<{ key: string; options: Array<{ name: string; value: string }> }>>([]);
   const [newCombinationValues, setNewCombinationValues] = useState<Record<string, string>>({});
@@ -6379,6 +6386,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
               return <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, border: "1px solid #e2d5eb", borderRadius: 8 }}>
                 {existing?.mediaContentType === "IMAGE" && existing.url && <img src={existing.url} alt={existing.alt || "Product image"} style={{ width: 55, height: 55, objectFit: "cover" }} />}
                 {existing?.mediaContentType === "VIDEO" && existing.url && <video controls src={existing.url} style={{ width: 90, height: 55 }} />}
+                {fresh?.kind === "IMAGE" && <img src={newMediaPreviewUrls.get(fresh.key)} alt={fresh.file.name} style={{ width: 55, height: 55, objectFit: "cover" }} />}
+                {fresh?.kind === "VIDEO" && <video controls src={newMediaPreviewUrls.get(fresh.key)} style={{ width: 90, height: 55 }} />}
                 <span style={{ flex: 1, overflowWrap: "anywhere" }}>{existing ? `${existing.mediaContentType}: ${existing.alt || existing.url || id}` : `${fresh?.kind}: ${fresh?.file.name}`}</span>
                 <button type="button" disabled={index === 0} onClick={() => setMediaOrder((current) => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>Up</button>
                 <button type="button" disabled={index === mediaOrder.length - 1} onClick={() => setMediaOrder((current) => { const next = [...current]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; return next; })}>Down</button>

@@ -57,6 +57,7 @@ test("media detach and reorder use existing IDs without recreation", async () =>
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0].variables.files[0].referencesToRemove, ["product"]);
   assert.deepEqual(calls[1].variables.moves.map((move: any) => move.id), ["media-3", "media-1"]);
+  assert.deepEqual(calls[1].variables.moves.map((move: any) => move.newPosition), ["0", "1"]);
 });
 
 test("new media is staged, attached, and ordered by its new media ID", async () => {
@@ -77,4 +78,5 @@ test("new media is staged, attached, and ordered by its new media ID", async () 
   assert.equal(calls.length, 3);
   assert.equal(calls[1].variables.media[0].mediaContentType, "IMAGE");
   assert.deepEqual(calls[2].variables.moves.map((move: any) => move.id), ["new-media-id", "old-media"]);
+  assert.deepEqual(calls[2].variables.moves.map((move: any) => move.newPosition), ["0", "1"]);
 });
