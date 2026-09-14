@@ -46,6 +46,34 @@ export type MediaEditState = {
 
 export type VariantFields = { price: string; salePrice: string; inventory: string; sku: string };
 
+export function serializeMetafieldValue(typeName: string, value: unknown): string {
+  if (typeName === "json") {
+    if (typeof value === "string") {
+      try {
+        JSON.parse(value);
+        return value;
+      } catch {
+        return JSON.stringify(value);
+      }
+    }
+    return JSON.stringify(value);
+  }
+  if (typeName.startsWith("list.")) {
+    if (Array.isArray(value)) return JSON.stringify(value);
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return value;
+      } catch {
+        // Plain text is a single list member.
+      }
+      return JSON.stringify([value]);
+    }
+    return JSON.stringify([value]);
+  }
+  return typeof value === "boolean" ? String(value) : String(value ?? "");
+}
+
 export function variantFieldsFromShopify(variant: ShopifyVariantSnapshot): VariantFields {
   return {
     price: variant.compareAtPrice || variant.price,

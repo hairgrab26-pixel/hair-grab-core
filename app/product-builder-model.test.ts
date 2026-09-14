@@ -7,6 +7,7 @@ import {
   hydrateVariantEditState,
   variantFieldsFromShopify,
   variantFieldsToShopify,
+  serializeMetafieldValue,
   type ExistingProductSnapshot,
 // @ts-ignore Node's TypeScript stripping requires the explicit extension.
 } from "./product-builder-model.ts";
@@ -51,6 +52,13 @@ test("mixed sale and nonsale variants survive UI hydration and serialization", (
   const edit = hydrateVariantEditState(mixed);
   edit.changes = mixed.variants.map((variant) => variantFieldsToShopify(variant, variantFieldsFromShopify(variant), true));
   assert.deepEqual(diffVariants(mixed.variants, edit), { creates: [], updates: [], deletes: [] });
+});
+
+test("plain text is valid JSON when a metafield definition requires JSON", () => {
+  assert.equal(serializeMetafieldValue("json", "Curly"), JSON.stringify("Curly"));
+  assert.equal(JSON.parse(serializeMetafieldValue("json", "Curly")), "Curly");
+  assert.equal(serializeMetafieldValue("list.single_line_text_field", "Curly"), JSON.stringify(["Curly"]));
+  assert.equal(serializeMetafieldValue("single_line_text_field", "Curly"), "Curly");
 });
 
 test("adding lengths preserves all original combination IDs", () => {

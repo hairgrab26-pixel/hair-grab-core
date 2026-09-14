@@ -746,9 +746,22 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     saveFetcher.state !==
     "idle";
 
+  const [editDirty, setEditDirty] = useState(false);
+  const [showEditSaved, setShowEditSaved] = useState(false);
+
   const saveResult =
     saveFetcher.data ||
     actionData;
+
+  useEffect(() => {
+    if (!edit || saving || !saveResult) return;
+    if (saveResult.success && !editDirty) {
+      setShowEditSaved(true);
+      const timeout = window.setTimeout(() => setShowEditSaved(false), 4500);
+      return () => window.clearTimeout(timeout);
+    }
+    if (saveResult.success === false) setEditDirty(true);
+  }, [edit, saving, saveResult?.success, editDirty]);
 
   useEffect(
     () => {
@@ -2691,6 +2704,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
         shipsWithin, returnPolicy, showOnMap };
       const changedFields = Object.keys(fields).filter((key) =>
         JSON.stringify((fields as Record<string, unknown>)[key]) !== JSON.stringify(initialEditFields.current?.[key]));
+      setEditDirty(false);
       const formData = new FormData();
       formData.append("intent", "builderSave");
       formData.append("builderEdit", JSON.stringify({ baseline: edit.shopifySnapshot, variants, media, fields, changedFields }));
@@ -2889,7 +2903,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     reviewing
   ) {
     return (
-      <PageShell>
+      <PageShell onChange={() => edit && setEditDirty(true)}>
+        {edit && showEditSaved && <div role="status" style={{ position: "fixed", zIndex: 20, left: "50%", bottom: 24, transform: "translateX(-50%)", background: "#4B1678", color: "#fff", borderRadius: 12, padding: "12px 18px", boxShadow: "0 8px 24px rgba(75,22,120,.28)", fontWeight: 800, fontSize: 13, width: "min(92vw, 360px)", textAlign: "center" }}>✓ Changes saved</div>}
         <div
           style={{
             color:
@@ -3401,10 +3416,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
           <button
             type="button"
             disabled={
-              saving ||
-              Boolean(
-                saveResult?.success,
-              )
+              saving
             }
             onClick={() =>
               saveProduct(false)
@@ -3413,11 +3425,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
               primaryButton
             }
           >
-            {saving
-              ? "Saving Product..."
-              : saveResult?.success
-                ? "✓ Product Saved"
-                : "Save Product"}
+            {saving ? (edit ? "Saving…" : "Saving Product...") : edit && saveResult?.success && !editDirty ? "✓ Saved" : "Save Product"}
           </button>
 
           {saveResult?.success && (
@@ -3475,7 +3483,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
   // ========================================================
 
   return (
-    <PageShell>
+    <PageShell onChange={() => edit && setEditDirty(true)}>
+      {edit && showEditSaved && <div role="status" style={{ position: "fixed", zIndex: 20, left: "50%", bottom: 24, transform: "translateX(-50%)", background: "#4B1678", color: "#fff", borderRadius: 12, padding: "12px 18px", boxShadow: "0 8px 24px rgba(75,22,120,.28)", fontWeight: 800, fontSize: 13, width: "min(92vw, 360px)", textAlign: "center" }}>✓ Changes saved</div>}
       <div
         style={{
           display:
@@ -6548,7 +6557,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                 : "not-allowed",
           }}
         >
-          {edit ? (saving ? "Saving Changes..." : "Save Changes") : "Review Product"}
+          {edit ? (saving ? "Saving…" : saveResult?.success && !editDirty ? "✓ Saved" : "Save Changes") : "Review Product"}
         </button>
         </div>
 
@@ -6649,9 +6658,10 @@ const secondaryButton = {
 
 function PageShell({
   children,
+  onChange,
 }: {
-  children:
-    React.ReactNode;
+  children: React.ReactNode;
+  onChange?: () => void;
 }) {
   return (
     <div
@@ -6730,6 +6740,7 @@ function PageShell({
         </div>
 
         <div
+          onChange={onChange}
           style={{
             background:
               "#ffffff",
