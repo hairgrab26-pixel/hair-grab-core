@@ -175,6 +175,10 @@ export const loader = async ({
         price: string;
         onSale: boolean;
         regularPrice: string;
+        shipsWithin: string;
+        shippingMethod: string;
+        flatRateShipping: string;
+        localPickupAvailable: boolean;
       }
     >();
 
@@ -198,6 +202,20 @@ export const loader = async ({
               id
               title
               handle
+
+              customMetafields: metafields(first: 50, namespace: "custom") {
+                nodes {
+                  key
+                  value
+                }
+              }
+
+              hairgrabMetafields: metafields(first: 20, namespace: "hairgrab") {
+                nodes {
+                  key
+                  value
+                }
+              }
 
               featuredImage {
                 url
@@ -365,6 +383,107 @@ export const loader = async ({
             })()
           : "";
 
+      // Ships Within / shipping label / local pickup are read from
+      // the same Shopify metafields as app/routes/seller.store-preview.tsx,
+      // so the public storefront and the seller's private preview
+      // never disagree about this product-level fulfillment info.
+      const customMetafields =
+        new Map<string, string>(
+          (
+            node?.customMetafields
+              ?.nodes ||
+            []
+          ).map(
+            (metafield: any) => [
+              String(
+                metafield?.key ||
+                "",
+              ).toLowerCase(),
+              String(
+                metafield?.value ||
+                "",
+              ),
+            ],
+          ),
+        );
+
+      const hairgrabMetafields =
+        new Map<string, string>(
+          (
+            node?.hairgrabMetafields
+              ?.nodes ||
+            []
+          ).map(
+            (metafield: any) => [
+              String(
+                metafield?.key ||
+                "",
+              ).toLowerCase(),
+              String(
+                metafield?.value ||
+                "",
+              ),
+            ],
+          ),
+        );
+
+      const customValue = (
+        ...keys: string[]
+      ) => {
+        for (const key of keys) {
+          const value =
+            customMetafields.get(
+              key.toLowerCase(),
+            );
+
+          if (value) {
+            return value;
+          }
+        }
+
+        return "";
+      };
+
+      const hairgrabValue = (
+        key: string,
+      ) =>
+        hairgrabMetafields.get(
+          key.toLowerCase(),
+        ) || "";
+
+      const rawLocalPickup =
+        hairgrabValue(
+          "local_pickup_available",
+        );
+
+      const shipsWithin =
+        customValue(
+          "ships_within",
+          "ships_within_24_hours",
+          "field-1788095152116",
+        );
+
+      const shippingMethod =
+        hairgrabValue(
+          "shipping_charge_type",
+        ) ||
+        customValue(
+          "shipping_method_shipping_options",
+          "shipping_method_shipping",
+          "shipping_method",
+          "shipping_methods",
+          "field-1788297161425",
+        );
+
+      const flatRateShipping =
+        hairgrabValue(
+          "flat_rate_shipping",
+        );
+
+      const localPickupAvailable =
+        rawLocalPickup === "true" ||
+        rawLocalPickup === "1";
+
       shopifyById.set(
         String(
           node.id,
@@ -398,6 +517,10 @@ export const loader = async ({
           price,
           onSale,
           regularPrice,
+          shipsWithin,
+          shippingMethod,
+          flatRateShipping,
+          localPickupAvailable,
         },
       );
     }
@@ -452,6 +575,27 @@ export const loader = async ({
             shopifyProduct
               ?.regularPrice ||
             "",
+
+          shipsWithin:
+            shopifyProduct
+              ?.shipsWithin ||
+            "",
+
+          shippingMethod:
+            shopifyProduct
+              ?.shippingMethod ||
+            "",
+
+          flatRateShipping:
+            shopifyProduct
+              ?.flatRateShipping ||
+            "",
+
+          localPickupAvailable:
+            Boolean(
+              shopifyProduct
+                ?.localPickupAvailable,
+            ),
         };
       },
     );
@@ -968,7 +1112,20 @@ export default function PublicSellerStorefrontPage() {
               }}
             >
               {products.map(
-                (product) => (
+                (product) => {
+                  const shippingLine =
+                    product.shippingMethod ===
+                      "Free Shipping"
+                      ? "Free Shipping"
+                      : product.shippingMethod ===
+                            "Flat Rate Shipping" &&
+                          product.flatRateShipping
+                        ? `$${Number(
+                            product.flatRateShipping,
+                          ).toFixed(2)} Flat Rate`
+                        : product.shippingMethod;
+
+                  return (
                   <a
                     key={
                       product.id
@@ -1165,9 +1322,124 @@ export default function PublicSellerStorefrontPage() {
                           )}
                         </div>
                       )}
+
+                      {product.shipsWithin && (
+                        <div
+                          style={{
+                            display:
+                              "flex",
+
+                            alignItems:
+                              "center",
+
+                            gap:
+                              "6px",
+
+                            marginTop:
+                              "9px",
+
+                            color:
+                              "#5f5564",
+
+                            fontSize:
+                              "9px",
+
+                            fontWeight:
+                              700,
+                          }}
+                        >
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              color:
+                                "#4B1678",
+                            }}
+                          >
+                            🚚
+                          </span>
+
+                          Ships within{" "}
+                          {product.shipsWithin}
+                        </div>
+                      )}
+
+                      {shippingLine && (
+                        <div
+                          style={{
+                            display:
+                              "flex",
+
+                            alignItems:
+                              "center",
+
+                            gap:
+                              "6px",
+
+                            marginTop:
+                              "6px",
+
+                            color:
+                              "#5f5564",
+
+                            fontSize:
+                              "9px",
+
+                            fontWeight:
+                              700,
+                          }}
+                        >
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              color:
+                                "#4B1678",
+                            }}
+                          >
+                            ▣
+                          </span>
+
+                          {shippingLine}
+                        </div>
+                      )}
+
+                      {product.localPickupAvailable && (
+                        <div
+                          style={{
+                            marginTop:
+                              "8px",
+
+                            display:
+                              "inline-block",
+
+                            background:
+                              "#f4ecf9",
+
+                            color:
+                              "#4B1678",
+
+                            border:
+                              "1px solid #dfccec",
+
+                            borderRadius:
+                              "999px",
+
+                            padding:
+                              "5px 8px",
+
+                            fontSize:
+                              "8px",
+
+                            fontWeight:
+                              900,
+                          }}
+                        >
+                          Local Pickup
+                        </div>
+                      )}
                     </div>
                   </a>
-                ),
+                  );
+                },
               )}
             </div>
           )}
