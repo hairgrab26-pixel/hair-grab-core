@@ -77,6 +77,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       description: true,
       grossAmountCents: true,
       commissionAmountCents: true,
+      processingFeeCents: true,
       sellerEarningsCents: true,
       refundAmountCents: true,
       payoutAmountCents: true,
@@ -93,6 +94,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       "Description",
       "Gross Sales",
       "HairGrab Fee",
+      "Processing Fee",
       "Seller Earnings",
       "Refund",
       "Payout",
@@ -107,6 +109,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       entry.description || "",
       cents(entry.grossAmountCents),
       cents(entry.commissionAmountCents),
+      cents(entry.processingFeeCents),
       cents(entry.sellerEarningsCents),
       cents(entry.refundAmountCents),
       cents(entry.payoutAmountCents),
@@ -130,12 +133,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     (sum, entry) => {
       sum.gross += entry.grossAmountCents;
       sum.fees += entry.commissionAmountCents;
+      sum.processingFees += entry.processingFeeCents;
       sum.earnings += entry.sellerEarningsCents;
       sum.refunds += entry.refundAmountCents;
       sum.payouts += entry.payoutAmountCents;
       return sum;
     },
-    { gross: 0, fees: 0, earnings: 0, refunds: 0, payouts: 0 },
+    { gross: 0, fees: 0, processingFees: 0, earnings: 0, refunds: 0, payouts: 0 },
   );
 
   return {
@@ -200,6 +204,7 @@ export default function SellerFinancialsPage() {
         <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "12px", marginBottom: "18px" }}>
           <Summary label="Gross Sales" value={money(totals.gross)} />
           <Summary label="HairGrab Fees" value={money(totals.fees)} />
+          <Summary label="Processing Fees" value={money(totals.processingFees)} />
           <Summary label="Seller Earnings" value={money(totals.earnings)} />
           <Summary label="Refunds" value={money(totals.refunds)} />
           <Summary label="Payouts" value={money(totals.payouts)} />
@@ -208,11 +213,11 @@ export default function SellerFinancialsPage() {
         <section style={{ background: "white", border: "1px solid #e5dce9", borderRadius: "14px", overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "900px", fontSize: "12px" }}>
             <thead><tr style={{ background: "#f4eef8", color: "#4B1678" }}>
-              {['Date','Type','Status','Order','Gross','HairGrab Fee','Earnings','Refund','Payout'].map((h) => <th key={h} style={{ textAlign: "left", padding: "11px", borderBottom: "1px solid #e5dce9" }}>{h}</th>)}
+              {['Date','Type','Status','Order','Gross','HairGrab Fee','Processing Fee','Earnings','Refund','Payout'].map((h) => <th key={h} style={{ textAlign: "left", padding: "11px", borderBottom: "1px solid #e5dce9" }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {entries.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: "24px", textAlign: "center", color: "#756b79" }}>No transactions match these filters.</td></tr>
+                <tr><td colSpan={10} style={{ padding: "24px", textAlign: "center", color: "#756b79" }}>No transactions match these filters.</td></tr>
               ) : entries.map((entry) => (
                 <tr key={entry.id}>
                   <td style={cell}>{new Date(entry.createdAt).toLocaleDateString()}</td>
@@ -221,6 +226,7 @@ export default function SellerFinancialsPage() {
                   <td style={cell}>{entry.shopifyOrderName || entry.shopifyOrderId}</td>
                   <td style={cell}>{money(entry.grossAmountCents)}</td>
                   <td style={cell}>{money(entry.commissionAmountCents)}</td>
+                  <td style={cell}>{money(entry.processingFeeCents)}</td>
                   <td style={cell}>{money(entry.sellerEarningsCents)}</td>
                   <td style={cell}>{money(entry.refundAmountCents)}</td>
                   <td style={cell}>{money(entry.payoutAmountCents)}</td>

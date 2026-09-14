@@ -43,6 +43,7 @@ export const loader = async ({
         sellerEarningsCents: {
           gt: 0,
         },
+        processingFeeStatus: "FINALIZED",
       },
     }),
 
@@ -125,6 +126,7 @@ export const action = async ({
         sellerEarningsCents: {
           gt: 0,
         },
+        processingFeeStatus: "FINALIZED",
       },
 
       data: {

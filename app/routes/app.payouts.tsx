@@ -28,6 +28,7 @@ export const loader = async ({
       ledgerEntries: {
         some: {
           status: "ELIGIBLE",
+          processingFeeStatus: "FINALIZED",
           payoutBatchItem: null,
         },
       },
@@ -59,6 +60,7 @@ export const loader = async ({
       );
       const entries = seller.ledgerEntries
         .filter((entry) => entry.entryType === "SALE")
+        .filter((entry) => entry.processingFeeStatus === "FINALIZED")
         .map((entry) => {
           const remainingCents = netSaleRemainingCents(
             entry,
@@ -420,6 +422,7 @@ export const action = async ({
           const entries =
             seller.ledgerEntries
               .filter((entry) => entry.entryType === "SALE")
+              .filter((entry) => entry.processingFeeStatus === "FINALIZED")
               .map((entry) => ({
                 ...entry,
 

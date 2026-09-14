@@ -656,6 +656,9 @@ model SellerLedgerEntry {
 
   grossAmountCents      Int @default(0)
   commissionAmountCents Int @default(0)
+  processingFeeCents    Int @default(0)
+  processingFeeStatus   String @default("PENDING")
+  processingFeeFinalizedAt DateTime?
   sellerEarningsCents   Int @default(0)
   refundAmountCents     Int @default(0)
   payoutAmountCents     Int @default(0)

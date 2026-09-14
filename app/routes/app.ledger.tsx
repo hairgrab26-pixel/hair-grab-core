@@ -42,6 +42,11 @@ export const loader = async ({
       0,
     );
 
+  const processingFeeCents = entries.reduce(
+    (total, entry) => total + entry.processingFeeCents,
+    0,
+  );
+
 
   const sellerEarningsCents =
     entries.reduce(
@@ -129,6 +134,9 @@ export const loader = async ({
       commissionAmountCents:
         entry.commissionAmountCents,
 
+      processingFeeCents:
+        entry.processingFeeCents,
+
       sellerEarningsCents:
         entry.sellerEarningsCents,
 
@@ -161,6 +169,7 @@ export const loader = async ({
     totals: {
       grossSalesCents,
       commissionCents,
+      processingFeeCents,
       sellerEarningsCents,
       pendingCents,
       eligibleCents,
@@ -586,6 +595,10 @@ export default function LedgerPage() {
                   </th>
 
                   <th style={tableHeaderStyle}>
+                    Processing Fee
+                  </th>
+
+                  <th style={tableHeaderStyle}>
                     Seller
                   </th>
 
@@ -716,6 +729,18 @@ export default function LedgerPage() {
                       >
                         {formatMoney(
                           entry.commissionAmountCents,
+                          entry.currency,
+                        )}
+                      </td>
+
+
+                      <td
+                        style={
+                          tableCellStyle
+                        }
+                      >
+                        {formatMoney(
+                          entry.processingFeeCents,
                           entry.currency,
                         )}
                       </td>

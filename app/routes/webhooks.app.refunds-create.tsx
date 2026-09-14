@@ -226,6 +226,12 @@ export const action = async ({
           return null;
         }
 
+        if (currentSale.processingFeeStatus !== "FINALIZED") {
+          throw new Error(
+            `Refund ${refundId} is waiting for processing-fee finalization on order ${orderId}.`,
+          );
+        }
+
         const existingRefunds =
           await tx.sellerLedgerEntry.findMany({
             where: {

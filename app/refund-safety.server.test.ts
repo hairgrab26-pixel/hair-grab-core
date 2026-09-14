@@ -27,6 +27,26 @@ test("full refund caps gross, commission, and seller reversal", () => {
   );
 });
 
+test("full merchandise refund keeps a retained processing fee with the seller", () => {
+  assert.deepEqual(
+    calculateRefundReversal({
+      originalGrossCents: 30000,
+      originalCommissionCents: 2100,
+      originalSellerEarningsCents: 27000,
+      commissionRate: 7,
+      requestedGrossCents: 30000,
+      cumulativeRefundedGrossCents: 0,
+      priorCommissionReversalCents: 0,
+      priorSellerReversalCents: 0,
+    }),
+    {
+      refundedGrossCents: 30000,
+      commissionRefundCents: 2100,
+      sellerRefundResponsibilityCents: 27000,
+    },
+  );
+});
+
 test("partial refunds cap the final event and never exceed original amounts", () => {
   const first = calculateRefundReversal({
     ...original,

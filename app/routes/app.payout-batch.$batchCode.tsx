@@ -391,6 +391,14 @@ export const action = async ({
           );
         }
 
+        if (entry.processingFeeStatus !== "FINALIZED") {
+          throw new Error(
+            `Execution blocked. Order ${
+              entry.shopifyOrderName || entry.shopifyOrderId
+            } has unresolved processing-fee accounting.`,
+          );
+        }
+
         if (entry.fundsStatus !== "CLEARED") {
           throw new Error(
             `Execution blocked. Order ${

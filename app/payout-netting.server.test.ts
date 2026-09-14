@@ -60,3 +60,8 @@ test("already paid amounts never become negative", () => {
     0,
   );
 });
+
+test("uses fee-adjusted seller earnings without subtracting the fee again", () => {
+  const entry = sale("a", "order", "line", 8983);
+  assert.equal(netSaleRemainingCents(entry, []), 8983);
+});
