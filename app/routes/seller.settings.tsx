@@ -1530,6 +1530,49 @@ export default function SellerSettingsPage() {
     actionData?.message ===
       "Your HairGrab storefront settings were saved.";
 
+  // Every "3. Build Your Storefront" control (Storefront Sections,
+  // Featured Products, Custom Collections) is its own separate
+  // <Form>, but the page only ever showed ONE success/error banner
+  // near the very top of this long page. A seller who saves one of
+  // those forms while scrolled down to "Build Your Storefront"
+  // never sees that banner without scrolling back up — the save
+  // may have worked perfectly, but there is zero visible proof of
+  // it right where they are. Track which intent was last submitted
+  // so each form can show its own inline result next to its own
+  // button, without changing anything about how saving works.
+  const [
+    lastSubmittedIntent,
+    setLastSubmittedIntent,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  useEffect(() => {
+    if (
+      navigation.state ===
+        "submitting" &&
+      navigation.formData
+    ) {
+      const submittedIntent =
+        navigation.formData.get(
+          "intent",
+        );
+
+      if (
+        typeof submittedIntent ===
+        "string"
+      ) {
+        setLastSubmittedIntent(
+          submittedIntent,
+        );
+      }
+    }
+  }, [
+    navigation.state,
+    navigation.formData,
+  ]);
+
   const hasBrandBasics =
     Boolean(seller.storeDescription) &&
     Boolean(seller.logoUrl) &&
@@ -2776,6 +2819,16 @@ export default function SellerSettingsPage() {
             >
               Save Storefront Sections
             </button>
+
+            <IntentSaveStatus
+              intent="saveStoreSections"
+              matches={
+                lastSubmittedIntent
+              }
+              actionData={
+                actionData
+              }
+            />
           </Form>
 
           <Card
@@ -2804,6 +2857,16 @@ export default function SellerSettingsPage() {
                         >
                           Save Featured Products
                         </button>
+
+                        <IntentSaveStatus
+                          intent="saveFeaturedProducts"
+                          matches={
+                            lastSubmittedIntent
+                          }
+                          actionData={
+                            actionData
+                          }
+                        />
                       </Form>
                     </Card>
 
@@ -2865,6 +2928,16 @@ export default function SellerSettingsPage() {
                         >
                           Add Collection
                         </button>
+
+                        <IntentSaveStatus
+                          intent="createCollection"
+                          matches={
+                            lastSubmittedIntent
+                          }
+                          actionData={
+                            actionData
+                          }
+                        />
                       </Form>
 
                       {collections.length === 0 ? (
@@ -2986,6 +3059,16 @@ export default function SellerSettingsPage() {
                                   Delete
                                 </button>
                               </div>
+
+                              <IntentSaveStatus
+                                intent="updateCollection"
+                                matches={
+                                  lastSubmittedIntent
+                                }
+                                actionData={
+                                  actionData
+                                }
+                              />
                             </Form>
                           ),
                         )
@@ -3702,6 +3785,55 @@ function Notice({
       }}
     >
       {text}
+    </div>
+  );
+}
+
+// Scoped confirmation for one "3. Build Your Storefront" form.
+// Shows "Saving…" while THIS intent is in flight, then the actual
+// server result once it lands — right next to the button the
+// seller just clicked, instead of only in the page-top Notice.
+function IntentSaveStatus({
+  intent,
+  matches,
+  actionData,
+}: {
+  intent: string;
+  matches: string | null;
+  actionData:
+    | { success: boolean; message: string }
+    | undefined;
+}) {
+  if (matches !== intent) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: "10px",
+      }}
+    >
+      {actionData ? (
+        <Notice
+          success={
+            actionData.success
+          }
+          text={
+            actionData.message
+          }
+        />
+      ) : (
+        <div
+          style={{
+            color: "#7d7480",
+            fontSize: "11px",
+            fontWeight: 700,
+          }}
+        >
+          Saving…
+        </div>
+      )}
     </div>
   );
 }
