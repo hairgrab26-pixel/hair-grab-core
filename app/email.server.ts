@@ -158,6 +158,14 @@ export async function sendSellerLoginEmail({
           </div>
 
           <p style="font-size: 14px; color: #6f6675;">
+            If the button doesn&rsquo;t work, copy and paste this link into your browser:
+          </p>
+
+          <p style="font-size: 13px; word-break: break-all; color: #4B1678;">
+            ${loginUrl}
+          </p>
+
+          <p style="font-size: 14px; color: #6f6675;">
             This link expires in 15 minutes and can only be used once. If you did not request this sign-in link, you can ignore this email.
           </p>
 
@@ -167,6 +175,18 @@ export async function sendSellerLoginEmail({
         </div>
       </div>
     `,
+    text: `Hi ${firstName?.trim() || "Seller"},
+
+Use the secure link below to sign in to your HairGrab Seller Portal:
+
+${loginUrl}
+
+This link expires in 15 minutes and can only be used once.
+
+If you did not request this sign-in link, you can ignore this email.
+
+HairGrab
+Find It. Love It. Grab It.`,
   });
 
   if (error) {
