@@ -3,7 +3,6 @@ import type {
 } from "react-router";
 
 import {
-  Link,
   useLoaderData,
 } from "react-router";
 
@@ -547,8 +546,13 @@ export default function PublicSellerStorefrontPage() {
               "12px",
           }}
         >
-          <Link
-            to="/sellers"
+          <a
+            // Absolute + branded rather than a relative <Link>, so
+            // this link can never inherit an unbranded host (e.g.
+            // a raw Railway domain) if this storefront page is ever
+            // reached through one. Matches the same hardening applied
+            // to app/routes/sellers.tsx's "View Store" links.
+            href="https://shops.hairgrab.com/sellers"
             style={{
               color:
                 "#4B1678",
@@ -564,7 +568,7 @@ export default function PublicSellerStorefrontPage() {
             }}
           >
             ← All Sellers
-          </Link>
+          </a>
 
           <a
             href="https://hairgrab.com"
