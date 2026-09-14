@@ -22,6 +22,7 @@ import crypto from "node:crypto";
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
+import { displayProductCategory } from "../product-categories";
 
 
 // ==========================================================
@@ -2051,25 +2052,14 @@ export const action =
         value: string;
       }> = [];
 
+      // Canonical shopper-facing category label — single source
+      // of truth in ../product-categories.ts. Do NOT recompute
+      // this inline; every screen that writes or displays a
+      // product's category must go through that shared helper.
       const productTypeDisplay =
-        payload.productType === "WIG"
-          ? "Wigs"
-          : payload.productType === "BUNDLE"
-            ? "Bundles"
-            : payload.productType === "CLOSURE_FRONTAL"
-              ? "Closures & Frontals"
-              : payload.productType === "EXTENSION"
-                ? "Extensions"
-                : payload.productType === "BRAIDING_HAIR"
-                  ? "Braiding Hair"
-                  : payload.productType === "HAIR_ESSENTIAL"
-                    ? "Hair Essentials"
-                    : productTypes.find(
-                        (type) =>
-                          type.value ===
-                          payload.productType,
-                      )?.label ||
-                      payload.productType;
+        displayProductCategory(
+          payload.productType,
+        );
 
       const selectedLengthValues =
         Array.from(
@@ -2091,24 +2081,13 @@ export const action =
       // PRODUCT-SPECIFIC VALUES
       // ----------------------------------------------------
 
+      // Defaults to the same canonical category label used for
+      // Shopify's productType/tags (see ../product-categories.ts).
+      // EXTENSION is the one type that gets a finer-grained "Hair
+      // Category" metafield value based on the selected option —
+      // that's intentionally different from the top-level category.
       let hairCategoryMetafieldValue =
         productTypeDisplay;
-
-      if (
-        payload.productType ===
-        "WIG"
-      ) {
-        hairCategoryMetafieldValue =
-          "Wigs";
-      }
-
-      if (
-        payload.productType ===
-        "CLOSURE_FRONTAL"
-      ) {
-        hairCategoryMetafieldValue =
-          "Closures & Frontals";
-      }
 
       if (
         payload.productType ===

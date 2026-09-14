@@ -174,6 +174,8 @@ export const loader = async ({
         imageUrl: string | null;
         imageAlt: string;
         price: string;
+        onSale: boolean;
+        regularPrice: string;
       }
     >();
 
@@ -206,6 +208,7 @@ export const loader = async ({
               variants(first: 100) {
                 nodes {
                   price
+                  compareAtPrice
                 }
               }
             }
@@ -252,18 +255,21 @@ export const loader = async ({
         continue;
       }
 
-      const prices =
+      const variantNodes =
         (
           node
             ?.variants
             ?.nodes ||
           []
-        )
+        ) as Array<{
+          price?: string;
+          compareAtPrice?: string | null;
+        }>;
+
+      const prices =
+        variantNodes
           .map(
-            (
-              variant:
-                any,
-            ) =>
+            (variant) =>
               Number(
                 variant?.price ||
                 0,
@@ -306,6 +312,60 @@ export const loader = async ({
               )}`;
       }
 
+      // A product is "on sale" when at least one variant has a
+      // compareAtPrice higher than its current price. Kept
+      // consistent with seller.store-preview.tsx so the public
+      // storefront and the seller's private preview never
+      // disagree about sale state.
+      const onSale =
+        variantNodes.some(
+          (variant) => {
+            const variantPrice =
+              Number(
+                variant?.price ||
+                0,
+              );
+
+            const compareAt =
+              Number(
+                variant?.compareAtPrice ||
+                0,
+              );
+
+            return (
+              compareAt > 0 &&
+              variantPrice > 0 &&
+              compareAt > variantPrice
+            );
+          },
+        );
+
+      const compareAtPrices =
+        variantNodes
+          .map((variant) =>
+            Number(
+              variant?.compareAtPrice ||
+              0,
+            ),
+          )
+          .filter(
+            (value) =>
+              Number.isFinite(value) &&
+              value > 0,
+          );
+
+      const regularPrice =
+        onSale && compareAtPrices.length > 0
+          ? (() => {
+              const min = Math.min(...compareAtPrices);
+              const max = Math.max(...compareAtPrices);
+
+              return min === max
+                ? formatMoney(min)
+                : `From ${formatMoney(min)}`;
+            })()
+          : "";
+
       shopifyById.set(
         String(
           node.id,
@@ -337,6 +397,8 @@ export const loader = async ({
             "HairGrab product",
 
           price,
+          onSale,
+          regularPrice,
         },
       );
     }
@@ -380,6 +442,16 @@ export const loader = async ({
           price:
             shopifyProduct
               ?.price ||
+            "",
+
+          onSale:
+            shopifyProduct
+              ?.onSale ||
+            false,
+
+          regularPrice:
+            shopifyProduct
+              ?.regularPrice ||
             "",
         };
       },
@@ -993,20 +1065,86 @@ export default function PublicSellerStorefrontPage() {
                       {product.price && (
                         <div
                           style={{
-                            color:
-                              "#4B1678",
+                            display:
+                              "flex",
 
-                            fontWeight:
-                              "800",
+                            alignItems:
+                              "baseline",
 
-                            fontSize:
-                              "13px",
+                            gap:
+                              "6px",
+
+                            flexWrap:
+                              "wrap",
 
                             marginTop:
                               "7px",
                           }}
                         >
-                          {product.price}
+                          <span
+                            style={{
+                              color:
+                                "#4B1678",
+
+                              fontWeight:
+                                "800",
+
+                              fontSize:
+                                "13px",
+                            }}
+                          >
+                            {product.price}
+                          </span>
+
+                          {product.onSale &&
+                            product.regularPrice && (
+                              <span
+                                style={{
+                                  color:
+                                    "#948a9c",
+
+                                  fontSize:
+                                    "11px",
+
+                                  textDecoration:
+                                    "line-through",
+                                }}
+                              >
+                                {product.regularPrice}
+                              </span>
+                            )}
+
+                          {product.onSale && (
+                            <span
+                              style={{
+                                color:
+                                  "#4B1678",
+
+                                background:
+                                  "#f3e6c8",
+
+                                fontSize:
+                                  "9px",
+
+                                fontWeight:
+                                  "800",
+
+                                letterSpacing:
+                                  "0.03em",
+
+                                textTransform:
+                                  "uppercase",
+
+                                padding:
+                                  "2px 6px",
+
+                                borderRadius:
+                                  "5px",
+                              }}
+                            >
+                              Sale
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>

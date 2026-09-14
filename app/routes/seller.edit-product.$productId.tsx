@@ -4,6 +4,7 @@ import { Form, Link, redirect, useActionData, useLoaderData } from "react-router
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
+import { displayProductCategory } from "../product-categories";
 
 type ShopifyMetafieldDefinition = {
   name: string;
@@ -1056,74 +1057,34 @@ export const action = async ({
         ]),
       ];
 
-    const currentProductType =
+    // This screen does not currently expose a control that lets
+    // a seller change Product Type / HairGrab Category — editing
+    // inventory, price, sale price, description, media, etc. must
+    // NEVER silently rewrite Shopify's productType as a side
+    // effect of an unrelated save. So productType is only ever
+    // included in the update below when the seller explicitly
+    // submitted a new one (see `requestedProductType`); otherwise
+    // it is omitted from the mutation entirely, which leaves
+    // Shopify's existing value completely untouched.
+    //
+    // When a category-change control is added to this form, have
+    // it submit a "productType" field with one of the internal
+    // ProductType enum values (see ../product-categories.ts) or
+    // the free-text category — displayProductCategory() below
+    // will canonicalize whatever is submitted.
+    const requestedProductType =
       String(
-        currentJson?.data
-          ?.product
-          ?.productType ||
-        "",
+        formData.get(
+          "productType",
+        ) || "",
       ).trim();
 
-    const normalizedType =
-      currentProductType
-        .toLowerCase()
-        .replace(
-          /[^a-z0-9]+/g,
-          "",
-        );
-
-    let normalizedProductType =
-      currentProductType;
-
-    if (
-      normalizedType ===
-        "wig" ||
-      normalizedType ===
-        "wigs"
-    ) {
-      normalizedProductType =
-        "Wigs";
-    } else if (
-      normalizedType ===
-        "bundle" ||
-      normalizedType ===
-        "bundles"
-    ) {
-      normalizedProductType =
-        "Bundles";
-    } else if (
-      normalizedType.includes(
-        "closure",
-      ) ||
-      normalizedType.includes(
-        "frontal",
-      )
-    ) {
-      normalizedProductType =
-        "Closures & Frontals";
-    } else if (
-      normalizedType ===
-        "extension" ||
-      normalizedType ===
-        "extensions"
-    ) {
-      normalizedProductType =
-        "Extensions";
-    } else if (
-      normalizedType.includes(
-        "braiding",
-      )
-    ) {
-      normalizedProductType =
-        "Braiding Hair";
-    } else if (
-      normalizedType.includes(
-        "essential",
-      )
-    ) {
-      normalizedProductType =
-        "Hair Essentials";
-    }
+    const nextProductType =
+      requestedProductType
+        ? displayProductCategory(
+            requestedProductType,
+          )
+        : undefined;
 
     const productResponse =
       await admin.graphql(
@@ -1164,8 +1125,12 @@ export const action = async ({
                   "</p><p>",
                 )}</p>`,
 
-              productType:
-                normalizedProductType,
+              ...(nextProductType
+                ? {
+                    productType:
+                      nextProductType,
+                  }
+                : {}),
 
               tags,
             },
@@ -2015,73 +1980,9 @@ export default function SellerEditProductPage() {
                 >
                   HairGrab Category:
                 </strong>{" "}
-                {(() => {
-                  const value =
-                    String(
-                      product.productType ||
-                      "",
-                    )
-                      .toLowerCase()
-                      .replace(
-                        /[^a-z0-9]+/g,
-                        "",
-                      );
-
-                  if (
-                    value === "wig" ||
-                    value === "wigs"
-                  ) {
-                    return "Wigs";
-                  }
-
-                  if (
-                    value === "bundle" ||
-                    value === "bundles"
-                  ) {
-                    return "Bundles";
-                  }
-
-                  if (
-                    value.includes(
-                      "closure",
-                    ) ||
-                    value.includes(
-                      "frontal",
-                    )
-                  ) {
-                    return "Closures & Frontals";
-                  }
-
-                  if (
-                    value ===
-                      "extension" ||
-                    value ===
-                      "extensions"
-                  ) {
-                    return "Extensions";
-                  }
-
-                  if (
-                    value.includes(
-                      "braiding",
-                    )
-                  ) {
-                    return "Braiding Hair";
-                  }
-
-                  if (
-                    value.includes(
-                      "essential",
-                    )
-                  ) {
-                    return "Hair Essentials";
-                  }
-
-                  return (
-                    product.productType ||
-                    "Other"
-                  );
-                })()}
+                {displayProductCategory(
+                  product.productType,
+                )}
               </div>
             </Section>
 
