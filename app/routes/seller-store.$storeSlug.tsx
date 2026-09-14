@@ -616,8 +616,16 @@ export default function PublicSellerStorefrontPage() {
         >
           <div
             style={{
-              height:
-                "220px",
+              width:
+                "100%",
+
+              // Same banner aspect ratio as Store Preview
+              // (app/routes/seller.store-preview.tsx) and the
+              // /sellers directory instead of a short fixed
+              // height — that fixed height was cropping the
+              // bottom of the banner off here.
+              aspectRatio:
+                "4 / 1",
 
               background:
                 seller.bannerUrl
@@ -652,6 +660,12 @@ export default function PublicSellerStorefrontPage() {
 
                   objectFit:
                     "cover",
+
+                  objectPosition:
+                    "center",
+
+                  display:
+                    "block",
                 }}
               />
             ) : (
