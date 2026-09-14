@@ -4,7 +4,12 @@ import { Form, Link, redirect, useActionData, useLoaderData } from "react-router
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
-import { displayProductCategory } from "../product-categories";
+import { displayProductCategory, PRODUCT_CATEGORY_LABELS, type ProductType } from "../product-categories";
+import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, type ExistingProductSnapshot } from "../product-builder-model";
+import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.server";
+import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
+import ProductBuilder from "../components/ProductBuilder";
+import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
 
 type ShopifyMetafieldDefinition = {
   name: string;
@@ -370,11 +375,13 @@ async function setProductMetafieldsSafely({
   admin,
   productId,
   metafields,
+  strict = false,
 }: {
   admin: any;
   productId: string;
   metafields:
     ProductMetafield[];
+  strict?: boolean;
 }) {
   for (
     const metafield of
@@ -418,6 +425,10 @@ async function setProductMetafieldsSafely({
         ?.metafieldsSet
         ?.userErrors ||
       [];
+
+    if (strict && (json?.errors?.length || errors.length)) {
+      throw new Error([...((json as any).errors || []), ...errors].map((error: { message?: string }) => error.message || "Unable to save metafield").join(" | "));
+    }
 
     if (
       errors.length > 0
@@ -514,13 +525,27 @@ export const loader = async ({
             vendor
             tags
 
+            options { id name optionValues { id name } }
+
+            media(first: 250) {
+              nodes {
+                id
+                mediaContentType
+                alt
+                ... on MediaImage { image { url } }
+                ... on Video { sources { url mimeType } }
+                ... on ExternalVideo { originUrl }
+              }
+              pageInfo { hasNextPage endCursor }
+            }
+
             featuredImage {
               url
               altText
             }
 
             metafields(
-              first: 100
+              first: 250
             ) {
               nodes {
                 namespace
@@ -528,10 +553,11 @@ export const loader = async ({
                 type
                 value
               }
+              pageInfo { hasNextPage endCursor }
             }
 
             variants(
-              first: 100
+              first: 250
             ) {
               nodes {
                 id
@@ -540,11 +566,13 @@ export const loader = async ({
                 compareAtPrice
                 sku
                 inventoryQuantity
+                selectedOptions { name value }
 
                 inventoryItem {
                   id
                 }
               }
+              pageInfo { hasNextPage endCursor }
             }
           }
         }
@@ -598,6 +626,79 @@ export const loader = async ({
     );
   }
 
+  // Shopify connections are paginated. An incomplete baseline must never be used
+  // for an edit diff, even when the seller has more than 250 variants or media.
+  for (const connectionName of ["variants", "media", "metafields"] as const) {
+    const connection = product[connectionName];
+    while (connection?.pageInfo?.hasNextPage) {
+      const pageResponse = await admin.graphql(
+        connectionName === "variants" ? `#graphql
+          query HairGrabEditVariantPage($id: ID!, $after: String) {
+            product(id: $id) { variants(first: 250, after: $after) {
+              nodes { id title price compareAtPrice sku inventoryQuantity
+                selectedOptions { name value } inventoryItem { id } }
+              pageInfo { hasNextPage endCursor }
+            } }
+          }` : connectionName === "media" ? `#graphql
+          query HairGrabEditMediaPage($id: ID!, $after: String) {
+            product(id: $id) { media(first: 250, after: $after) {
+              nodes { id mediaContentType alt
+                ... on MediaImage { image { url } }
+                ... on Video { sources { url mimeType } }
+                ... on ExternalVideo { originUrl }
+              }
+              pageInfo { hasNextPage endCursor }
+            } }
+          }` : `#graphql
+          query HairGrabEditMetafieldPage($id: ID!, $after: String) {
+            product(id: $id) { metafields(first: 250, after: $after) {
+              nodes { namespace key type value }
+              pageInfo { hasNextPage endCursor }
+            } }
+          }`,
+        { variables: { id: coreProduct.shopifyProductId, after: connection.pageInfo.endCursor } },
+      );
+      const pageJson: any = await pageResponse.json();
+      if (pageJson?.errors?.length || !pageJson?.data?.product?.[connectionName]) {
+        throw new Error(`Could not load every Shopify ${connectionName} page`);
+      }
+      const page = pageJson.data.product[connectionName];
+      connection.nodes.push(...page.nodes);
+      connection.pageInfo = page.pageInfo;
+    }
+  }
+
+  const shopifySnapshot: ExistingProductSnapshot = {
+    options: (product.options || []).map((option: any) => ({
+      id: option.id,
+      name: option.name,
+      values: (option.optionValues || []).map((value: any) => ({ id: value.id, name: value.name })),
+    })),
+    variants: (product.variants?.nodes || []).map((variant: any) => ({
+      id: variant.id,
+      selectedOptions: variant.selectedOptions || [],
+      price: String(variant.price),
+      compareAtPrice: variant.compareAtPrice == null ? null : String(variant.compareAtPrice),
+      sku: variant.sku ?? null,
+      inventoryQuantity: variant.inventoryQuantity ?? null,
+      inventoryItemId: variant.inventoryItem?.id ?? null,
+    })),
+    media: (product.media?.nodes || []).map((item: any, position: number) => ({
+      id: item.id,
+      mediaContentType: item.mediaContentType,
+      alt: item.alt ?? null,
+      url: item.image?.url || item.sources?.[0]?.url || item.originUrl || null,
+      position,
+    })),
+  };
+  // Refuse to render an edit form whose unchanged graph does not round-trip.
+  const unchangedVariants = diffVariants(shopifySnapshot.variants, hydrateVariantEditState(shopifySnapshot));
+  const unchangedMedia = diffMedia(shopifySnapshot.media, hydrateMediaEditState(shopifySnapshot));
+  if (unchangedVariants.creates.length || unchangedVariants.updates.length || unchangedVariants.deletes.length ||
+      unchangedMedia.creates.length || unchangedMedia.detaches.length || unchangedMedia.reorder) {
+    throw new Error("Shopify product failed the no-change round-trip check");
+  }
+
   const productMetafields =
     (
       product.metafields
@@ -616,7 +717,7 @@ export const loader = async ({
       ],
     );
 
-  let shippingMethod =
+  const originalShippingMethod =
     getMetafieldValue(
       productMetafields,
       "hairgrab",
@@ -624,6 +725,7 @@ export const loader = async ({
     ) ||
     legacyShipping ||
     "Free Shipping";
+  let shippingMethod = originalShippingMethod;
 
   if (
     shippingMethod.includes(
@@ -682,8 +784,18 @@ export const loader = async ({
       coreProduct.id,
 
     product,
+    shopifySnapshot,
 
     settings: {
+      builderShippingMethod: originalShippingMethod,
+      material: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Hair Type", "Material"]),
+      colors: (() => { const raw = getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Color"]); try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : raw ? [raw] : []; } catch { return raw ? [raw] : []; } })(),
+      texture: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Texture"]),
+      density: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Density"]),
+      laceSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Size"]),
+      laceType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]),
+      capSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Cap Type", "Cap Size"]),
+      locType: getMetafieldValue(productMetafields, "hairgrab", "loc_type"),
       shippingMethod,
 
       flatRateShipping:
@@ -767,6 +879,7 @@ export const loader = async ({
 export const action = async ({
   request,
   params,
+  context,
 }: ActionFunctionArgs) => {
   const { seller } =
     await requireSellerSession(
@@ -878,791 +991,185 @@ export const action = async ({
       );
     }
 
-    const title =
-      String(
-        formData.get(
-          "title",
-        ) || "",
-      ).trim();
-
-    const description =
-      String(
-        formData.get(
-          "description",
-        ) || "",
-      ).trim();
-
-    if (!title) {
-      return {
-        success:
-          false,
-        message:
-          "Product name is required.",
+    if (intent === "builderSave") {
+      const submitted = JSON.parse(String(formData.get("builderEdit") || "null"));
+      if (!submitted?.baseline || !submitted?.variants || !submitted?.media || !submitted?.fields || !Array.isArray(submitted.changedFields)) {
+        throw new Error("Incomplete product edit request");
+      }
+      const current = await loader({ request, params, context } as LoaderFunctionArgs) as Awaited<ReturnType<typeof loader>>;
+      if (JSON.stringify(submitted.baseline) !== JSON.stringify(current.shopifySnapshot)) {
+        throw new Error("This product changed in Shopify while you were editing. Reload before saving to preserve the latest data.");
+      }
+      const variantDiff = diffVariants(current.shopifySnapshot.variants, submitted.variants);
+      const mediaDiff = diffMedia(current.shopifySnapshot.media, submitted.media);
+      const fields = submitted.fields as Record<string, any>;
+      const allowedFields = new Set(["title", "description", "productType", "selectedOptions", "searchClassifications", "installationMethods", "locType",
+        "material", "colors", "texture", "density", "laceSize", "laceType", "capSize", "shippingMethod", "flatRateShipping",
+        "localPickupAvailable", "localDeliveryAvailable", "shipsWithin", "returnPolicy", "showOnMap"]);
+      const dirty = new Set<string>(submitted.changedFields);
+      if ([...dirty].some((key) => !allowedFields.has(key))) throw new Error("Unsupported product field in edit request");
+      const mediaFiles = [...formData.entries()].filter(([key]) => key.startsWith("media:")).map(([key, value]) => ({ key: key.slice(6), file: value as File }));
+      if (!dirty.size && !variantDiff.creates.length && !variantDiff.updates.length && !variantDiff.deletes.length &&
+          !mediaDiff.creates.length && !mediaDiff.detaches.length && !mediaDiff.reorder && !mediaFiles.length) {
+        return { success: true, message: "Product already up to date." };
+      }
+      const { admin } = await getShopifyAdmin();
+      const productId = String(coreProduct.shopifyProductId);
+      const productInput: Record<string, unknown> = { id: productId };
+      if (dirty.has("title")) {
+        if (!String(fields.title || "").trim()) throw new Error("Product title is required");
+        productInput.title = String(fields.title).trim();
+      }
+      if (dirty.has("description")) productInput.descriptionHtml = `<p>${String(fields.description || "").trim().replace(/\n/g, "</p><p>")}</p>`;
+      if (dirty.has("productType")) {
+        if (!Object.prototype.hasOwnProperty.call(PRODUCT_CATEGORY_LABELS, String(fields.productType))) throw new Error("Choose a valid HairGrab product category");
+        const category = displayProductCategory(String(fields.productType || ""));
+        productInput.productType = category;
+      }
+      const tags = new Set(current.product.tags as string[]);
+      if (dirty.has("productType")) {
+        tags.delete(current.product.productType);
+        tags.add(String(productInput.productType));
+      }
+      if (dirty.has("selectedOptions")) {
+        for (const choice of Object.values(productOptions).flat()) tags.delete(choice.label);
+        for (const value of fields.selectedOptions || []) {
+          const choice = (productOptions[fields.productType as keyof typeof productOptions] || []).find((item) => item.value === value);
+          if (choice) tags.add(choice.label);
+        }
+      }
+      if (dirty.has("searchClassifications")) {
+        for (const choice of Object.values(productClassifications).flat()) tags.delete(choice.label);
+        tags.delete("Locs / Locks");
+        for (const value of fields.searchClassifications || []) {
+          const choice = (productClassifications[fields.productType as keyof typeof productClassifications] || []).find((item) => item.value === value);
+          if (choice) tags.add(choice.label);
+        }
+      }
+      if (dirty.has("installationMethods")) {
+        for (const choice of installationMethodChoices) tags.delete(choice.label);
+        for (const value of fields.installationMethods || []) {
+          const choice = installationMethodChoices.find((item) => item.value === value);
+          if (choice) tags.add(choice.label);
+        }
+      }
+      if (dirty.has("locType")) {
+        for (const choice of locTypeChoices) tags.delete(choice.label);
+        const choice = locTypeChoices.find((item) => item.value === fields.locType);
+        if (choice) tags.add(choice.label);
+      }
+      if (["productType", "selectedOptions", "searchClassifications", "installationMethods", "locType"].some((key) => dirty.has(key))) productInput.tags = [...tags];
+      if (Object.keys(productInput).length > 1) {
+        const response = await admin.graphql(`#graphql
+          mutation HairGrabBuilderEditProduct($product: ProductUpdateInput!) {
+            productUpdate(product: $product) { product { id } userErrors { field message } }
+          }`, { variables: { product: productInput } });
+        const json: any = await response.json();
+        const errors = [...(json.errors || []), ...(json.data?.productUpdate?.userErrors || [])];
+        if (errors.length) throw new Error(errors.map((error: any) => error.message).join(" | "));
+      }
+      const locationId = await getPrimaryLocationId(admin);
+      const effectiveShippingMethod = dirty.has("shippingMethod") ? String(fields.shippingMethod) : String(current.settings.builderShippingMethod || current.settings.shippingMethod);
+      if ((variantDiff.creates.length || dirty.has("shippingMethod") || dirty.has("flatRateShipping")) &&
+          !["Free Shipping", "Flat Rate Shipping"].includes(effectiveShippingMethod)) {
+        throw new Error("This product uses an unsupported legacy shipping method. Choose a supported shipping method before adding variants.");
+      }
+      const createdIds = await reconcileVariants(admin, productId, locationId, variantDiff, current.shopifySnapshot.variants);
+      if (createdIds.length || dirty.has("shippingMethod") || dirty.has("flatRateShipping")) {
+        await syncHairGrabShippingProfile({ admin, locationId,
+          variantIds: [...current.shopifySnapshot.variants.map((item) => item.id).filter((id) => !variantDiff.deletes.includes(id)), ...createdIds],
+          shippingMethod: effectiveShippingMethod,
+          flatRateShipping: dirty.has("flatRateShipping") ? String(fields.flatRateShipping || "") : String(current.settings.flatRateShipping || "") });
+      }
+      await reconcileMedia(admin, productId, mediaDiff, submitted.media.order, mediaFiles);
+      const definitions = await getProductMetafieldDefinitions(admin);
+      const metafields: ProductMetafield[] = [];
+      const deleteMetafields: Array<{ ownerId: string; namespace: string; key: string }> = [];
+      const existingMetafields = (current.product.metafields?.nodes || []) as ProductMetafield[];
+      const removeIfPresent = (namespace: string, key: string) => {
+        if (existingMetafields.some((item) => item.namespace === namespace && item.key === key)) {
+          deleteMetafields.push({ ownerId: productId, namespace, key });
+        }
       };
-    }
-
-    const shippingMethod =
-      String(
-        formData.get(
-          "shippingMethod",
-        ) ||
-        "Free Shipping",
-      ).trim();
-
-    const flatRateShipping =
-      String(
-        formData.get(
-          "flatRateShipping",
-        ) || "",
-      ).trim();
-
-    if (
-      shippingMethod !==
-        "Free Shipping" &&
-      shippingMethod !==
-        "Flat Rate Shipping"
-    ) {
-      return {
-        success: false,
-        message:
-          "Choose Free Shipping or Flat Rate Shipping.",
-      };
-    }
-
-    const shipsWithin =
-      String(
-        formData.get(
-          "shipsWithin",
-        ) ||
-        "48 Hours",
-      ).trim();
-
-    const returnPolicy =
-      String(
-        formData.get(
-          "returnPolicy",
-        ) ||
-        "14-Day Returns",
-      ).trim();
-
-    const showOnMap =
-      String(
-        formData.get(
-          "showOnMap",
-        ) || "No",
-      ).trim();
-
-    const localPickupAvailable =
-      seller.offersLocalPickup &&
-      formData.get(
-        "localPickupAvailable",
-      ) === "on";
-
-    const localDeliveryAvailable =
-      seller.offersLocalDelivery &&
-      formData.get(
-        "localDeliveryAvailable",
-      ) === "on";
-
-    const searchClassifications =
-      formData
-        .getAll(
-          "searchClassifications",
-        )
-        .map(String)
-        .filter(
-          (
-            value,
-          ) =>
-            CLASSIFICATION_TAGS.includes(
-              value,
-            ),
-        );
-
-    if (
-      shippingMethod ===
-      "Flat Rate Shipping"
-    ) {
-      const amount =
-        Number(
-          flatRateShipping,
-        );
-
-      if (
-        !Number.isFinite(
-          amount,
-        ) ||
-        amount <= 0
-      ) {
-        return {
-          success:
-            false,
-          message:
-            "Enter a flat-rate shipping amount greater than $0.",
-        };
-      }
-    }
-
-    const variants =
-      JSON.parse(
-        String(
-          formData.get(
-            "variants",
-          ) || "[]",
-        ),
-      ) as Array<{
-        id: string;
-        inventoryItemId:
-          string;
-        price: string;
-        salePrice: string;
-        sku: string;
-        inventory:
-          string;
-      }>;
-
-    const { admin } =
-      await getShopifyAdmin();
-
-    const currentResponse =
-      await admin.graphql(
-        `#graphql
-        query HairGrabEditCurrentTags(
-          $id: ID!
-        ) {
-          product(
-            id: $id
-          ) {
-            tags
-            productType
+      if (dirty.has("productType") || dirty.has("selectedOptions")) {
+        const definition = findMetafieldDefinition(definitions, ["Hair Category"]);
+        if (definition) {
+          const category = PRODUCT_CATEGORY_LABELS[fields.productType as ProductType];
+          let value = category || current.product.productType;
+          if (fields.productType === "EXTENSION") {
+            const extensionOptions = fields.selectedOptions || [];
+            value = extensionOptions.includes("CLIP_IN") ? "Clip-Ins" : extensionOptions.includes("TAPE_IN") ? "Tape-Ins" :
+              extensionOptions.includes("I_TIP") ? "I-Tips & K Tips" : extensionOptions.includes("HALO") ? "Halo Extensions" : "Other";
           }
-        }
-        `,
-        {
-          variables: {
-            id:
-              coreProduct
-                .shopifyProductId,
-          },
-        },
-      );
-
-    const currentJson =
-      await currentResponse.json();
-
-    const currentTags =
-      (
-        currentJson?.data
-          ?.product
-          ?.tags ||
-        []
-      ) as string[];
-
-    // The classification checkboxes only render on the client when
-    // they're applicable to this product's current category (see
-    // CLASSIFICATION_TAGS_BY_CATEGORY / applicableClassificationTags
-    // in the component). When they're hidden, `searchClassifications`
-    // above is always empty — NOT because the seller cleared
-    // anything, but because there was no control to submit. So a
-    // save on a category with no applicable classification must
-    // leave whatever classification-family tags currently exist
-    // completely untouched, rather than stripping them because the
-    // (absent) checkboxes came back unchecked.
-    const currentProductTypeForClassification =
-      String(
-        currentJson?.data
-          ?.product
-          ?.productType ||
-        "",
-      ).trim();
-
-    const applicableClassificationTags =
-      CLASSIFICATION_TAGS_BY_CATEGORY[
-        displayProductCategory(
-          currentProductTypeForClassification,
-        )
-      ] || [];
-
-    const preservedTags =
-      applicableClassificationTags.length ===
-      0
-        ? currentTags
-        : currentTags.filter(
-            (
-              tag,
-            ) =>
-              ![
-                ...CLASSIFICATION_TAGS,
-                ...LEGACY_CLASSIFICATION_TAGS,
-              ].includes(
-                tag,
-              ),
-          );
-
-    const tags =
-      applicableClassificationTags.length ===
-      0
-        ? preservedTags
-        : [
-            ...new Set([
-              ...preservedTags,
-              ...searchClassifications.filter(
-                (
-                  value,
-                ) =>
-                  applicableClassificationTags.includes(
-                    value,
-                  ),
-              ),
-            ]),
-          ];
-
-    // This screen does not currently expose a control that lets
-    // a seller change Product Type / HairGrab Category — editing
-    // inventory, price, sale price, description, media, etc. must
-    // NEVER silently rewrite Shopify's productType as a side
-    // effect of an unrelated save. So productType is only ever
-    // included in the update below when the seller explicitly
-    // submitted a new one (see `requestedProductType`); otherwise
-    // it is omitted from the mutation entirely, which leaves
-    // Shopify's existing value completely untouched.
-    //
-    // When a category-change control is added to this form, have
-    // it submit a "productType" field with one of the internal
-    // ProductType enum values (see ../product-categories.ts) or
-    // the free-text category — displayProductCategory() below
-    // will canonicalize whatever is submitted.
-    const requestedProductType =
-      String(
-        formData.get(
-          "productType",
-        ) || "",
-      ).trim();
-
-    const nextProductType =
-      requestedProductType
-        ? displayProductCategory(
-            requestedProductType,
-          )
-        : undefined;
-
-    const productResponse =
-      await admin.graphql(
-        `#graphql
-        mutation HairGrabUpdateSellerProduct(
-          $product: ProductUpdateInput!
-        ) {
-          productUpdate(
-            product: $product
-          ) {
-            product {
-              id
-              title
-              handle
-              status
-              tags
-            }
-
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-        `,
-        {
-          variables: {
-            product: {
-              id:
-                coreProduct
-                  .shopifyProductId,
-
-              title,
-
-              descriptionHtml:
-                `<p>${description.replace(
-                  /\n/g,
-                  "</p><p>",
-                )}</p>`,
-
-              ...(nextProductType
-                ? {
-                    productType:
-                      nextProductType,
-                  }
-                : {}),
-
-              tags,
-            },
-          },
-        },
-      );
-
-    const productJson =
-      await productResponse.json();
-
-    const productErrors =
-      productJson?.data
-        ?.productUpdate
-        ?.userErrors ||
-      [];
-
-    if (
-      productErrors.length >
-      0
-    ) {
-      throw new Error(
-        productErrors
-          .map(
-            (
-              e: {
-                message?: string;
-              },
-            ) =>
-              e.message ||
-              "Unable to update product.",
-          )
-          .join(" | "),
-      );
-    }
-
-    if (
-      variants.length >
-      0
-    ) {
-      for (
-        const variant of
-        variants
-      ) {
-        const regularPrice =
-          Number(
-            variant.price,
-          );
-
-        if (
-          !Number.isFinite(
-            regularPrice,
-          ) ||
-          regularPrice < 0
-        ) {
-          return {
-            success: false,
-            message:
-              "Enter a valid regular price for every variant.",
-          };
-        }
-
-        const salePriceRaw =
-          String(
-            variant.salePrice ||
-            "",
-          ).trim();
-
-        if (salePriceRaw) {
-          const salePrice =
-            Number(
-              salePriceRaw,
-            );
-
-          if (
-            !Number.isFinite(
-              salePrice,
-            ) ||
-            salePrice < 0
-          ) {
-            return {
-              success: false,
-              message:
-                "Enter a valid sale price.",
-            };
-          }
-
-          if (
-            salePrice >=
-            regularPrice
-          ) {
-            return {
-              success: false,
-              message:
-                "Sale price must be lower than the regular price.",
-            };
-          }
+          metafields.push({ namespace: definition.namespace, key: definition.key, type: definition.type.name, value });
         }
       }
-
-      const variantResponse =
-        await admin.graphql(
-          `#graphql
-          mutation HairGrabUpdateSellerVariants(
-            $productId: ID!
-            $variants: [ProductVariantsBulkInput!]!
-          ) {
-            productVariantsBulkUpdate(
-              productId: $productId
-              variants: $variants
-            ) {
-              productVariants {
-                id
-                price
-                sku
-              }
-
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-          `,
-          {
-            variables: {
-              productId:
-                coreProduct
-                  .shopifyProductId,
-
-                     variants:
-               variants.map(
-                 (
-                   variant,
-                 ) => {
-                   const salePrice =
-                     String(
-                       variant.salePrice ||
-                       "",
-                     ).trim();
-
-                   return {
-                     id:
-                       variant.id,
-
-                     price:
-                       Number(
-                         salePrice ||
-                         variant.price,
-                       ),
-
-                     compareAtPrice:
-                       salePrice
-                         ? Number(
-                             variant.price,
-                           )
-                         : null,
-
-                     inventoryItem: {
-                       sku:
-                         variant.sku
-                           .trim() ||
-                         null,
-                     },
-                   };
-                 },
-               ),
-            },
-          },
-        );
-
-      const variantJson =
-        await variantResponse.json();
-
-      const variantErrors =
-        variantJson?.data
-          ?.productVariantsBulkUpdate
-          ?.userErrors ||
-        [];
-
-      if (
-        variantErrors.length >
-        0
-      ) {
-        throw new Error(
-          variantErrors
-            .map(
-              (
-                e: {
-                  message?: string;
-                },
-              ) =>
-                e.message ||
-                "Unable to update variants.",
-            )
-            .join(" | "),
-        );
-      }
-
-      const locationId =
-        await getPrimaryLocationId(
-          admin,
-        );
-
-      const inventoryQuantities =
-        variants
-          .filter(
-            (
-              variant,
-            ) =>
-              variant
-                .inventoryItemId &&
-              variant.inventory
-                .trim() !==
-                "" &&
-              Number.isFinite(
-                Number(
-                  variant.inventory,
-                ),
-              ),
-          )
-          .map(
-            (
-              variant,
-            ) => ({
-              inventoryItemId:
-                variant
-                  .inventoryItemId,
-
-              locationId,
-
-              quantity:
-                Math.max(
-                  0,
-                  Math.floor(
-                    Number(
-                      variant.inventory,
-                    ),
-                  ),
-                ),
-
-              changeFromQuantity:
-                null,
-            }),
-          );
-
-      if (
-        inventoryQuantities.length >
-        0
-      ) {
-        const inventoryResponse =
-          await admin.graphql(
-            `#graphql
-            mutation HairGrabSetSellerInventory(
-              $input: InventorySetQuantitiesInput!
-              $idempotencyKey: String!
-            ) {
-              inventorySetQuantities(
-                input: $input
-              ) @idempotent(key: $idempotencyKey) {
-                userErrors {
-                  field
-                  message
-                }
-              }
-            }
-            `,
-            {
-              variables: {
-                idempotencyKey:
-                  randomUUID(),
-
-                input: {
-                  name:
-                    "available",
-
-                  reason:
-                    "correction",
-
-                  referenceDocumentUri:
-                    `hairgrab://seller-product/${coreProduct.id}`,
-
-                  quantities:
-                    inventoryQuantities,
-                },
-              },
-            },
-          );
-
-        const inventoryJson =
-          await inventoryResponse.json();
-
-        const inventoryErrors =
-          inventoryJson?.data
-            ?.inventorySetQuantities
-            ?.userErrors ||
-          [];
-
-        if (
-          inventoryErrors.length >
-          0
-        ) {
-          throw new Error(
-            inventoryErrors
-              .map(
-                (
-                  e: {
-                    message?: string;
-                  },
-                ) =>
-                  e.message ||
-                  "Unable to update inventory.",
-              )
-              .join(" | "),
-          );
+      const namedFields: Array<[string, string[]]> = [
+        ["material", ["Hair Type", "Material"]], ["texture", ["Texture"]], ["density", ["Density"]],
+        ["laceSize", ["Lace Size"]], ["laceType", ["Lace Type"]], ["capSize", ["Cap Type", "Cap Size"]],
+        ["shippingMethod", ["Shipping Method / Shipping Options", "Shipping Method / Shipping", "Shipping Method", "Shipping Methods"]],
+        ["shipsWithin", ["Ships Within"]], ["returnPolicy", ["Return Policy"]], ["showOnMap", ["Show on HairGrab Map"]],
+      ];
+      for (const [key, names] of namedFields) if (dirty.has(key)) {
+        const value = String(fields[key] || "");
+        if (value) addExistingMetafield({ definitions, output: metafields, names, value });
+        else {
+          const definition = findMetafieldDefinition(definitions, names);
+          if (definition) removeIfPresent(definition.namespace, definition.key);
         }
       }
+      if (dirty.has("colors")) {
+        const definition = findMetafieldDefinition(definitions, ["Color"]);
+        if (definition) {
+          if ((fields.colors || []).length) metafields.push({ namespace: definition.namespace, key: definition.key, type: definition.type.name,
+            value: definition.type.name.startsWith("list.") ? JSON.stringify(fields.colors || []) : String(fields.colors?.[0] || "") });
+          else removeIfPresent(definition.namespace, definition.key);
+        }
+      }
+      if (dirty.has("installationMethods")) metafields.push({ namespace: "hairgrab", key: "installation_methods",
+        type: "list.single_line_text_field", value: JSON.stringify(installationMethodChoices
+          .filter((item) => (fields.installationMethods || []).includes(item.value)).map((item) => item.label)) });
+      const optionsChanged = variantDiff.creates.length || variantDiff.deletes.length || variantDiff.updates.some((item) =>
+        JSON.stringify(item.selectedOptions) !== JSON.stringify(current.shopifySnapshot.variants.find((before) => before.id === item.id)?.selectedOptions));
+      if (optionsChanged && current.shopifySnapshot.options.some((axis) => axis.name.toLowerCase() === "length")) {
+        const definition = findMetafieldDefinition(definitions, ["Length"]);
+        if (definition) {
+          const changedById = new Map(variantDiff.updates.map((item) => [item.id, item]));
+          const desiredVariants = [...current.shopifySnapshot.variants.filter((item) => !variantDiff.deletes.includes(item.id))
+            .map((item) => changedById.get(item.id) || item), ...variantDiff.creates];
+          const values = [...new Set(desiredVariants.flatMap((item) => item.selectedOptions.filter((option) => option.name.toLowerCase() === "length")
+            .map((option) => option.value.replace(/\D/g, ""))).filter(Boolean))];
+          metafields.push({ namespace: definition.namespace, key: definition.key, type: definition.type.name,
+            value: definition.type.name.startsWith("list.") ? JSON.stringify(values) : values.join(", ") });
+        }
+      }
+      const direct: Array<[string, string, string]> = [
+        ["shippingMethod", "shipping_charge_type", "single_line_text_field"],
+        ["flatRateShipping", "flat_rate_shipping", "number_decimal"],
+        ["localPickupAvailable", "local_pickup_available", "boolean"],
+        ["localDeliveryAvailable", "local_delivery_available", "boolean"],
+        ["locType", "loc_type", "single_line_text_field"],
+      ];
+      for (const [key, metafieldKey, type] of direct) if (dirty.has(key)) {
+        const value = key === "locType" ? (locTypeChoices.find((item) => item.value === fields.locType)?.label || "") : String(fields[key] ?? "");
+        if (value) metafields.push({ namespace: "hairgrab", key: metafieldKey, type, value });
+        else removeIfPresent("hairgrab", metafieldKey);
+      }
+      if (metafields.length) await setProductMetafieldsSafely({ admin, productId, metafields, strict: true });
+      if (deleteMetafields.length) {
+        const response = await admin.graphql(`#graphql
+          mutation HairGrabBuilderDeleteMetafields($metafields: [MetafieldIdentifierInput!]!) {
+            metafieldsDelete(metafields: $metafields) { userErrors { field message } }
+          }`, { variables: { metafields: deleteMetafields } });
+        const json: any = await response.json();
+        const errors = [...(json.errors || []), ...(json.data?.metafieldsDelete?.userErrors || [])];
+        if (errors.length) throw new Error(errors.map((error: any) => error.message).join(" | "));
+      }
+      if (dirty.has("title")) await db.sellerProduct.update({ where: { id: coreProduct.id }, data: { title: String(fields.title).trim() } });
+      return { success: true, message: "Product updated successfully in HairGrab and Shopify." };
     }
 
-    const definitions =
-      await getProductMetafieldDefinitions(
-        admin,
-      );
-
-    const metafields:
-      ProductMetafield[] = [
-      {
-        namespace:
-          "hairgrab",
-        key:
-          "shipping_charge_type",
-        type:
-          "single_line_text_field",
-        value:
-          shippingMethod,
-      },
-
-      {
-        namespace:
-          "hairgrab",
-        key:
-          "local_pickup_available",
-        type:
-          "boolean",
-        value:
-          String(
-            Boolean(
-              localPickupAvailable,
-            ),
-          ),
-      },
-
-      {
-        namespace:
-          "hairgrab",
-        key:
-          "local_delivery_available",
-        type:
-          "boolean",
-        value:
-          String(
-            Boolean(
-              localDeliveryAvailable,
-            ),
-          ),
-      },
-    ];
-
-    if (
-      shippingMethod ===
-      "Flat Rate Shipping"
-    ) {
-      metafields.push({
-        namespace:
-          "hairgrab",
-        key:
-          "flat_rate_shipping",
-        type:
-          "number_decimal",
-        value:
-          Number(
-            flatRateShipping,
-          ).toFixed(2),
-      });
-    }
-
-    addExistingMetafield({
-      definitions,
-      output:
-        metafields,
-
-      names: [
-        "Shipping Method / Shipping Options",
-        "Shipping Method / Shipping",
-        "Shipping Method",
-        "Shipping Methods",
-      ],
-
-      value:
-        shippingMethod,
-    });
-
-    addExistingMetafield({
-      definitions,
-      output:
-        metafields,
-      names: [
-        "Ships Within",
-      ],
-      value:
-        shipsWithin,
-    });
-
-    addExistingMetafield({
-      definitions,
-      output:
-        metafields,
-      names: [
-        "Return Policy",
-      ],
-      value:
-        returnPolicy,
-    });
-
-    addExistingMetafield({
-      definitions,
-      output:
-        metafields,
-      names: [
-        "Show on HairGrab Map",
-      ],
-      value:
-        showOnMap,
-    });
-
-    addExistingMetafield({
-      definitions,
-      output:
-        metafields,
-      names: [
-        "Shipping Territory",
-      ],
-      value:
-        seller.sellsNationwide
-          ? "Nationwide"
-          : "Local",
-    });
-
-    await setProductMetafieldsSafely({
-      admin,
-      productId:
-        coreProduct
-          .shopifyProductId,
-      metafields,
-    });
-
-    await db.sellerProduct.update({
-      where: {
-        id:
-          coreProduct.id,
-      },
-
-      data: {
-        title,
-      },
-    });
-
-    return {
-      success:
-        true,
-      message:
-        "Product updated successfully in HairGrab and Shopify.",
-    };
+    throw new Error("Unsupported Edit Product action");
   } catch (error) {
     console.error(
       "[HairGrab Core] Product update error:",
@@ -1682,1214 +1189,22 @@ export const action = async ({
   }
 };
 
-function stripHtml(
-  html: string,
-) {
-  return String(
-    html || "",
-  )
-    .replace(
-      /<br\s*\/?>/gi,
-      "\n",
-    )
-    .replace(
-      /<\/p>/gi,
-      "\n",
-    )
-    .replace(
-      /<[^>]+>/g,
-      "",
-    )
-    .replace(
-      /\n{3,}/g,
-      "\n\n",
-    )
-    .trim();
-}
-
 export default function SellerEditProductPage() {
-  const {
-    product,
-    seller,
-    settings,
-  } =
-    useLoaderData<
-      typeof loader
-    >();
-
-  const actionData =
-    useActionData<
-      typeof action
-    >();
-
-  const variants =
-    product
-      .variants
-      ?.nodes ||
-    [];
-
-  // Which specialized classification checkboxes (if any) apply to
-  // THIS product's category. Kept in sync with the category ->
-  // classification mapping used by Add Product.
-  const applicableClassificationTags =
-    CLASSIFICATION_TAGS_BY_CATEGORY[
-      displayProductCategory(
-        product.productType,
-      )
-    ] || [];
-
-  // "Store View" must open THIS seller's own HairGrab storefront —
-  // never a generic marketplace/product page. Reuses the exact
-  // convention already established in
-  // app/routes/api.featured-boutiques.tsx for linking to the
-  // public storefront route (app/routes/seller-store.$storeSlug.tsx):
-  // https://shops.hairgrab.com/seller-store/${storeSlug}
-  //
-  // If the storefront isn't published yet (Hidden), that public
-  // URL would 404 for shoppers, so we send the seller to their own
-  // private Store Preview instead rather than produce a dead link.
-  const storefrontHref =
-    seller.storeSlug &&
-    seller.storefrontPublished
-      ? `https://shops.hairgrab.com/seller-store/${seller.storeSlug}`
-      : "/seller/store-preview";
-
-  return (
-    <div
-      style={{
-        minHeight:
-          "100vh",
-        background:
-          "#faf8fc",
-        padding:
-          "28px 18px 70px",
-        fontFamily:
-          "Arial, sans-serif",
-        color:
-          "#21152a",
-      }}
-    >
-      <div
-        style={{
-          maxWidth:
-            "920px",
-          margin:
-            "0 auto",
-        }}
-      >
-        <Link
-          to="/seller/products"
-          style={{
-            color:
-              "#4B1678",
-            textDecoration:
-              "none",
-            fontWeight:
-              "800",
-            fontSize:
-              "12px",
-          }}
-        >
-          ← Back to Products
-        </Link>
-
-        <div
-          style={{
-            background:
-              "white",
-            border:
-              "1px solid #e6d9ef",
-            borderRadius:
-              "18px",
-            padding:
-              "26px",
-            marginTop:
-              "12px",
-          }}
-        >
-          <div
-            style={{
-              display:
-                "flex",
-              justifyContent:
-                "space-between",
-              gap:
-                "14px",
-              flexWrap:
-                "wrap",
-              alignItems:
-                "start",
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  color:
-                    "#7b3fa0",
-                  fontSize:
-                    "11px",
-                  fontWeight:
-                    "800",
-                  textTransform:
-                    "uppercase",
-                }}
-              >
-                HairGrab Product
-              </div>
-
-              <h1
-                style={{
-                  margin:
-                    "5px 0",
-                  color:
-                    "#4B1678",
-                }}
-              >
-                Edit Product
-              </h1>
-
-              <div
-                style={{
-                  color:
-                    "#756b79",
-                  fontSize:
-                    "12px",
-                }}
-              >
-                Update the existing listing. HairGrab will not create a duplicate.
-              </div>
-            </div>
-
-            <a
-              href={storefrontHref}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                border:
-                  "1px solid #d8c8e2",
-                color:
-                  "#4B1678",
-                borderRadius:
-                  "8px",
-                padding:
-                  "9px 12px",
-                textDecoration:
-                  "none",
-                fontSize:
-                  "11px",
-                fontWeight:
-                  "800",
-              }}
-            >
-              Store View ↗
-            </a>
-          </div>
-
-          {actionData && (
-            <div
-              style={{
-                marginTop:
-                  "18px",
-                padding:
-                  "12px",
-                borderRadius:
-                  "10px",
-                background:
-                  actionData.success
-                    ? "#edf8ef"
-                    : "#fff1f1",
-                color:
-                  actionData.success
-                    ? "#28743b"
-                    : "#922f2f",
-                fontSize:
-                  "12px",
-                fontWeight:
-                  "700",
-              }}
-            >
-              {actionData.message}
-            </div>
-          )}
-
-          <Form
-            method="post"
-            onSubmit={(
-              event,
-            ) => {
-              const form =
-                event.currentTarget;
-
-              const variantPayload =
-                variants.map(
-                  (
-                    variant: any,
-                  ) => ({
-                    id:
-                      variant.id,
-
-                    inventoryItemId:
-                      variant
-                        .inventoryItem
-                        ?.id ||
-                      "",
-
-                    price:
-                      (
-                        form.elements.namedItem(
-                          `price_${variant.id}`,
-                        ) as HTMLInputElement
-                      )?.value ||
-                      variant.compareAtPrice ||
-                      variant.price,
-
-                    salePrice:
-                      (
-                        form.elements.namedItem(
-                          `salePrice_${variant.id}`,
-                        ) as HTMLInputElement
-                      )?.value ||
-                      "",
-
-                    sku:
-                      (
-                        form.elements.namedItem(
-                          `sku_${variant.id}`,
-                        ) as HTMLInputElement
-                      )?.value ||
-                      "",
-
-                    inventory:
-                      (
-                        form.elements.namedItem(
-                          `inventory_${variant.id}`,
-                        ) as HTMLInputElement
-                      )?.value ||
-                      "0",
-                  }),
-                );
-
-              const hidden =
-                form.elements.namedItem(
-                  "variants",
-                ) as HTMLInputElement;
-
-              hidden.value =
-                JSON.stringify(
-                  variantPayload,
-                );
-            }}
-          >
-            <input
-              type="hidden"
-              name="intent"
-              value="save"
-            />
-
-            <input
-              type="hidden"
-              name="variants"
-              defaultValue="[]"
-            />
-
-            <Section
-              title="Product Information"
-            >
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                Product Name
-              </label>
-
-              <input
-                name="title"
-                defaultValue={
-                  product.title
-                }
-                style={
-                  fieldStyle
-                }
-              />
-
-              <label
-                style={{
-                  ...labelStyle,
-                  marginTop:
-                    "15px",
-                }}
-              >
-                Description
-              </label>
-
-              <textarea
-                name="description"
-                defaultValue={
-                  stripHtml(
-                    product.descriptionHtml,
-                  )
-                }
-                rows={
-                  7
-                }
-                style={{
-                  ...fieldStyle,
-                  resize:
-                    "vertical",
-                }}
-              />
-
-              <div
-                style={{
-                  marginTop:
-                    "14px",
-                  padding:
-                    "10px 12px",
-                  border:
-                    "1px solid #eee7f2",
-                  borderRadius:
-                    "9px",
-                  background:
-                    "#faf8fc",
-                  color:
-                    "#625868",
-                  fontSize:
-                    "11px",
-                }}
-              >
-                <strong
-                  style={{
-                    color:
-                      "#4B1678",
-                  }}
-                >
-                  HairGrab Category:
-                </strong>{" "}
-                {displayProductCategory(
-                  product.productType,
-                )}
-              </div>
-            </Section>
-
-            {applicableClassificationTags.length > 0 && (
-              <Section
-                title="Search & Product Classification"
-              >
-                <div
-                  style={{
-                    color:
-                      "#756b79",
-                    fontSize:
-                      "12px",
-                    lineHeight:
-                      1.5,
-                    marginBottom:
-                      "12px",
-                  }}
-                >
-                  Select any specialized classification that applies. HairGrab uses “Locs” consistently across seller and shopper views.
-                </div>
-
-                <div
-                  style={{
-                    display:
-                      "flex",
-                    gap:
-                      "9px",
-                    flexWrap:
-                      "wrap",
-                  }}
-                >
-                  {applicableClassificationTags.map(
-                    (
-                      classification,
-                    ) => (
-                      <label
-                        key={
-                          classification
-                        }
-                        style={
-                          choiceCardStyle
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          name="searchClassifications"
-                          value={
-                            classification
-                          }
-                          defaultChecked={
-                            settings
-                              .searchClassifications
-                              .includes(
-                                classification,
-                              )
-                          }
-                        />
-
-                        <span>
-                          {
-                            classification
-                          }
-                        </span>
-                      </label>
-                    ),
-                  )}
-                </div>
-              </Section>
-            )}
-
-            <Section
-              title="Price & Inventory"
-            >
-              <div
-                style={{
-                  marginBottom:
-                    "12px",
-                  padding:
-                    "11px 12px",
-                  border:
-                    "1px solid #e2d5eb",
-                  borderRadius:
-                    "9px",
-                  background:
-                    "#fcf9fe",
-                  color:
-                    "#665b6b",
-                  fontSize:
-                    "11px",
-                  lineHeight:
-                    1.5,
-                }}
-              >
-                To put a product on sale, enter a <strong>Sale Price</strong> lower than the Regular Price. Leave Sale Price blank to sell at the regular price.
-              </div>
-
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gap:
-                    "12px",
-                }}
-              >
-                {variants.map(
-                  (
-                    variant: any,
-                  ) => (
-                    <div
-                      key={
-                        variant.id
-                      }
-                      style={{
-                        border:
-                          "1px solid #eee7f2",
-                        borderRadius:
-                          "10px",
-                        padding:
-                          "13px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight:
-                            "800",
-                          color:
-                            "#4B1678",
-                          fontSize:
-                            "12px",
-                          marginBottom:
-                            "10px",
-                        }}
-                      >
-                        {
-                          variant.title
-                        }
-                      </div>
-
-                      <div
-                        style={{
-                          display:
-                            "grid",
-                          gridTemplateColumns:
-                            "repeat(auto-fit, minmax(150px, 1fr))",
-                          gap:
-                            "10px",
-                        }}
-                      >
-                        <MiniField
-                          label="Regular Price"
-                          name={`price_${variant.id}`}
-                          defaultValue={
-                            variant.compareAtPrice ||
-                            variant.price ||
-                            ""
-                          }
-                          type="number"
-                          step="0.01"
-                        />
-
-                        <MiniField
-                          label="Sale Price"
-                          name={`salePrice_${variant.id}`}
-                          defaultValue={
-                            variant.compareAtPrice
-                              ? variant.price ||
-                                ""
-                              : ""
-                          }
-                          type="number"
-                          step="0.01"
-                        />
-
-                        <MiniField
-                          label="Inventory"
-                          name={`inventory_${variant.id}`}
-                          defaultValue={String(
-                            variant.inventoryQuantity ??
-                            0,
-                          )}
-                          type="number"
-                          step="1"
-                        />
-
-                        <MiniField
-                          label="SKU"
-                          name={`sku_${variant.id}`}
-                          defaultValue={
-                            variant.sku ||
-                            ""
-                          }
-                        />
-                      </div>
-                    </div>
-                  ),
-                )}
-              </div>
-            </Section>
-
-            <Section
-              title="Shipping & Fulfillment"
-            >
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                Customer Shipping Charge *
-              </label>
-
-              <select
-                name="shippingMethod"
-                defaultValue={
-                  settings.shippingMethod
-                }
-                style={
-                  fieldStyle
-                }
-              >
-
-                <option value="Free Shipping">
-                  Free Shipping — Seller Covers Shipping Cost
-                </option>
-
-                <option value="Flat Rate Shipping">
-                  Flat Rate Shipping — You Set the Rate
-                </option>
-              </select>
-
-              <div
-                style={
-                  helperStyle
-                }
-              >
-                Choose what the shopper pays for shipping. HairGrab shipping labels are handled separately during fulfillment.
-              </div>
-
-              <label
-                style={{
-                  ...labelStyle,
-                  marginTop:
-                    "15px",
-                }}
-              >
-                Flat Rate Amount
-              </label>
-
-              <div
-                style={{
-                  display:
-                    "flex",
-                  alignItems:
-                    "center",
-                  gap:
-                    "8px",
-                  maxWidth:
-                    "230px",
-                }}
-              >
-                <span
-                  style={{
-                    fontWeight:
-                      800,
-                  }}
-                >
-                  $
-                </span>
-
-                <input
-                  name="flatRateShipping"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  defaultValue={
-                    settings.flatRateShipping
-                  }
-                  placeholder="7.99"
-                  style={
-                    fieldStyle
-                  }
-                />
-              </div>
-
-              <div
-                style={
-                  helperStyle
-                }
-              >
-                Only used when Flat Rate Shipping is selected. The seller is responsible for any difference if the actual label costs more.
-              </div>
-
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit, minmax(210px, 1fr))",
-                  gap:
-                    "12px",
-                  marginTop:
-                    "16px",
-                }}
-              >
-                <div>
-                  <label
-                    style={
-                      labelStyle
-                    }
-                  >
-                    Ships Within *
-                  </label>
-
-                  <select
-                    name="shipsWithin"
-                    defaultValue={
-                      settings.shipsWithin ||
-                      "48 Hours"
-                    }
-                    style={
-                      fieldStyle
-                    }
-                  >
-                    <option value="24 Hours">
-                      24 Hours
-                    </option>
-
-                    <option value="48 Hours">
-                      48 Hours
-                    </option>
-
-                    <option value="72 Hours">
-                      72 Hours
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    style={
-                      labelStyle
-                    }
-                  >
-                    Return Policy *
-                  </label>
-
-                  <select
-                    name="returnPolicy"
-                    defaultValue={
-                      settings.returnPolicy ||
-                      "14-Day Returns"
-                    }
-                    style={
-                      fieldStyle
-                    }
-                  >
-                    <option value="14-Day Returns">
-                      14-Day Returns
-                    </option>
-
-                    <option value="Final Sale">
-                      Final Sale
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    style={
-                      labelStyle
-                    }
-                  >
-                    Show on HairGrab Map
-                  </label>
-
-                  <select
-                    name="showOnMap"
-                    defaultValue={
-                      settings.showOnMap ||
-                      "No"
-                    }
-                    style={
-                      fieldStyle
-                    }
-                  >
-                    <option value="Yes">
-                      Yes
-                    </option>
-
-                    <option value="No">
-                      No
-                    </option>
-                  </select>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit, minmax(250px, 1fr))",
-                  gap:
-                    "12px",
-                  marginTop:
-                    "16px",
-                }}
-              >
-                <label
-                  style={{
-                    ...choiceCardStyle,
-                    opacity:
-                      seller.offersLocalPickup
-                        ? 1
-                        : 0.55,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    name="localPickupAvailable"
-                    defaultChecked={
-                      settings.localPickupAvailable
-                    }
-                    disabled={
-                      !seller.offersLocalPickup
-                    }
-                  />
-
-                  <span>
-                    <strong>
-                      Local Pickup Available
-                    </strong>
-                    <br />
-                    <small>
-                      {
-                        seller.offersLocalPickup
-                          ? "Show shoppers that this product can be picked up locally."
-                          : "Enable Local Pickup in Seller Settings first."
-                      }
-                    </small>
-                  </span>
-                </label>
-
-                <label
-                  style={{
-                    ...choiceCardStyle,
-                    opacity:
-                      seller.offersLocalDelivery
-                        ? 1
-                        : 0.55,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    name="localDeliveryAvailable"
-                    defaultChecked={
-                      settings.localDeliveryAvailable
-                    }
-                    disabled={
-                      !seller.offersLocalDelivery
-                    }
-                  />
-
-                  <span>
-                    <strong>
-                      Seller-Managed Local Delivery
-                    </strong>
-                    <br />
-                    <small>
-                      {
-                        seller.offersLocalDelivery
-                          ? "You arrange delivery directly for nearby shoppers."
-                          : "Enable Local Delivery in Seller Settings first."
-                      }
-                    </small>
-                  </span>
-                </label>
-              </div>
-
-              <div
-                style={{
-                  marginTop:
-                    "16px",
-                  background:
-                    "#f3eafa",
-                  border:
-                    "1px solid #d7bde8",
-                  borderRadius:
-                    "12px",
-                  padding:
-                    "14px",
-                }}
-              >
-                <div
-                  style={{
-                    color:
-                      "#4B1678",
-                    fontWeight:
-                      900,
-                    fontSize:
-                      "13px",
-                  }}
-                >
-                  ⚡ HairGrab Same-Day Delivery — Coming Soon
-                </div>
-
-                <div
-                  style={{
-                    marginTop:
-                      "5px",
-                    color:
-                      "#5e4b69",
-                    fontSize:
-                      "11px",
-                    lineHeight:
-                      1.5,
-                  }}
-                >
-                  HairGrab is working to bring DoorDash-style same-day delivery to participating areas. A local delivery driver may be able to pick up eligible orders from the seller and deliver them directly to nearby HairGrab shoppers. No action is needed right now. HairGrab will notify eligible sellers when this becomes available in their area.
-                </div>
-              </div>
-            </Section>
-
-            <div
-              style={{
-                marginTop:
-                  "22px",
-                display:
-                  "flex",
-                gap:
-                  "10px",
-                flexWrap:
-                  "wrap",
-              }}
-            >
-              <button
-                type="submit"
-                style={{
-                  border:
-                    0,
-                  background:
-                    "#4B1678",
-                  color:
-                    "white",
-                  borderRadius:
-                    "9px",
-                  padding:
-                    "12px 17px",
-                  fontWeight:
-                    "800",
-                  cursor:
-                    "pointer",
-                }}
-              >
-                Save Changes
-              </button>
-
-              <Link
-                to="/seller/products"
-                style={{
-                  border:
-                    "1px solid #d8c8e2",
-                  color:
-                    "#4B1678",
-                  borderRadius:
-                    "9px",
-                  padding:
-                    "11px 16px",
-                  textDecoration:
-                    "none",
-                  fontWeight:
-                    "800",
-                  fontSize:
-                    "13px",
-                }}
-              >
-                Cancel
-              </Link>
-            </div>
-          </Form>
-
-          <div
-            style={{
-              marginTop:
-                "28px",
-              paddingTop:
-                "20px",
-              borderTop:
-                "1px solid #eee7f2",
-            }}
-          >
-            <div
-              style={{
-                color:
-                  "#922f2f",
-                fontWeight:
-                  "800",
-                fontSize:
-                  "13px",
-              }}
-            >
-              Remove Product
-            </div>
-
-            <div
-              style={{
-                color:
-                  "#756b79",
-                fontSize:
-                  "11px",
-                marginTop:
-                  "4px",
-                lineHeight:
-                  1.5,
-              }}
-            >
-              This permanently removes the product from HairGrab and Shopify.
-            </div>
-
-            <Form
-              method="post"
-              onSubmit={(
-                event,
-              ) => {
-                if (
-                  !window.confirm(
-                    "Delete this product permanently? This cannot be undone.",
-                  )
-                ) {
-                  event.preventDefault();
-                }
-              }}
-            >
-              <input
-                type="hidden"
-                name="intent"
-                value="delete"
-              />
-
-              <button
-                type="submit"
-                style={{
-                  marginTop:
-                    "12px",
-                  border:
-                    "1px solid #cfa9a9",
-                  background:
-                    "#fff7f7",
-                  color:
-                    "#922f2f",
-                  borderRadius:
-                    "9px",
-                  padding:
-                    "10px 14px",
-                  fontWeight:
-                    "800",
-                  cursor:
-                    "pointer",
-                }}
-              >
-                Delete Product
-              </button>
-            </Form>
-          </div>
-        </div>
-      </div>
+  const { product, seller, settings, shopifySnapshot, coreProductId } = useLoaderData<typeof loader>();
+  const edit: EditBuilderData = { product, settings, shopifySnapshot, coreProductId };
+  const storefrontHref = seller.storeSlug && seller.storefrontPublished
+    ? `https://shops.hairgrab.com/seller-store/${seller.storeSlug}`
+    : "/seller/store-preview";
+  return <>
+    <div style={{ maxWidth: 920, margin: "18px auto 0", display: "flex", justifyContent: "space-between", padding: "0 18px" }}>
+      <Link to="/seller/products">← Back to Products</Link>
+      <a href={storefrontHref} target="_blank" rel="noreferrer">Store View</a>
     </div>
-  );
+    <ProductBuilder seller={seller} edit={edit} />
+    <Form method="post" style={{ maxWidth: 920, margin: "0 auto 50px", padding: "0 18px" }}
+      onSubmit={(event) => { if (!window.confirm("Delete this product from Shopify and HairGrab?")) event.preventDefault(); }}>
+      <input type="hidden" name="intent" value="delete" />
+      <button type="submit" style={{ background: "white", border: "1px solid #c88", borderRadius: 8, color: "#9b2525", padding: "9px 12px" }}>Delete Product</button>
+    </Form>
+  </>;
 }
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children:
-    React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        marginTop:
-          "24px",
-        paddingTop:
-          "22px",
-        borderTop:
-          "1px solid #eee7f2",
-      }}
-    >
-      <h2
-        style={{
-          margin:
-            "0 0 15px",
-          color:
-            "#4B1678",
-          fontSize:
-            "19px",
-        }}
-      >
-        {title}
-      </h2>
-
-      {children}
-    </div>
-  );
-}
-
-function MiniField({
-  label,
-  name,
-  defaultValue,
-  type =
-    "text",
-  step,
-}: {
-  label: string;
-  name: string;
-  defaultValue: string;
-  type?: string;
-  step?: string;
-}) {
-  return (
-    <label>
-      <div
-        style={{
-          color:
-            "#756b79",
-          fontSize:
-            "10px",
-          marginBottom:
-            "5px",
-          fontWeight:
-            "700",
-        }}
-      >
-        {label}
-      </div>
-
-      <input
-        name={
-          name
-        }
-        defaultValue={
-          defaultValue
-        }
-        type={
-          type
-        }
-        step={
-          step
-        }
-        style={
-          fieldStyle
-        }
-      />
-    </label>
-  );
-}
-
-const fieldStyle = {
-  width:
-    "100%",
-  boxSizing:
-    "border-box" as const,
-  border:
-    "1px solid #d8cce0",
-  borderRadius:
-    "10px",
-  padding:
-    "11px 12px",
-  background:
-    "#ffffff",
-  color:
-    "#21152a",
-  fontSize:
-    "14px",
-};
-
-const labelStyle = {
-  display:
-    "block",
-  marginBottom:
-    "6px",
-  color:
-    "#4B1678",
-  fontSize:
-    "13px",
-  fontWeight:
-    "800",
-};
-
-const helperStyle = {
-  color:
-    "#756b79",
-  fontSize:
-    "10px",
-  lineHeight:
-    1.45,
-  marginTop:
-    "5px",
-};
-
-const choiceCardStyle = {
-  display:
-    "flex",
-  alignItems:
-    "flex-start",
-  gap:
-    "8px",
-  border:
-    "1px solid #dfd1e8",
-  borderRadius:
-    "10px",
-  padding:
-    "10px 12px",
-  color:
-    "#4B1678",
-  fontSize:
-    "12px",
-  cursor:
-    "pointer",
-  background:
-    "#fff",
-};
