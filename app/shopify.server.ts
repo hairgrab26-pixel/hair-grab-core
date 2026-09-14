@@ -9,7 +9,7 @@ import {
 
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 
-import prisma from "./db.server";
+import prisma from "./db.server.ts";
 
 
 const shopify = shopifyApp({
