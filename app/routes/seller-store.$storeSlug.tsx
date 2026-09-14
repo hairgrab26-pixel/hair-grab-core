@@ -1373,34 +1373,6 @@ export default function PublicSellerStorefrontPage() {
                   {businessPositioning.map((label) => <Badge key={label}>{label}</Badge>)}
                 </div>
               )}
-              {(storeStatusLabel || (seller.useStoreHours && seller.showStoreHours && storeHours.length > 0)) && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 8 }}>
-                  {storeStatusLabel && <Badge>{storeStatusLabel}</Badge>}
-                  {seller.useStoreHours && seller.showStoreHours && storeHours.length > 0 && (
-                    <a href="#hours" style={{ color: "#4B1678", fontSize: 11, fontWeight: 800 }}>Store Hours</a>
-                  )}
-                </div>
-              )}
-
-              <div
-                style={{
-                  color:
-                    "#4f4554",
-
-                  fontSize:
-                    "13px",
-
-                  lineHeight:
-                    1.6,
-
-                  maxWidth:
-                    "760px",
-                }}
-              >
-                {seller.storeDescription ||
-                  "Discover products from this HairGrab seller."}
-              </div>
-
               <div
                 style={{
                   display:
@@ -1436,6 +1408,32 @@ export default function PublicSellerStorefrontPage() {
                 {seller.offersSameDayDelivery && (
                   <Badge>Same-Day Delivery</Badge>
                 )}
+                {storeStatusLabel && <Badge>{storeStatusLabel}</Badge>}
+                {seller.useStoreHours && seller.showStoreHours && storeHours.length > 0 && (
+                  <a href="#hours" style={{ color: "#4B1678", fontSize: 11, fontWeight: 800 }}>Store Hours</a>
+                )}
+              </div>
+
+              <div
+                style={{
+                  color:
+                    "#4f4554",
+
+                  fontSize:
+                    "13px",
+
+                  lineHeight:
+                    1.6,
+
+                  maxWidth:
+                    "760px",
+
+                  marginTop:
+                    "15px",
+                }}
+              >
+                {seller.storeDescription ||
+                  "Discover products from this HairGrab seller."}
               </div>
             </div>
           </div>
@@ -1468,20 +1466,6 @@ export default function PublicSellerStorefrontPage() {
             </div>
           </section>
         )}
-        {seller.showReviews && (
-          <section id="reviews" style={{ marginTop: 26 }}>
-            <h2 style={{ color: "#4B1678", fontSize: 22 }}>Reviews</h2>
-            {sellerReviews.length ? sellerReviews.map((review) => (
-              <div key={review.id} style={{ border: "1px solid #eadff0", borderRadius: 12, padding: 16, marginBottom: 12 }}>
-                <div aria-label={`${review.rating} out of 5 stars`} style={{ color: "#4B1678" }}>{"★".repeat(Math.max(1, Math.min(5, review.rating)))}</div>
-                {review.title && <strong>{review.title}</strong>}
-                {review.body && <p>{review.body}</p>}
-                {review.verifiedPurchase && <small>Verified purchase</small>}
-              </div>
-            )) : <p>Seller reviews will appear here after verified HairGrab purchases.</p>}
-          </section>
-        )}
-
         <section
           style={{
             marginTop:
@@ -1617,6 +1601,20 @@ export default function PublicSellerStorefrontPage() {
             ))}
           </section>
         )}
+        {seller.showReviews && (
+          <section id="reviews" style={{ marginTop: 26 }}>
+            <h2 style={{ color: "#4B1678", fontSize: 22 }}>Reviews</h2>
+            {sellerReviews.length ? sellerReviews.map((review) => (
+              <div key={review.id} style={{ border: "1px solid #eadff0", borderRadius: 12, padding: 16, marginBottom: 12 }}>
+                <div aria-label={`${review.rating} out of 5 stars`} style={{ color: "#4B1678" }}>{"★".repeat(Math.max(1, Math.min(5, review.rating)))}</div>
+                {review.title && <strong>{review.title}</strong>}
+                {review.body && <p>{review.body}</p>}
+                {review.verifiedPurchase && <small>Verified purchase</small>}
+              </div>
+            )) : <p>Seller reviews will appear here after verified HairGrab purchases.</p>}
+          </section>
+        )}
+
       </main>
     </div>
   );
