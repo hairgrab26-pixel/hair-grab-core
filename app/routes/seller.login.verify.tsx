@@ -424,8 +424,17 @@ export const loader = async ({
       });
 
 
+    const onboarding = await db.sellerOnboarding.findUnique({
+      where: { sellerId: seller.id },
+      select: { status: true },
+    });
+    const destination =
+      onboarding?.status === "COMPLETE"
+        ? "/seller"
+        : "/seller/onboarding";
+
     return redirect(
-      "/seller/onboarding",
+      destination,
       {
         headers: {
           "Set-Cookie":

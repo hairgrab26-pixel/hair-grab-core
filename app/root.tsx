@@ -4,7 +4,32 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  redirect,
 } from "react-router";
+
+import type { LoaderFunctionArgs } from "react-router";
+
+const RAILWAY_PRODUCTION_HOST =
+  "hair-grab-core-production.up.railway.app";
+const SELLER_CANONICAL_ORIGIN =
+  "https://seller.hairgrab.com";
+
+export function loader({ request }: LoaderFunctionArgs) {
+  const url = new URL(request.url);
+
+  if (
+    url.hostname === RAILWAY_PRODUCTION_HOST &&
+    (url.pathname === "/seller" ||
+      url.pathname.startsWith("/seller/"))
+  ) {
+    return redirect(
+      `${SELLER_CANONICAL_ORIGIN}${url.pathname}${url.search}`,
+      308,
+    );
+  }
+
+  return null;
+}
 
 export default function App() {
   return (
