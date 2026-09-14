@@ -1577,6 +1577,19 @@ export default function SellerDashboard() {
             >
               {sellerInitials}
             </div>
+
+            <Link
+              to="/seller/logout"
+              style={{
+                color: "white",
+                textDecoration: "none",
+                fontSize: "12px",
+                fontWeight: 800,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Log out
+            </Link>
           </div>
         </div>
       </header>

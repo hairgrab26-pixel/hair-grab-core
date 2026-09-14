@@ -1,7 +1,11 @@
-import type { ActionFunctionArgs } from "react-router";
+import type {
+  ActionFunctionArgs,
+  LoaderFunctionArgs,
+} from "react-router";
 
 import {
   Form,
+  redirect,
   useActionData,
   useNavigation,
 } from "react-router";
@@ -9,6 +13,64 @@ import {
 import crypto from "node:crypto";
 
 import db from "../db.server";
+import { sendSellerLoginEmail } from "../email.server";
+
+import {
+  clearSellerSessionCookie,
+  readSellerSession,
+} from "../seller-session.server";
+
+
+export const loader = async ({
+  request,
+}: LoaderFunctionArgs) => {
+  const session = readSellerSession(request);
+
+  if (!session) {
+    return null;
+  }
+
+  const portalAccount =
+    await db.sellerPortalAccount.findUnique({
+      where: {
+        id: session.portalAccountId,
+      },
+      include: {
+        seller: true,
+      },
+    });
+
+  if (
+    !portalAccount ||
+    portalAccount.sellerId !== session.sellerId ||
+    portalAccount.status !== "ACTIVE" ||
+    !portalAccount.seller ||
+    ["SUSPENDED", "INACTIVE", "CLOSED"].includes(
+      portalAccount.seller.status,
+    )
+  ) {
+    return redirect("/seller/login", {
+      headers: {
+        "Set-Cookie": clearSellerSessionCookie(),
+      },
+    });
+  }
+
+  const onboarding = await db.sellerOnboarding.findUnique({
+    where: {
+      sellerId: portalAccount.seller.id,
+    },
+    select: {
+      status: true,
+    },
+  });
+
+  return redirect(
+    onboarding?.status === "COMPLETE"
+      ? "/seller"
+      : "/seller/onboarding",
+  );
+};
 
 
 // ==========================================================
@@ -50,6 +112,9 @@ function hashToken(
 export const action = async ({
   request,
 }: ActionFunctionArgs) => {
+
+  const genericMessage =
+    "Check your email. If a HairGrab seller account exists for this email, we sent a secure sign-in link. It expires in 15 minutes. If you don't see it, check spam or junk.";
 
   const formData =
     await request.formData();
@@ -103,8 +168,7 @@ export const action = async ({
     ) {
       return {
         success: true,
-        message:
-          "If a HairGrab seller account exists for this email, a sign-in link will be sent.",
+        message: genericMessage,
       };
     }
 
@@ -140,25 +204,22 @@ export const action = async ({
     });
 
 
-    // ======================================================
-    // TEMPORARY DEV OUTPUT
-    //
-    // We are returning the link on-screen only while
-    // building/testing. Once email delivery is connected,
-    // this dev link will be removed.
-    // ======================================================
+    const loginUrl = new URL(
+      `/seller/login/verify?token=${encodeURIComponent(rawToken)}`,
+      "https://seller.hairgrab.com",
+    ).toString();
 
-    const loginUrl =
-      `/seller/login/verify?token=${rawToken}`;
+    await sendSellerLoginEmail({
+      to: portalAccount.email,
+      firstName: portalAccount.firstName,
+      loginUrl,
+    });
 
 
     return {
       success: true,
 
-      message:
-        "Your HairGrab sign-in link is ready.",
-
-      loginUrl,
+      message: genericMessage,
     };
 
   } catch (error) {
@@ -415,79 +476,22 @@ export default function SellerLoginPage() {
             }}
           >
             {submitting
-              ? "Creating sign-in link..."
-              : "Continue"}
+              ? "Sending sign-in link..."
+              : "Send Sign-In Link"}
           </button>
         </Form>
 
-
-        {actionData?.success &&
-          actionData.loginUrl && (
-            <div
-              style={{
-                marginTop:
-                  "22px",
-                padding:
-                  "16px",
-                border:
-                  "1px solid #e1d3eb",
-                borderRadius:
-                  "10px",
-                background:
-                  "#faf7fc",
-              }}
-            >
-              <div
-                style={{
-                  color:
-                    "#4B1678",
-                  fontWeight:
-                    "800",
-                  fontSize:
-                    "13px",
-                  marginBottom:
-                    "8px",
-                }}
-              >
-                Development sign-in link
-              </div>
-
-
-              <a
-                href={
-                  actionData.loginUrl
-                }
-                style={{
-                  color:
-                    "#4B1678",
-                  fontWeight:
-                    "700",
-                  fontSize:
-                    "13px",
-                  wordBreak:
-                    "break-all",
-                }}
-              >
-                Open HairGrab Seller Account
-              </a>
-
-
-              <div
-                style={{
-                  marginTop:
-                    "8px",
-                  color:
-                    "#817787",
-                  fontSize:
-                    "11px",
-                  lineHeight:
-                    "1.5",
-                }}
-              >
-                This temporary link is shown only while we are building the seller portal. It expires in 15 minutes.
-              </div>
-            </div>
-          )}
+        <p
+          style={{
+            margin: "14px 0 0",
+            color: "#817787",
+            fontSize: "12px",
+            lineHeight: "1.5",
+            textAlign: "center",
+          }}
+        >
+          We&apos;ll send a secure sign-in link to your seller email. You&apos;ll stay signed in on this device after you verify.
+        </p>
 
       </div>
     </div>

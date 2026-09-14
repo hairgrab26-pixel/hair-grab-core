@@ -101,3 +101,79 @@ export async function sendSellerApprovalEmail({
 
   return data;
 }
+
+type SendSellerLoginEmailArgs = {
+  to: string;
+  firstName?: string | null;
+  loginUrl: string;
+};
+
+export async function sendSellerLoginEmail({
+  to,
+  firstName,
+  loginUrl,
+}: SendSellerLoginEmailArgs) {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured.");
+  }
+
+  const htmlEntities: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  };
+  const safeFirstName = (firstName?.trim() || "Seller").replace(
+    /[&<>"']/g,
+    (character) => htmlEntities[character] || character,
+  );
+
+  const { data, error } = await resend.emails.send({
+    from: DEFAULT_FROM_EMAIL,
+    to,
+    subject: "Your HairGrab Seller Sign-In Link",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; color: #21152a; line-height: 1.6;">
+        <div style="padding: 28px 0 18px;">
+          <div style="font-size: 13px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: #7b3fa0;">
+            HairGrab Seller Portal
+          </div>
+
+          <h1 style="font-size: 28px; margin: 8px 0 14px; color: #4B1678;">
+            Sign in to HairGrab
+          </h1>
+
+          <p>Hi ${safeFirstName},</p>
+
+          <p>Use the secure link below to sign in to your HairGrab Seller Portal.</p>
+
+          <div style="margin: 28px 0;">
+            <a
+              href="${loginUrl}"
+              style="display: inline-block; background: #4B1678; color: #ffffff; text-decoration: none; padding: 13px 22px; border-radius: 8px; font-weight: 700;"
+            >
+              Sign In to HairGrab
+            </a>
+          </div>
+
+          <p style="font-size: 14px; color: #6f6675;">
+            This link expires in 15 minutes and can only be used once. If you did not request this sign-in link, you can ignore this email.
+          </p>
+
+          <p style="font-size: 13px; color: #756b7b;">
+            HairGrab<br />Find It. Love It. Grab It.
+          </p>
+        </div>
+      </div>
+    `,
+  });
+
+  if (error) {
+    throw new Error(
+      `Unable to send seller sign-in email: ${error.message}`,
+    );
+  }
+
+  return data;
+}
