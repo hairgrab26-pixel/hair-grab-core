@@ -4643,36 +4643,123 @@ export default function SellerAddProductPage() {
       flatRateShipping,
     ) > 0;
 
+  // "Review Product" (below) is disabled until every one of these
+  // is satisfied. That used to be a single opaque boolean with no
+  // way for a seller (or anyone auditing this screen) to tell WHY
+  // the button wouldn't respond — from the outside a permanently
+  // disabled button and a missing final-save action look
+  // identical. This keeps the exact same requirements, just makes
+  // them individually visible so the gate is diagnosable instead
+  // of a silent dead end.
+  const missingRequirements: string[] =
+    [];
+
+  if (
+    !title.trim()
+  ) {
+    missingRequirements.push(
+      "Product title",
+    );
+  }
+
+  if (
+    !description.trim()
+  ) {
+    missingRequirements.push(
+      "Product description",
+    );
+  }
+
+  if (
+    productType ===
+    null
+  ) {
+    missingRequirements.push(
+      "Product type",
+    );
+  }
+
+  if (
+    !resolvedMaterial
+  ) {
+    missingRequirements.push(
+      "Material",
+    );
+  }
+
+  if (
+    selectedColors.length ===
+    0
+  ) {
+    missingRequirements.push(
+      "At least one color",
+    );
+  }
+
+  if (
+    !shippingMethod
+  ) {
+    missingRequirements.push(
+      "Shipping method",
+    );
+  }
+
+  if (
+    !flatRateIsValid
+  ) {
+    missingRequirements.push(
+      "A flat rate shipping amount greater than $0",
+    );
+  }
+
+  if (
+    !shipsWithin
+  ) {
+    missingRequirements.push(
+      "Ships Within timeframe",
+    );
+  }
+
+  if (
+    !returnPolicy
+  ) {
+    missingRequirements.push(
+      "Return policy",
+    );
+  }
+
+  if (
+    !showOnMap
+  ) {
+    missingRequirements.push(
+      "Show on map selection",
+    );
+  }
+
+  if (
+    !hasPrices
+  ) {
+    if (
+      variantRows.length ===
+      0
+    ) {
+      missingRequirements.push(
+        isBundleDeal
+          ? "At least one length for the Bundle Deal"
+          : "At least one length",
+      );
+    } else {
+      missingRequirements.push(
+        onSale
+          ? "A valid Regular Price and a Sale Price lower than Regular Price for every length"
+          : "A valid price for every length",
+      );
+    }
+  }
+
   const ready =
-    title.trim()
-      .length >
-      0 &&
-    description
-      .trim()
-      .length >
-      0 &&
-    productType !==
-      null &&
-    resolvedMaterial
-      .length >
-      0 &&
-    selectedColors
-      .length >
-      0 &&
-    shippingMethod
-      .length >
-      0 &&
-    flatRateIsValid &&
-    shipsWithin
-      .length >
-      0 &&
-    returnPolicy
-      .length >
-      0 &&
-    showOnMap
-      .length >
-      0 &&
-    hasPrices;
+    missingRequirements.length ===
+    0;
 
   function parseCsvText(text: string) {
     const rows: string[][] = [];
@@ -8988,6 +9075,34 @@ export default function SellerAddProductPage() {
           Review Product
         </button>
         </div>
+
+        {!ready &&
+          missingRequirements.length >
+            0 && (
+            <div
+              style={{
+                marginTop:
+                  "10px",
+                padding:
+                  "10px 12px",
+                borderRadius:
+                  "8px",
+                background:
+                  "#fdf3d9",
+                color:
+                  "#6f5516",
+                fontSize:
+                  "11px",
+                fontWeight:
+                  "700",
+              }}
+            >
+              Before you can review this product, finish: {missingRequirements.join(
+                ", ",
+              )}
+              .
+            </div>
+          )}
       </div>
       </>)}
     </PageShell>
