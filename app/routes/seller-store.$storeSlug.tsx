@@ -118,7 +118,7 @@ export const loader = async ({
     );
   }
 
-  const [ownedProducts, sellerPicks, storeCollections, storeMedia, sellerReviews] = await Promise.all([
+  const [ownedProducts, sellerPicks, storeCollections, storeMedia, sellerReviews, storeHours] = await Promise.all([
     db.sellerProduct.findMany({
       where: { sellerId: seller.id, status: "ACTIVE" },
       select: { id: true, title: true, shopifyProductId: true, shopifyHandle: true, createdAt: true },
@@ -142,6 +142,10 @@ export const loader = async ({
       where: { sellerId: seller.id, status: "PUBLISHED" },
       orderBy: { createdAt: "desc" },
       take: 20,
+    }),
+    db.sellerStoreHour.findMany({
+      where: { sellerId: seller.id },
+      orderBy: { dayOfWeek: "asc" },
     }),
   ]);
 
@@ -623,6 +627,16 @@ export const loader = async ({
       offersLocalDelivery:
         seller.offersLocalDelivery,
 
+      offersSameDayDelivery: seller.offersSameDayDelivery,
+      businessPositioning: seller.businessPositioning,
+      city: seller.city || "",
+      state: seller.state || "",
+      returnPolicy: seller.returnPolicy,
+      useStoreHours: seller.useStoreHours,
+      showStoreHours: seller.showStoreHours,
+      showStoreStatus: seller.showStoreStatus,
+      storeOpenOverride: seller.storeOpenOverride,
+
       showFeaturedCollection: seller.showFeaturedCollection,
       showNewArrivalsCollection: seller.showNewArrivalsCollection,
       showOnSaleCollection: seller.showOnSaleCollection,
@@ -652,6 +666,12 @@ export const loader = async ({
       body: review.body || "",
       verifiedPurchase: review.verifiedPurchase,
     })),
+    storeHours: storeHours.map((hour) => ({
+      dayOfWeek: hour.dayOfWeek,
+      isClosed: hour.isClosed,
+      openTime: hour.openTime || "",
+      closeTime: hour.closeTime || "",
+    })),
   };
 };
 
@@ -663,6 +683,7 @@ export default function PublicSellerStorefrontPage() {
     customCollections,
     storeMedia,
     sellerReviews,
+    storeHours,
   } =
     useLoaderData<
       typeof loader
@@ -1022,6 +1043,33 @@ export default function PublicSellerStorefrontPage() {
   const onSale = products.filter((product) => product.onSale);
   const visibleCollections = seller.showCustomCollections ? customCollections : [];
 
+  const returnPolicyLabel = seller.returnPolicy === "FINAL_SALE"
+    ? "Final Sale"
+    : seller.returnPolicy === "7_DAY_RETURNS"
+      ? "7-Day Returns"
+      : "14-Day Returns";
+  const businessPositioningLabels: Record<string, string> = {
+    LUXURY: "Luxury Hair",
+    PREMIUM: "Premium Hair",
+    EVERYDAY: "Everyday Hair",
+    VALUE: "Value Hair",
+    CUSTOM_MADE_TO_ORDER: "Custom / Made-to-Order",
+  };
+  const businessPositioning = seller.businessPositioning
+    .map((value) => businessPositioningLabels[value])
+    .filter(Boolean);
+  const location = [seller.city, seller.state].filter(Boolean).join(", ");
+  const storeStatusLabel = seller.showStoreStatus
+    ? seller.storeOpenOverride === "OPEN"
+      ? "Open"
+      : seller.storeOpenOverride === "CLOSED"
+        ? "Closed"
+        : seller.useStoreHours
+          ? "Hours Listed"
+          : ""
+    : "";
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
   return (
     <div
       style={{
@@ -1317,6 +1365,23 @@ export default function PublicSellerStorefrontPage() {
                 {seller.businessName}
               </h1>
 
+              {location && (
+                <div style={{ color: "#756b79", fontSize: 11, marginBottom: 8 }}>{location}</div>
+              )}
+              {businessPositioning.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                  {businessPositioning.map((label) => <Badge key={label}>{label}</Badge>)}
+                </div>
+              )}
+              {(storeStatusLabel || (seller.useStoreHours && seller.showStoreHours && storeHours.length > 0)) && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 8 }}>
+                  {storeStatusLabel && <Badge>{storeStatusLabel}</Badge>}
+                  {seller.useStoreHours && seller.showStoreHours && storeHours.length > 0 && (
+                    <a href="#hours" style={{ color: "#4B1678", fontSize: 11, fontWeight: 800 }}>Store Hours</a>
+                  )}
+                </div>
+              )}
+
               <div
                 style={{
                   color:
@@ -1367,6 +1432,9 @@ export default function PublicSellerStorefrontPage() {
                   <Badge>
                     Local Delivery
                   </Badge>
+                )}
+                {seller.offersSameDayDelivery && (
+                  <Badge>Same-Day Delivery</Badge>
                 )}
               </div>
             </div>
@@ -1521,6 +1589,34 @@ export default function PublicSellerStorefrontPage() {
             renderProductGrid(products)
           )}
         </section>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 30 }}>
+          <section id="about" style={{ border: "1px solid #eadff0", borderRadius: 14, padding: 20, background: "white" }}>
+            <h2 style={{ color: "#4B1678", fontSize: 22, marginTop: 0 }}>About the Brand</h2>
+            <div style={{ color: "#756b79", fontSize: 12, marginBottom: 12 }}>{seller.businessName}</div>
+            <div style={{ color: "#4f4554", fontSize: 12, lineHeight: 1.7 }}>
+              {seller.storeDescription || "This seller has not added their brand story yet."}
+            </div>
+          </section>
+          <section id="policies" style={{ border: "1px solid #eadff0", borderRadius: 14, padding: 20, background: "white" }}>
+            <h2 style={{ color: "#4B1678", fontSize: 22, marginTop: 0 }}>Store Policies</h2>
+            <div style={{ color: "#756b79", fontSize: 12, marginBottom: 12 }}>Easy to understand.</div>
+            <StoreInfoRow label="Returns" value={returnPolicyLabel} />
+            {seller.sellsNationwide && <StoreInfoRow label="Shipping" value="Nationwide" />}
+            {seller.offersLocalPickup && <StoreInfoRow label="Pickup" value="Available" />}
+          </section>
+        </div>
+        {seller.useStoreHours && seller.showStoreHours && storeHours.length > 0 && (
+          <section id="hours" style={{ border: "1px solid #eadff0", borderRadius: 14, padding: 20, background: "white", marginTop: 16 }}>
+            <h2 style={{ color: "#4B1678", fontSize: 22, marginTop: 0 }}>Store Hours</h2>
+            <div style={{ color: "#756b79", fontSize: 12, marginBottom: 12 }}>Local pickup and delivery availability.</div>
+            {storeHours.map((hour) => (
+              <StoreInfoRow key={hour.dayOfWeek}
+                label={dayNames[hour.dayOfWeek] || `Day ${hour.dayOfWeek}`}
+                value={hour.isClosed ? "Closed" : hour.openTime && hour.closeTime
+                  ? `${hour.openTime} – ${hour.closeTime}` : "Hours not set"} />
+            ))}
+          </section>
+        )}
       </main>
     </div>
   );
@@ -1574,5 +1670,14 @@ function StoreSection<T>({ title, id, products, renderProductGrid, showEmpty, im
       {imageUrl && <img src={imageUrl} alt={`${title} collection`} style={{ maxWidth: 220, borderRadius: 12, marginBottom: 14 }} />}
       {products.length ? renderProductGrid(products) : showEmpty ? <p>Products will appear here when this collection is stocked.</p> : null}
     </section>
+  );
+}
+
+function StoreInfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: "1px solid #f0e9f3", fontSize: 10 }}>
+      <span style={{ color: "#756b79" }}>{label}</span>
+      <span style={{ color: "#35263e", fontWeight: 900 }}>{value}</span>
+    </div>
   );
 }
