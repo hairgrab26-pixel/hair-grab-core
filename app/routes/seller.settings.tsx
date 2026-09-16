@@ -871,6 +871,8 @@ export const action = async ({
           offersLocalPickup,
           offersLocalDelivery,
           offersSameDayDelivery,
+          ...(!offersSameDayDelivery ? { sameDayProvisioningStatus: "DISABLED" } :
+            !seller.offersSameDayDelivery ? { sameDayProvisioningStatus: "NOT_STARTED" } : {}),
           storefrontPublished:
             wantsStoreLive,
           returnPolicy,

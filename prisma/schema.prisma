@@ -170,6 +170,14 @@ model Seller {
   fastPayoutSuspendedAt      DateTime?
   fastPayoutSuspensionReason String?
 
+  shopifyFulfillmentServiceId      String? @unique
+  shopifyFulfillmentLocationId     String? @unique
+  sameDayProvisioningStatus        String  @default("NOT_STARTED")
+  sameDayProvisioningError         String?
+  sameDayProvisioningAttemptedAt   DateTime?
+  sameDayProvisionedAt             DateTime?
+  sameDayProvisioningData          Json?
+
   approvedAt    DateTime?
   suspendedAt   DateTime?
   deactivatedAt DateTime?
@@ -859,6 +867,7 @@ model SellerOrderFulfillment {
   courierDeliveryId String?
   courierStatus     String?
   courierFeeCents   Int?
+  courierDispatchData Json?
 
   readyForPickupAt DateTime?
   shippedAt        DateTime?

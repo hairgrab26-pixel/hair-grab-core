@@ -11,6 +11,9 @@ import {
 } from "react-router";
 
 import db from "../db.server";
+import { Prisma } from "@prisma/client";
+import { runSellerSameDayAction } from "../same-day-dispatch-store.server";
+import { safeCourierTrackingUrl } from "../same-day-dispatch.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
 
@@ -403,9 +406,9 @@ export const loader = async ({
           null,
 
         trackingUrl:
-          fulfillment
-            ?.trackingUrl ||
-          null,
+          fulfillment?.fulfillmentMethod === "HAIRGRAB_SAME_DAY"
+            ? safeCourierTrackingUrl(fulfillment.trackingUrl)
+            : fulfillment?.trackingUrl || null,
 
         shippingLabelUrl:
           fulfillment
@@ -471,6 +474,8 @@ export const loader = async ({
 
       offersLocalDelivery:
         seller.offersLocalDelivery,
+      offersSameDayDelivery:
+        seller.offersSameDayDelivery,
     },
 
 
@@ -580,6 +585,18 @@ export const action = async ({
       };
     }
 
+    if (["ready-for-same-day", "refresh-same-day", "cancel-same-day"].includes(intent)) {
+      return runSellerSameDayAction(seller.id, orderId,
+        intent === "ready-for-same-day" ? "ready" : intent === "cancel-same-day" ? "cancel" : "refresh");
+    }
+
+    const currentFulfillment = await db.sellerOrderFulfillment.findUnique({
+      where: { sellerId_shopifyOrderId: { sellerId: seller.id, shopifyOrderId: orderId } },
+    });
+    if (currentFulfillment?.courierDeliveryId || currentFulfillment?.courierDispatchData) {
+      return { success: false, message: "This order has a courier dispatch record. Use its status or cancellation controls; the fulfillment method is locked." };
+    }
+
 
     // ========================================================
     // CHOOSE FULFILLMENT METHOD
@@ -640,7 +657,7 @@ export const action = async ({
       if (
         fulfillmentMethod ===
           "HAIRGRAB_SAME_DAY" &&
-        !seller.offersLocalDelivery
+        !seller.offersSameDayDelivery
       ) {
         return {
           success: false,
@@ -651,25 +668,15 @@ export const action = async ({
       }
 
 
-      await db.sellerOrderFulfillment.upsert({
-        where: {
-          sellerId_shopifyOrderId: {
-            sellerId:
-              seller.id,
-
-            shopifyOrderId:
-              orderId,
-          },
-        },
-
-        update: {
-          fulfillmentMethod,
-
-          status:
-            "READY",
-        },
-
-        create: {
+      if (currentFulfillment) {
+        const changed = await db.sellerOrderFulfillment.updateMany({
+          where: { id: currentFulfillment.id, sellerId: seller.id,
+            courierDeliveryId: null, courierDispatchData: { equals: Prisma.DbNull } },
+          data: { fulfillmentMethod, status: "READY" },
+        });
+        if (changed.count !== 1) return { success: false, message: "Dispatch has started. The fulfillment method cannot be changed." };
+      } else await db.sellerOrderFulfillment.create({
+        data: {
           sellerId:
             seller.id,
 
@@ -760,75 +767,6 @@ export const action = async ({
 
         message:
           "Order marked ready for customer pickup.",
-      };
-    }
-
-
-    // ========================================================
-    // SAME-DAY DELIVERY - SELLER MARKS PACKAGE READY
-    // ========================================================
-
-    if (
-      intent ===
-      "ready-for-same-day"
-    ) {
-      const fulfillment =
-        await db.sellerOrderFulfillment.findUnique({
-          where: {
-            sellerId_shopifyOrderId: {
-              sellerId:
-                seller.id,
-
-              shopifyOrderId:
-                orderId,
-            },
-          },
-        });
-
-
-      if (
-        !fulfillment ||
-        fulfillment.fulfillmentMethod !==
-          "HAIRGRAB_SAME_DAY"
-      ) {
-        return {
-          success: false,
-
-          message:
-            "This order is not set for HairGrab Same-Day Delivery.",
-        };
-      }
-
-
-      await db.sellerOrderFulfillment.update({
-        where: {
-          sellerId_shopifyOrderId: {
-            sellerId:
-              seller.id,
-
-            shopifyOrderId:
-              orderId,
-          },
-        },
-
-        data: {
-          status:
-            "READY_FOR_PICKUP",
-
-          readyForPickupAt:
-            new Date(),
-
-          courierStatus:
-            "WAITING_FOR_DISPATCH",
-        },
-      });
-
-
-      return {
-        success: true,
-
-        message:
-          "Order is ready for HairGrab Same-Day Delivery. Courier dispatch will be connected in the next phase.",
       };
     }
 
@@ -2928,6 +2866,8 @@ function OrderCard({
 
     offersLocalDelivery:
       boolean;
+    offersSameDayDelivery:
+      boolean;
   };
 
   shippingRates:
@@ -3162,7 +3102,7 @@ function OrderCard({
                     </option>
                   )}
 
-                  {seller.offersLocalDelivery && (
+                  {seller.offersSameDayDelivery && (
                     <option value="HAIRGRAB_SAME_DAY">
                       HairGrab Same-Day Delivery
                     </option>
@@ -3837,75 +3777,41 @@ function OrderCard({
         )}
 
 
-      {/* SAME DAY */}
-
-      {ready &&
-        order.fulfillmentMethod ===
-          "HAIRGRAB_SAME_DAY" && (
-          <div
-            style={
-              actionSection
-            }
-          >
-            <div
-              style={
-                sectionTitle
-              }
-            >
-              HairGrab Same-Day Delivery
-            </div>
-
-
-            {order.fulfillmentStatus ===
-            "READY_FOR_PICKUP" ? (
-              <>
-                <div
-                  style={
-                    successBox
-                  }
-                >
-                  ✓ Package is marked ready for courier pickup.
-                </div>
-
-                <div
-                  style={{
-                    ...infoBox,
-                    marginTop:
-                      "9px",
-                  }}
-                >
-                  Courier dispatch is the next API phase. HairGrab has not requested a driver yet.
-                </div>
-              </>
-            ) : (
+      {/* Courier state is independent of parcel ledger state. */}
+      {order.fulfillmentMethod === "HAIRGRAB_SAME_DAY" && (
+        <div style={actionSection}>
+          <div style={sectionTitle}>HairGrab Same-Day Delivery</div>
+          <div style={infoBox}>
+            {sameDayStatusLabel(order.courierStatus)}
+            {order.courierProvider && <div>Provider: {order.courierProvider}</div>}
+          </div>
+          {order.trackingUrl && (
+            <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer">Track delivery</a>
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+            {(!order.courierStatus || ["WAITING_FOR_DISPATCH", "DISPATCH_FAILED", "DISPATCH_UNAVAILABLE", "CREATED", "CREATED_UNAVAILABLE", "PRE_ASSIGN_FAILED"].includes(order.courierStatus)) && (
               <Form method="post">
-                <input
-                  type="hidden"
-                  name="intent"
-                  value="ready-for-same-day"
-                />
-
-                <input
-                  type="hidden"
-                  name="orderId"
-                  value={
-                    order.id
-                  }
-                />
-
-                <button
-                  type="submit"
-                  style={
-                    primaryButton
-                  }
-                >
-                  Package Ready for HairGrab Delivery
-                </button>
+                <input type="hidden" name="intent" value="ready-for-same-day" />
+                <input type="hidden" name="orderId" value={order.id} />
+                <button type="submit" style={primaryButton}>Mark Package Ready &amp; Request Driver</button>
+              </Form>
+            )}
+            <Form method="post">
+              <input type="hidden" name="intent" value="refresh-same-day" />
+              <input type="hidden" name="orderId" value={order.id} />
+              <button type="submit" style={primaryButton}>Refresh Delivery Status</button>
+            </Form>
+            {["REQUESTED", "STARTED", "FAILED"].includes(order.courierStatus || "") && (
+              <Form method="post">
+                <input type="hidden" name="intent" value="cancel-same-day" />
+                <input type="hidden" name="orderId" value={order.id} />
+                <div style={{ fontSize: 12 }}>Cancellation may still incur provider charges. No shopper refund is issued here.</div>
+                <button type="submit" style={primaryButton}>Cancel Courier Delivery</button>
               </Form>
             )}
           </div>
-        )}
-
+        </div>
+      )}
 
       {/* SHIPPED INFO */}
 
@@ -4242,3 +4148,29 @@ const successBox = {
   fontWeight:
     "800",
 };
+
+function sameDayStatusLabel(status: string | null) {
+  const labels: Record<string, string> = {
+    WAITING_FOR_DISPATCH: "Ready for pickup. Request a driver when the package is prepared.",
+    QUOTING: "Ready for pickup. Checking courier availability.",
+    CREATING: "Creating the delivery. Please refresh shortly.",
+    CREATED: "Delivery saved. Mark READY to request a driver.",
+    ESTIMATING: "Revalidating the provider estimate.",
+    ASSIGNING: "Requesting a driver. Please refresh shortly.",
+    REQUESTED: "Ready for pickup. Waiting for a driver.",
+    STARTED: "Driver assigned.",
+    PICKEDUP: "Out for delivery.",
+    DELIVERED: "Delivered.",
+    CANCELLED: "Delivery cancelled. Provider charges may still apply.",
+    CANCELING: "Checking cancellation. Please refresh shortly.",
+    CANCEL_PENDING: "Cancellation needs confirmation. Refresh status or contact HairGrab.",
+    DISPATCH_UNAVAILABLE: "No provider available. You can retry availability.",
+    CREATED_UNAVAILABLE: "No provider available. Retrying will reuse the saved delivery.",
+    DISPATCH_FAILED: "Availability check failed. You can retry.",
+    PRE_ASSIGN_FAILED: "Order needs revalidation before a driver can be requested.",
+    CREATE_UNCERTAIN: "Creation needs reconciliation. Refresh status; do not request another driver.",
+    ASSIGN_UNCERTAIN: "Driver request needs reconciliation. Refresh status; do not request another driver.",
+    FAILED: "Delivery failed. Contact HairGrab for assistance.",
+  };
+  return status ? labels[status] || "Delivery needs HairGrab review." : "Mark the package READY when it is prepared for pickup.";
+}

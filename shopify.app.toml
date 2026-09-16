@@ -37,6 +37,10 @@ api_version = "2026-07"
   topics = [ "fulfillment_events/create" ]
 
   [[webhooks.subscriptions]]
+  uri = "/webhooks/app/same-day-fulfillment"
+  topics = [ "fulfillment_orders/order_routing_complete", "fulfillment_orders/fulfillment_request_submitted", "fulfillment_orders/cancellation_request_submitted" ]
+
+  [[webhooks.subscriptions]]
   uri = "/webhooks/customers/data_request"
   compliance_topics = [ "customers/data_request" ]
 
@@ -49,7 +53,7 @@ api_version = "2026-07"
   compliance_topics = [ "shop/redact" ]
 
 [access_scopes]
-scopes = "read_orders,write_orders,read_products,write_products,read_shopify_payments_payouts,read_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_locations,read_inventory,write_inventory,write_files,read_shipping,write_shipping,write_app_proxy"
+scopes = "read_orders,write_orders,read_products,write_products,read_shopify_payments_payouts,read_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_locations,read_inventory,write_inventory,write_files,read_shipping,write_shipping,write_app_proxy,write_fulfillments,write_assigned_fulfillment_orders"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

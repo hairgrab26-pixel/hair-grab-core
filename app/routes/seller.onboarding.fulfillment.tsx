@@ -60,6 +60,8 @@ export const loader = async ({
 
       offersLocalDelivery:
         seller.offersLocalDelivery,
+      offersSameDayDelivery:
+        seller.offersSameDayDelivery,
     },
 
     fulfillmentComplete:
@@ -107,6 +109,9 @@ export const action = async ({
         "offersLocalDelivery",
       ) === "on";
 
+    const offersSameDayDelivery =
+      formData.get("offersSameDayDelivery") === "on";
+
 
     const allowedShippingMethods =
       [
@@ -152,6 +157,9 @@ export const action = async ({
           offersLocalPickup,
 
           offersLocalDelivery,
+          offersSameDayDelivery,
+          ...(!offersSameDayDelivery ? { sameDayProvisioningStatus: "DISABLED" } :
+            !seller.offersSameDayDelivery ? { sameDayProvisioningStatus: "NOT_STARTED" } : {}),
         },
       }),
 
@@ -594,10 +602,17 @@ export default function SellerFulfillmentOnboardingPage() {
 
               <CheckboxChoice
                 name="offersLocalDelivery"
+                title="Local Delivery"
+                description="You arrange and deliver eligible local orders yourself."
+                defaultChecked={seller.offersLocalDelivery}
+              />
+
+              <CheckboxChoice
+                name="offersSameDayDelivery"
                 title="HairGrab Same-Day Delivery"
                 description="Eligible nearby orders may be delivered by a HairGrab courier partner. HairGrab will request the courier after you mark the order ready for pickup."
                 defaultChecked={
-                  seller.offersLocalDelivery
+                  seller.offersSameDayDelivery
                 }
               />
             </div>
