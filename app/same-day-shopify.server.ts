@@ -142,3 +142,26 @@ mutation HairGrabDeliveryLocation($id: ID!, $profile: DeliveryProfileInput!) {
 export const SCOPES_QUERY = `#graphql
 query HairGrabProvisioningAccess { currentAppInstallation { accessScopes { handle } } shop { features { marketDrivenShipping } } }
 `;
+/** Single source of truth for the OAuth scopes Same-Day provisioning/dispatch require.
+ * Both the production readiness gate and the read-only admin diagnostics route import
+ * this constant so the two checks can never drift apart. */
+export const REQUIRED_SAME_DAY_SCOPES = ["write_fulfillments", "write_assigned_fulfillment_orders", "write_shipping", "write_inventory"] as const;
+export type SameDayScopeReadiness = Record<(typeof REQUIRED_SAME_DAY_SCOPES)[number], boolean>;
+type ScopesQueryData = { currentAppInstallation?: { accessScopes?: { handle: string }[] } | null; shop?: { features?: { marketDrivenShipping?: boolean } } | null };
+/** Pure formatting of a SCOPES_QUERY response. Never returns anything beyond the four
+ * required scopes' granted/missing booleans and the public marketDrivenShipping flag —
+ * no token, no other scope handles, no shop/session identifiers. */
+export function summarizeSameDayReadiness(data: ScopesQueryData): { scopes: SameDayScopeReadiness; marketDrivenShipping: boolean | null } {
+  const granted = new Set((data.currentAppInstallation?.accessScopes ?? []).map(s => s.handle));
+  const scopes = Object.fromEntries(REQUIRED_SAME_DAY_SCOPES.map(scope => [scope, granted.has(scope)])) as SameDayScopeReadiness;
+  return { scopes, marketDrivenShipping: data.shop?.features?.marketDrivenShipping ?? null };
+}
+/** Pure formatting of the three Same-Day safety-gate env vars as strict booleans.
+ * Takes an env object rather than reading process.env so it stays unit-testable. */
+export function summarizeSameDayFlags(env: Record<string, string | undefined>) {
+  return {
+    adminOperations: env.HAIRGRAB_SAME_DAY_ADMIN_OPERATIONS === "true",
+    shopifyWrites: env.HAIRGRAB_SAME_DAY_SHOPIFY_WRITES === "true",
+    lifecycleReady: env.HAIRGRAB_SAME_DAY_LIFECYCLE_READY === "true",
+  };
+}

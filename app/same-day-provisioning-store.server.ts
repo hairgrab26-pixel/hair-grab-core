@@ -8,7 +8,7 @@ import { createSameDayProvisioner, provisionSameDaySellerBatch, type Provisionin
 // @ts-ignore Node strip-types imports
 import { readProvisioningJournal } from "./same-day-provisioning-state.server.ts";
 // @ts-ignore Node strip-types imports
-import { schedulerForShop, SCOPES_QUERY, type AdminClient } from "./same-day-shopify.server.ts";
+import { schedulerForShop, SCOPES_QUERY, REQUIRED_SAME_DAY_SCOPES, type AdminClient } from "./same-day-shopify.server.ts";
 export const provisioningStore: ProvisioningStore = {
   getSeller: id => db.seller.findUnique({ where: { id }, omit: { sameDayProvisioningData: false } }),
   compareAndSet: async (s, patch) => (await db.seller.updateMany({ where: {
@@ -53,7 +53,7 @@ export function productionProvisioningContext(shop: string, admin: AdminClient, 
       const scopes = new Set(data.currentAppInstallation?.accessScopes?.map((s: any) => s.handle));
       // The explicit deployment gate includes a working lifecycle reconciliation runner.
       // This release uses legacy delivery profiles; never mutate an opted-in Markets shop.
-      return ["write_fulfillments", "write_assigned_fulfillment_orders", "write_shipping", "write_inventory"].every(s => scopes.has(s)) &&
+      return REQUIRED_SAME_DAY_SCOPES.every(s => scopes.has(s)) &&
         data.shop?.features?.marketDrivenShipping === false && process.env.HAIRGRAB_SAME_DAY_LIFECYCLE_READY === "true";
     } };
 }
