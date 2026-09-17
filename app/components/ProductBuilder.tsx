@@ -2,6 +2,8 @@ import { useActionData, useFetcher } from "react-router";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { displayProductCategory, normalizeProductCategory, PRODUCT_CATEGORY_LABELS } from "../product-categories";
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, variantFieldsFromShopify, variantFieldsToShopify, type ExistingProductSnapshot } from "../product-builder-model";
+import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights } from "../product-vocabulary";
+import { parseCsvText, normalizeCsvHeader, resolveCsvProductFields, resolveStructuredProductOption, inferProductDetailsFromTitle, STRUCTURED_COLUMN_ALIASES, type CsvFieldName } from "../csv-product-import";
 import type { action as addAction } from "../routes/seller.add-product";
 
 type ProductType =
@@ -54,6 +56,7 @@ type ProductPayload = {
   laceType: string;
   capSize: string;
   bundleWeight: string;
+  pieceCount: string;
 
   shippingMethod: string;
   flatRateShipping: string;
@@ -302,6 +305,20 @@ export const productOptions:
       label:
         "Halo",
     },
+
+    {
+      value:
+        "TOPPER",
+      label:
+        "Topper",
+    },
+
+    {
+      value:
+        "SEW_IN",
+      label:
+        "Sew-In",
+    },
   ],
 
   BRAIDING_HAIR: [
@@ -326,6 +343,27 @@ export const productOptions:
         "HAIR_CARE",
       label:
         "Hair Care",
+    },
+
+    {
+      value:
+        "WIG_CARE",
+      label:
+        "Wig Care",
+    },
+
+    {
+      value:
+        "INSTALLATION",
+      label:
+        "Installation",
+    },
+
+    {
+      value:
+        "STYLING",
+      label:
+        "Styling",
     },
 
     {
@@ -374,6 +412,13 @@ export const productClassifications:
       label:
         "Locs",
     },
+
+    {
+      value:
+        "CROCHET_HAIR",
+      label:
+        "Crochet Hair",
+    },
   ],
 };
 
@@ -406,93 +451,11 @@ export const locTypeChoices: Choice[] = [
 ];
 
 
-const materials = [
-  "Human Hair",
-  "Synthetic Hair",
-  "Human / Synthetic Blend",
-  "Other",
-  "Not Applicable",
-];
-
-const colors = [
-  "Natural / 1B",
-  "1 - Jet Black",
-  "2 - Dark Brown",
-  "4 - Medium Brown",
-  "27 - Honey Blonde",
-  "30 - Auburn",
-  "613 - Blonde",
-  "99J - Burgundy",
-  "Red",
-  "Copper",
-  "Pink",
-  "Blue",
-  "Purple",
-  "Gray / Silver",
-  "Mixed / Highlighted",
-  "Other / Custom",
-];
-
-const textures = [
-  "Straight",
-  "Body Wave",
-  "Loose Wave",
-  "Deep Wave",
-  "Water Wave",
-  "Curly",
-  "Deep Curly",
-  "Kinky Curly",
-  "Kinky Straight",
-  "Coily",
-  "Other",
-];
-
-const standardLengths = [
-  "8",
-  "10",
-  "12",
-  "14",
-  "16",
-  "18",
-  "20",
-  "22",
-  "24",
-  "26",
-  "28",
-  "30",
-  "32",
-  "34",
-  "36",
-  "40",
-];
-
-const densities = [
-  "130%",
-  "150%",
-  "180%",
-  "200%",
-  "250%",
-];
-
-const laceSizes = [
-  "2x6",
-  "4x4",
-  "5x5",
-  "6x6",
-  "7x7",
-  "13x4",
-  "13x6",
-  "360",
-  "Full Lace",
-];
-
-const laceTypes = [
-  "HD Lace",
-  "Transparent Lace",
-  "Swiss Lace",
-  "Regular Lace",
-];
-
+// materials, colors, textures, standardLengths, densities, laceSizes,
+// and laceTypes moved to ../product-vocabulary in Phase 2A so the CSV
+// importer and its tests can validate against the exact same
+// controlled vocabulary as this form. Imported at the top of this
+// file; content is unchanged, so rendered choices are unchanged.
 
 // ==========================================================
 // STYLES
@@ -916,9 +879,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     laceType?: string;
     capSize?: string;
     bundleWeight?: string;
+    pieceCount?: string;
     excluded?: boolean;
     imported?: boolean;
     importError?: string;
+    needsConfirmation?: CsvFieldName[];
+    rowErrors?: string[];
   };
 
   const [
@@ -1071,6 +1037,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     );
 
   const [
+    pieceCount,
+    setPieceCount,
+  ] =
+    useState("");
+
+  const [
     shippingMethod,
     setShippingMethod,
   ] =
@@ -1201,6 +1173,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       material: settings.material || "", colors: settings.colors?.length ? settings.colors : ["Natural / 1B"],
       texture: settings.texture || "", density: settings.density || "", laceSize: settings.laceSize || "",
       laceType: settings.laceType || "", capSize: settings.capSize || "",
+      bundleWeight: settings.bundleWeight || "100g", pieceCount: settings.pieceCount || "",
       shippingMethod: settings.builderShippingMethod || settings.shippingMethod || "Free Shipping", flatRateShipping: settings.flatRateShipping || "",
       localPickupAvailable: settings.localPickupAvailable ?? false, localDeliveryAvailable: settings.localDeliveryAvailable ?? false,
       shipsWithin: settings.shipsWithin || "", returnPolicy: settings.returnPolicy || "", showOnMap: settings.showOnMap || "" };
@@ -1220,6 +1193,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setLaceSize(settings.laceSize || "");
     setLaceType(settings.laceType || "");
     setCapSize(settings.capSize || "");
+    setBundleWeight(settings.bundleWeight || "100g");
+    setPieceCount(settings.pieceCount || "");
     setShippingMethod(settings.builderShippingMethod || settings.shippingMethod || "Free Shipping");
     setFlatRateShipping(settings.flatRateShipping || "");
     setLocalPickupAvailable(settings.localPickupAvailable ?? false);
@@ -2158,105 +2133,20 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     missingRequirements.length ===
     0;
 
-  function parseCsvText(text: string) {
-    const rows: string[][] = [];
-    let row: string[] = [];
-    let cell = "";
-    let quoted = false;
+  // parseCsvText, normalizeCsvHeader, and the title-inference logic
+  // (now inferProductDetailsFromTitle) moved to ../csv-product-import
+  // in Phase 2A. inferHairGrabDetails is gone: title-based guesses no
+  // longer stand in unchallenged for productType/texture/material/
+  // laceSize -- see resolveCsvProductFields usage below, which prefers
+  // an explicit structured CSV column, validates it against the same
+  // controlled vocabulary as this form, and only falls back to title
+  // inference (flagged needsConfirmation) when no structured column is
+  // present. productOption (the sub-style, e.g. Clip-In vs Tape-In) is
+  // not one of the fields item D named, so it keeps using the same
+  // title-inference heuristic as before, unchanged.
 
-    for (let index = 0; index < text.length; index++) {
-      const char = text[index];
-
-      if (char === '"') {
-        if (quoted && text[index + 1] === '"') {
-          cell += '"';
-          index++;
-        } else {
-          quoted = !quoted;
-        }
-        continue;
-      }
-
-      if (char === "," && !quoted) {
-        row.push(cell.trim());
-        cell = "";
-        continue;
-      }
-
-      if ((char === "\n" || char === "\r") && !quoted) {
-        if (char === "\r" && text[index + 1] === "\n") index++;
-        row.push(cell.trim());
-        cell = "";
-        if (row.some((value) => value.length > 0)) rows.push(row);
-        row = [];
-        continue;
-      }
-
-      cell += char;
-    }
-
-    if (cell.length > 0 || row.length > 0) {
-      row.push(cell.trim());
-      if (row.some((value) => value.length > 0)) rows.push(row);
-    }
-
-    return rows;
-  }
-
-  function normalizeCsvHeader(value: string) {
-    return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-  }
-
-  function inferHairGrabDetails(title: string): Partial<CsvImportedProduct> {
-    const text = title.toLowerCase();
-    let productType: ProductType | undefined;
-    let productOption: string | undefined;
-    let texture: string | undefined;
-    let material: string | undefined;
-    let laceSize: string | undefined;
-
-    if (/wig/.test(text)) productType = "WIG";
-    else if (/closure|frontal/.test(text)) productType = "CLOSURE_FRONTAL";
-    else if (/bundle|weft/.test(text)) productType = "BUNDLE";
-    else if (/clip[ -]?in|tape[ -]?in|i[ -]?tip|micro.?link|ponytail|halo/.test(text)) productType = "EXTENSION";
-    else if (/braid|loc|marley|boho/.test(text)) productType = "BRAIDING_HAIR";
-
-    if (/human hair|virgin|raw hair|remy/.test(text)) material = "Human Hair";
-    if (/synthetic/.test(text)) material = "Synthetic Hair";
-
-    if (/body wave/.test(text)) texture = "Body Wave";
-    else if (/loose wave/.test(text)) texture = "Loose Wave";
-    else if (/deep wave/.test(text)) texture = "Deep Wave";
-    else if (/water wave/.test(text)) texture = "Water Wave";
-    else if (/deep curl/.test(text)) texture = "Deep Curly";
-    else if (/kinky curl/.test(text)) texture = "Kinky Curly";
-    else if (/kinky straight/.test(text)) texture = "Kinky Straight";
-    else if (/curly|curl/.test(text)) texture = "Curly";
-    else if (/straight/.test(text)) texture = "Straight";
-
-    if (productType === "WIG") {
-      if (/glueless/.test(text)) productOption = "GLUELESS";
-      else if (/closure/.test(text)) productOption = "CLOSURE_WIG";
-      else if (/frontal/.test(text)) productOption = "FRONTAL_WIG";
-      else if (/full lace/.test(text)) productOption = "FULL_LACE";
-      else if (/headband/.test(text)) productOption = "HEADBAND";
-    } else if (productType === "CLOSURE_FRONTAL") {
-      if (/360/.test(text)) productOption = "360_FRONTAL";
-      else if (/frontal/.test(text)) productOption = "FRONTAL";
-      else if (/closure/.test(text)) productOption = "CLOSURE";
-    } else if (productType === "EXTENSION") {
-      if (/clip[ -]?in/.test(text)) productOption = "CLIP_IN";
-      else if (/tape[ -]?in/.test(text)) productOption = "TAPE_IN";
-      else if (/i[ -]?tip|micro.?link/.test(text)) productOption = "I_TIP";
-      else if (/ponytail/.test(text)) productOption = "PONYTAIL";
-      else if (/halo/.test(text)) productOption = "HALO";
-    }
-
-    for (const size of laceSizes) {
-      if (text.includes(size.toLowerCase())) { laceSize = size; break; }
-    }
-
-    return { productType, productOption, texture, material, laceSize };
+  function resolveStructuredProductOptionChoice(productType: ProductType, raw: string) {
+    return resolveStructuredProductOption(raw, productOptions[productType] || []);
   }
 
   async function handleCsvFile(
@@ -2326,6 +2216,20 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       findColumn(["option3value"]),
     ];
 
+    // Explicit structured columns for category/texture/material/lace size
+    // (item D). When a seller's CSV names one of these columns, its value
+    // is validated and preferred over any title-based guess -- see the
+    // resolveCsvProductFields call below.
+    const structuredColumnIndexes: Record<CsvFieldName, number> = {
+      productType: findColumn(STRUCTURED_COLUMN_ALIASES.productType),
+      productOption: findColumn(STRUCTURED_COLUMN_ALIASES.productOption),
+      texture: findColumn(STRUCTURED_COLUMN_ALIASES.texture),
+      material: findColumn(STRUCTURED_COLUMN_ALIASES.material),
+      laceSize: findColumn(STRUCTURED_COLUMN_ALIASES.laceSize),
+      pieceCount: findColumn(STRUCTURED_COLUMN_ALIASES.pieceCount),
+    };
+    const structuredFieldNames = Object.keys(structuredColumnIndexes) as CsvFieldName[];
+
     type Group = {
       key: string;
       title: string;
@@ -2335,6 +2239,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       imageUrls: Set<string>;
       sourceOptionNames: string[];
       variants: CsvImportedVariant[];
+      structured: Partial<Record<CsvFieldName, string>>;
     };
 
     const grouped = new Map<string, Group>();
@@ -2360,6 +2265,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
         imageUrls: new Set<string>(),
         sourceOptionNames: [],
         variants: [],
+        structured: {},
       };
 
       current.rows += 1;
@@ -2370,6 +2276,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       if (statusIndex >= 0 && row[statusIndex]) current.status = String(row[statusIndex]);
       if (imageIndex >= 0 && /^https?:\/\//i.test(String(row[imageIndex] || "").trim())) {
         current.imageUrls.add(String(row[imageIndex]).trim());
+      }
+      for (const field of structuredFieldNames) {
+        const columnIndex = structuredColumnIndexes[field];
+        if (columnIndex >= 0 && row[columnIndex] && !current.structured[field]) {
+          current.structured[field] = String(row[columnIndex]).trim();
+        }
       }
 
       const optionNames = optionNameIndexes.map((columnIndex, optionIndex) => {
@@ -2417,9 +2329,37 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
           ? item.variants
           : [{ key: `${item.key}::standard`, price: "", inventory: "", sku: "", sourceOptionValues: [] }];
         const skus = new Set(variants.map((variant) => variant.sku).filter(Boolean));
+        const title = item.title || "Untitled product";
+
+        // Structured columns (validated against the same controlled
+        // vocabulary as this form) win over title inference; an
+        // explicit-but-unrecognized value becomes a row error instead of
+        // being silently dropped or silently replaced by a guess; title
+        // inference only fills a true gap, and is always flagged
+        // needsConfirmation so it can never pass as "ready" on its own.
+        const resolved = resolveCsvProductFields(title, {
+          productType: item.structured.productType,
+          texture: item.structured.texture,
+          material: item.structured.material,
+          laceSize: item.structured.laceSize,
+          pieceCount: item.structured.pieceCount,
+        });
+
+        const resolvedProductType = (resolved.productType.value || undefined) as ProductType | undefined;
+
+        // productOption (the sub-style, e.g. Clip-In vs Tape-In) is not one
+        // of the four fields item D named for structured-column recognition.
+        // A structured column for it is still honored when present (against
+        // the sub-style choices for the resolved product type); otherwise it
+        // falls back to the same unconfirmed title inference as before.
+        const structuredOption = item.structured.productOption && resolvedProductType
+          ? resolveStructuredProductOptionChoice(resolvedProductType, item.structured.productOption)
+          : null;
+        const inferredOption = inferProductDetailsFromTitle(title).productOption;
+
         return {
           key: item.key,
-          title: item.title || "Untitled product",
+          title,
           description: item.description,
           rows: item.rows,
           status: item.status || "Unknown",
@@ -2428,7 +2368,14 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
           imageUrls: Array.from(item.imageUrls).slice(0, 10),
           sourceOptionNames: item.sourceOptionNames.filter(Boolean),
           variants,
-          ...inferHairGrabDetails(item.title || ""),
+          productType: resolvedProductType,
+          texture: resolved.texture.value || undefined,
+          material: resolved.material.value || undefined,
+          laceSize: resolved.laceSize.value || undefined,
+          pieceCount: resolved.pieceCount.value || undefined,
+          productOption: structuredOption || inferredOption,
+          needsConfirmation: resolved.needsConfirmation,
+          rowErrors: resolved.errors.length ? resolved.errors : undefined,
         };
       });
 
@@ -2461,6 +2408,17 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     }
     if (item.classification === "LOCS" && !item.locType) {
       missing.push("loc type");
+    }
+    // A structured CSV column with an unrecognized value never silently
+    // passes -- surface it as something that needs the seller's attention
+    // before this row can import.
+    if (item.rowErrors && item.rowErrors.length > 0) {
+      missing.push("a value from the source CSV that needs review (see details below)");
+    }
+    // A field HairGrab only guessed from the title is not "ready" until the
+    // seller confirms it -- guessing correctly by luck must not be enough.
+    if (item.needsConfirmation && item.needsConfirmation.length > 0) {
+      missing.push("confirmation of a detail guessed from the product title");
     }
     return missing;
   }
@@ -2537,11 +2495,21 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setCsvImportProgress("");
   }
 
+  // Fields that resolveCsvProductFields can flag needsConfirmation on --
+  // an explicit seller edit to one of these fields counts as the
+  // confirmation, so it's cleared from the pending list below.
+  const CSV_CONFIRMABLE_FIELDS: CsvFieldName[] = ["productType", "productOption", "texture", "material", "laceSize"];
+
   function updateCsvProduct(key: string, changes: Partial<CsvImportedProduct>) {
     if (!csvPreview) return;
-    const items = csvPreview.items.map((item) =>
-      item.key === key ? { ...item, ...changes, importError: undefined } : item,
-    );
+    const editedFields = new Set(Object.keys(changes) as CsvFieldName[]);
+    const items = csvPreview.items.map((item) => {
+      if (item.key !== key) return item;
+      const nextNeedsConfirmation = (item.needsConfirmation || []).filter(
+        (field) => !CSV_CONFIRMABLE_FIELDS.includes(field) || !editedFields.has(field),
+      );
+      return { ...item, ...changes, importError: undefined, needsConfirmation: nextNeedsConfirmation };
+    });
     setCsvPreview({ ...csvPreview, items, ...refreshCsvCounts(items) });
   }
 
@@ -2584,6 +2552,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       laceType: item.laceType || "",
       capSize: item.capSize || "",
       bundleWeight: item.bundleWeight || "100g",
+      pieceCount: item.pieceCount || "",
       shippingMethod: "Free Shipping",
       flatRateShipping: "",
       localPickupAvailable: false,
@@ -2700,6 +2669,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       const fields = { title: title.trim(), description: description.trim(), productType,
         selectedOptions, searchClassifications, installationMethods, locType,
         material: resolvedMaterial, colors: selectedColors, texture, density, laceSize, laceType, capSize,
+        bundleWeight, pieceCount,
         shippingMethod, flatRateShipping, localPickupAvailable, localDeliveryAvailable,
         shipsWithin, returnPolicy, showOnMap };
       const changedFields = Object.keys(fields).filter((key) =>
@@ -2759,6 +2729,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
         capSize,
 
         bundleWeight,
+
+        pieceCount,
 
         shippingMethod,
 
@@ -3826,9 +3798,36 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
 
                             {item.productType === "BUNDLE" && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Bundle Weight
                               <select value={item.bundleWeight || "100g"} onChange={(event) => updateCsvProduct(item.key, { bundleWeight: event.target.value })} style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}>
-                                {["50g", "100g", "120g", "150g", "200g+"].map((value) => <option key={value} value={value}>{value}</option>)}
+                                {bundleWeights.map((value) => <option key={value} value={value}>{value}</option>)}
                               </select>
                             </label>}
+
+                            {item.productType === "EXTENSION" && item.productOption === "CLIP_IN" && <label style={{ fontSize: "9px", fontWeight: 800, color: "#4B1678" }}>Piece Count
+                              {/* Safety-review fix: no fixed choice list -- a "1".."5+" dropdown
+                                  would collapse a real 7-piece set into a lossy bucket. */}
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                inputMode="numeric"
+                                placeholder="e.g. 7"
+                                value={item.pieceCount || ""}
+                                onChange={(event) => updateCsvProduct(item.key, { pieceCount: event.target.value.replace(/[^0-9]/g, "") })}
+                                style={{ ...fieldStyle, marginTop: "4px", padding: "8px" }}
+                              />
+                            </label>}
+                          </div>
+                        )}
+
+                        {!item.excluded && item.needsConfirmation && item.needsConfirmation.length > 0 && (
+                          <div style={{ marginTop: "6px", fontSize: "10px", color: "#8a5d09" }}>
+                            Guessed from the product title, please confirm: {item.needsConfirmation.join(", ")}. Changing any of these fields above counts as confirming it.
+                          </div>
+                        )}
+
+                        {!item.excluded && item.rowErrors && item.rowErrors.length > 0 && (
+                          <div style={{ marginTop: "6px", fontSize: "10px", color: "#b03434" }}>
+                            {item.rowErrors.join(" ")}
                           </div>
                         )}
 
@@ -5180,16 +5179,43 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                 value={
                   bundleWeight
                 }
-                values={[
-                  "50g",
-                  "100g",
-                  "120g",
-                  "150g",
-                  "200g+",
-                ]}
+                values={
+                  bundleWeights
+                }
                 onChange={
                   setBundleWeight
                 }
+              />
+            </div>
+          )}
+
+          {productType ===
+            "EXTENSION" &&
+            selectedOptions.includes(
+              "CLIP_IN",
+            ) && (
+            <div
+              style={{
+                marginTop:
+                  "18px",
+
+                maxWidth:
+                  "220px",
+              }}
+            >
+              {/* Safety-review fix: no fixed choice list -- a "1".."5+"
+                  dropdown would collapse a real 7-piece set into a lossy
+                  bucket. HairGrab already sells 7-piece sets. */}
+              <label style={labelStyle}>Piece Count</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                placeholder="e.g. 7"
+                value={pieceCount}
+                onChange={(event) => setPieceCount(event.target.value.replace(/[^0-9]/g, ""))}
+                style={fieldStyle}
               />
             </div>
           )}

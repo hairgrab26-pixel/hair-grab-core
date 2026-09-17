@@ -4,8 +4,8 @@ import { Form, Link, redirect, useActionData, useLoaderData } from "react-router
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
-import { displayProductCategory, PRODUCT_CATEGORY_LABELS, type ProductType } from "../product-categories";
-import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, type ExistingProductSnapshot } from "../product-builder-model";
+import { productTypeToCategoryLabel, PRODUCT_CATEGORY_LABELS, type ProductType } from "../product-categories";
+import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, serializeMetafieldValue, type ExistingProductSnapshot } from "../product-builder-model";
 import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.server";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
 import ProductBuilder from "../components/ProductBuilder";
@@ -26,14 +26,19 @@ type ProductMetafield = {
   value: string;
 };
 
+// Phase 2A: Crochet Hair is now a current, assignable classification
+// (see productClassifications.BRAIDING_HAIR in ../components/ProductBuilder,
+// which added CROCHET_HAIR alongside the existing LOCS entry), not merely a
+// historical value to recognize on read -- so it belongs in the live list
+// below rather than only in LEGACY_CLASSIFICATION_TAGS.
 const CLASSIFICATION_TAGS = [
   "Kosher Wig",
   "Medical Wig",
   "Locs",
+  "Crochet Hair",
 ];
 
 const LEGACY_CLASSIFICATION_TAGS = [
-  "Crochet Hair",
   "Locs / Locks",
 ];
 
@@ -43,9 +48,13 @@ const LEGACY_CLASSIFICATION_TAGS = [
 // Essentials have no specialized classification today, so they
 // are intentionally absent here — add an entry only when there is
 // an approved, category-specific classification for them.
+//
+// Phase 2A relabel: keyed by the current shopper-facing category
+// label ("Braids + Crochet", not the pre-Phase-2A "Braiding Hair") to
+// match PRODUCT_CATEGORY_LABELS.BRAIDING_HAIR in ../product-categories.
 const CLASSIFICATION_TAGS_BY_CATEGORY: Record<string, string[]> = {
   Wigs: ["Kosher Wig", "Medical Wig"],
-  "Braiding Hair": ["Locs"],
+  "Braids + Crochet": ["Locs", "Crochet Hair"],
 };
 
 async function getShopifyAdmin() {
@@ -255,16 +264,8 @@ function prepareMetafieldValue(
     return null;
   }
 
-  if (
-    definition.type.name ===
-    "boolean"
-  ) {
-    return String(
-      Boolean(value),
-    );
-  }
-
-  return resolved ?? raw;
+  if (definition.type.name === "boolean") return String(Boolean(value));
+  return serializeMetafieldValue(definition.type.name, resolved ?? raw);
 }
 
 function addExistingMetafield({
@@ -795,6 +796,14 @@ export const loader = async ({
       laceSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Size"]),
       laceType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]),
       capSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Cap Type", "Cap Size"]),
+      // Read back through the same named-definition-first, documented
+      // hairgrab-namespace-fallback path the action writes through below,
+      // so existing products (with or without an Admin metafield
+      // definition for either field) keep working.
+      bundleWeight: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Bundle Weight", "Weight"]) ||
+        getMetafieldValue(productMetafields, "hairgrab", "bundle_weight"),
+      pieceCount: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Piece Count", "Number of Pieces"]) ||
+        getMetafieldValue(productMetafields, "hairgrab", "piece_count"),
       locType: getMetafieldValue(productMetafields, "hairgrab", "loc_type"),
       shippingMethod,
 
@@ -1004,7 +1013,7 @@ export const action = async ({
       const mediaDiff = diffMedia(current.shopifySnapshot.media, submitted.media);
       const fields = submitted.fields as Record<string, any>;
       const allowedFields = new Set(["title", "description", "productType", "selectedOptions", "searchClassifications", "installationMethods", "locType",
-        "material", "colors", "texture", "density", "laceSize", "laceType", "capSize", "shippingMethod", "flatRateShipping",
+        "material", "colors", "texture", "density", "laceSize", "laceType", "capSize", "bundleWeight", "pieceCount", "shippingMethod", "flatRateShipping",
         "localPickupAvailable", "localDeliveryAvailable", "shipsWithin", "returnPolicy", "showOnMap"]);
       const dirty = new Set<string>(submitted.changedFields);
       if ([...dirty].some((key) => !allowedFields.has(key))) throw new Error("Unsupported product field in edit request");
@@ -1023,7 +1032,10 @@ export const action = async ({
       if (dirty.has("description")) productInput.descriptionHtml = `<p>${String(fields.description || "").trim().replace(/\n/g, "</p><p>")}</p>`;
       if (dirty.has("productType")) {
         if (!Object.prototype.hasOwnProperty.call(PRODUCT_CATEGORY_LABELS, String(fields.productType))) throw new Error("Choose a valid HairGrab product category");
-        const category = displayProductCategory(String(fields.productType || ""));
+        // CANONICAL value, not displayProductCategory()'s shopper-facing
+        // label (Phase 2A safety fix) -- this must match what's already
+        // live on the product so editing never drifts productType.
+        const category = productTypeToCategoryLabel(fields.productType as ProductType);
         productInput.productType = category;
       }
       const tags = new Set(current.product.tags as string[]);
@@ -1116,6 +1128,46 @@ export const action = async ({
         else {
           const definition = findMetafieldDefinition(definitions, names);
           if (definition) removeIfPresent(definition.namespace, definition.key);
+        }
+      }
+      // bundleWeight/pieceCount cannot use the namedFields loop above:
+      // that loop silently no-ops when no Shopify Admin metafield
+      // definition exists yet (addExistingMetafield returns early with
+      // no definition). These two values must never be silently
+      // discarded that way -- if a named definition exists it's used
+      // (same helper, same behavior as every other field); otherwise a
+      // documented, fixed hairgrab-namespace metafield is written so the
+      // seller's saved value is preserved either way.
+      if (dirty.has("bundleWeight")) {
+        const value = String(fields.bundleWeight || "");
+        const definition = findMetafieldDefinition(definitions, ["Bundle Weight", "Weight"]);
+        if (value) {
+          if (definition) addExistingMetafield({ definitions, output: metafields, names: ["Bundle Weight", "Weight"], value });
+          else metafields.push({ namespace: "hairgrab", key: "bundle_weight", type: "single_line_text_field", value });
+        } else {
+          if (definition) removeIfPresent(definition.namespace, definition.key);
+          removeIfPresent("hairgrab", "bundle_weight");
+        }
+      }
+      if (dirty.has("pieceCount")) {
+        const value = String(fields.pieceCount || "");
+        const definition = findMetafieldDefinition(definitions, ["Piece Count", "Number of Pieces"]);
+        if (value) {
+          // Safety-review fix: pieceCount has no fixed choice list (a
+          // 7-piece set must never be collapsed into a "5+" bucket), so
+          // it's validated here as a plain positive whole number and,
+          // when no Admin metafield definition exists yet, stored as
+          // number_integer (not single_line_text_field) so it stays
+          // filterable/sortable once Search & Discovery filtering is
+          // enabled for it. Matches seller.add-product.tsx's create path.
+          if (!/^[1-9][0-9]*$/.test(value)) {
+            throw new Error("Piece Count must be a whole number greater than 0 (e.g. 7).");
+          }
+          if (definition) addExistingMetafield({ definitions, output: metafields, names: ["Piece Count", "Number of Pieces"], value });
+          else metafields.push({ namespace: "hairgrab", key: "piece_count", type: "number_integer", value });
+        } else {
+          if (definition) removeIfPresent(definition.namespace, definition.key);
+          removeIfPresent("hairgrab", "piece_count");
         }
       }
       if (dirty.has("colors")) {

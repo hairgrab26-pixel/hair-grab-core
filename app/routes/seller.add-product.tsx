@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
-import { displayProductCategory } from "../product-categories";
+import { productTypeToCategoryLabel } from "../product-categories";
 import ProductBuilder from "../components/ProductBuilder";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices } from "../components/ProductBuilder";
 
@@ -72,6 +72,7 @@ type ProductPayload = {
   laceType: string;
   capSize: string;
   bundleWeight: string;
+  pieceCount: string;
 
   shippingMethod: string;
   flatRateShipping: string;
@@ -2046,12 +2047,14 @@ export const action =
         value: string;
       }> = [];
 
-      // Canonical shopper-facing category label — single source
-      // of truth in ../product-categories.ts. Do NOT recompute
-      // this inline; every screen that writes or displays a
-      // product's category must go through that shared helper.
+      // CANONICAL category value written to Shopify's productType
+      // field, tags, and the Hair Category metafield — single
+      // source of truth in ../product-categories.ts. Do NOT
+      // recompute this inline, and do NOT use displayProductCategory()
+      // here: that returns the shopper-FACING label (Phase 2A safety
+      // fix), which must never be written back to Shopify.
       const productTypeDisplay =
-        displayProductCategory(
+        productTypeToCategoryLabel(
           payload.productType,
         );
 
@@ -2212,6 +2215,136 @@ export const action =
         value:
           payload.capSize,
       });
+
+      // ----------------------------------------------------
+      // BUNDLE WEIGHT / PIECE COUNT
+      //
+      // Phase 2A fix: these two values used to be silently
+      // dropped by the seller add-product flow (they never
+      // reached any metafield write at all). Unlike the fields
+      // above, they must never be silently discarded just
+      // because no Shopify Admin metafield definition named
+      // "Bundle Weight"/"Weight" or "Piece Count"/"Number of
+      // Pieces" exists yet: if a matching definition is found,
+      // it's used (addExistingMetafield, same as every other
+      // field here); otherwise HairGrab writes a documented,
+      // fixed hairgrab-namespace metafield
+      // (hairgrab.bundle_weight / hairgrab.piece_count) so the
+      // seller's entered value is preserved either way rather
+      // than requiring a new metafield definition to be created
+      // in Shopify Admin before this can work at all.
+      // ----------------------------------------------------
+
+      {
+        const bundleWeightValue =
+          String(
+            payload.bundleWeight ||
+              "",
+          ).trim();
+
+        if (bundleWeightValue) {
+          const bundleWeightDefinition =
+            findMetafieldDefinition(
+              metafieldDefinitions,
+              [
+                "Bundle Weight",
+                "Weight",
+              ],
+            );
+
+          if (bundleWeightDefinition) {
+            addExistingMetafield({
+              definitions:
+                metafieldDefinitions,
+
+              output:
+                metafields,
+
+              names: [
+                "Bundle Weight",
+                "Weight",
+              ],
+
+              value:
+                bundleWeightValue,
+            });
+          } else {
+            metafields.push({
+              namespace:
+                "hairgrab",
+              key:
+                "bundle_weight",
+              type:
+                "single_line_text_field",
+              value:
+                bundleWeightValue,
+            });
+          }
+        }
+      }
+
+      {
+        const pieceCountValue =
+          String(
+            payload.pieceCount ||
+              "",
+          ).trim();
+
+        if (pieceCountValue) {
+          // Safety-review fix: pieceCount has no fixed choice list (a
+          // 7-piece set must never be collapsed into a "5+" bucket),
+          // so it's validated here as a plain positive whole number
+          // and, when no Admin metafield definition exists yet,
+          // stored as number_integer (not single_line_text_field) so
+          // it stays filterable/sortable once Search & Discovery
+          // filtering is enabled for it.
+          if (!/^[1-9][0-9]*$/.test(pieceCountValue)) {
+            return {
+              success: false,
+              message:
+                "Piece Count must be a whole number greater than 0 (e.g. 7).",
+            };
+          }
+
+          const pieceCountDefinition =
+            findMetafieldDefinition(
+              metafieldDefinitions,
+              [
+                "Piece Count",
+                "Number of Pieces",
+              ],
+            );
+
+          if (pieceCountDefinition) {
+            addExistingMetafield({
+              definitions:
+                metafieldDefinitions,
+
+              output:
+                metafields,
+
+              names: [
+                "Piece Count",
+                "Number of Pieces",
+              ],
+
+              value:
+                pieceCountValue,
+            });
+          } else {
+            metafields.push({
+              namespace:
+                "hairgrab",
+              key:
+                "piece_count",
+              type:
+                "number_integer",
+              value:
+                pieceCountValue,
+            });
+          }
+        }
+      }
 
       // ----------------------------------------------------
       // SELLER / SHIPPING VALUES
