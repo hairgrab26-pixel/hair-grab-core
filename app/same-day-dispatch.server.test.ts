@@ -145,6 +145,38 @@ test("seller ownership and same-day eligibility are required", async (t) => {
   }
   assert.equal(x.shipdayWrites().length, 0);
 });
+test("pre-dispatch gate: READY is refused while the store is closed, but refresh/cancel are unaffected", async (t) => {
+  const x = setup(t);
+  x.db.prepare("UPDATE seller SET data=? WHERE id=?").run(JSON.stringify({ ...seller, storeOpenOverride: "CLOSED" }), seller.id);
+  const result = await x.run(seller.id, "42", "ready");
+  assert.equal(result.success, false);
+  assert.match(result.message, /closed/i);
+  assert.equal(x.shipdayWrites().length, 0);
+  // refresh/cancel never touch the store-hours gate; they behave exactly as
+  // they would for an open store (no snapshot yet, so both short-circuit).
+  assert.equal((await x.run(seller.id, "42", "refresh")).success, true);
+  assert.equal((await x.run(seller.id, "42", "cancel")).success, false);
+  assert.equal(x.shipdayWrites().length, 0);
+});
+test("pre-dispatch gate: READY is refused outside posted weekly hours, and succeeds once reopened", async (t) => {
+  const x = setup(t);
+  const closedAllDay = { ...seller, useStoreHours: true, storeOpenOverride: "AUTO", timezone: "America/New_York",
+    storeHours: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isClosed: true, openTime: null, closeTime: null })) };
+  x.db.prepare("UPDATE seller SET data=? WHERE id=?").run(JSON.stringify(closedAllDay), seller.id);
+  const closed = await x.run(seller.id, "42", "ready");
+  assert.equal(closed.success, false);
+  assert.match(closed.message, /closed/i);
+  assert.equal(x.shipdayWrites().length, 0);
+  // Reopen via the seller's manual "Always Open" override so this assertion
+  // doesn't depend on which minute of the day the test happens to run in
+  // (sellerIsOpenAt's own weekly-window boundary math is covered exhaustively
+  // in store-hours.server.test.ts; this test only proves the wiring here).
+  const openAllDay = { ...seller, useStoreHours: true, storeOpenOverride: "OPEN", timezone: "America/New_York",
+    storeHours: closedAllDay.storeHours };
+  x.db.prepare("UPDATE seller SET data=? WHERE id=?").run(JSON.stringify(openAllDay), seller.id);
+  const open = await x.run(seller.id, "42", "ready");
+  assert.equal(open.success, true, open.message);
+});
 test("refresh and cancel cannot dispatch; seller READY is required", async (t) => {
   const x = setup(t);
   await x.run(seller.id, "42", "refresh");

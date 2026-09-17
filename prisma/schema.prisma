@@ -223,6 +223,12 @@ model Seller {
   // AUTO follows the seller's saved business hours when useStoreHours is enabled.
   storeOpenOverride String @default("AUTO")
 
+  // IANA timezone identifier (e.g. "America/New_York") that SellerStoreHour's
+  // local HH:MM values are interpreted in. Nullable at the database level
+  // (existing sellers may never have set one), but the settings UI requires
+  // it before store hours can be enabled/saved.
+  timezone String?
+
   // Homepage boutique merchandising
   homepageFeatured     Boolean @default(false)
   homepageFeaturedRank Int?

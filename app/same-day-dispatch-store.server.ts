@@ -19,7 +19,8 @@ import { randomUUID } from "node:crypto";
 
 const store: DispatchStore = {
   get: (sellerId, shopifyOrderId) => db.sellerOrderFulfillment.findUnique({ where: { sellerId_shopifyOrderId: { sellerId, shopifyOrderId } } }),
-  seller: (id) => db.seller.findUnique({ where: { id }, omit: { sameDayProvisioningData: false } }),
+  seller: (id) => db.seller.findUnique({ where: { id }, omit: { sameDayProvisioningData: false },
+    include: { storeHours: true } }),
   ownership: async (shopifyOrderId) => {
     const sales = await db.sellerLedgerEntry.findMany({ where: { shopifyOrderId, entryType: "SALE" },
       select: { sellerId: true, shopifyLineItemId: true } });

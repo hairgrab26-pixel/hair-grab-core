@@ -13,6 +13,8 @@ import type { DispatchOrder } from "./same-day-order.server.ts";
 import { sellerProvisioningReady } from "./same-day-provisioning-state.server.ts";
 // @ts-ignore Node strip-types imports
 import { reconcileSellerOrder } from "./same-day-reconciliation.server.ts";
+// @ts-ignore Node's TypeScript stripping requires explicit extensions.
+import { sellerIsOpenAt } from "./store-hours.server.ts";
 
 export type CourierRecord = {
   id: string; sellerId: string; shopifyOrderId: string; fulfillmentMethod: string; status: string;
@@ -173,6 +175,13 @@ export function createSameDayDispatcher(store: DispatchStore,
       }
 
       if (!sameDaySellerEligible(seller) || !sellerProvisioningReady(seller)) return { success: false, message: "Same-Day provisioning must be ready before requesting a driver." };
+      // Pre-dispatch gate: a driver is never requested while the store is
+      // outside its posted hours (or manually marked closed). Refresh and
+      // cancel are unaffected; a seller can always check on or cancel an
+      // already-requested delivery regardless of the current time.
+      if (!sellerIsOpenAt(seller, seller.storeHours ?? [])) {
+        return { success: false, message: "Your store is currently closed. HairGrab will not request a driver outside your posted hours." };
+      }
       if (snapshot?.cancellationRequestedAt || ["DELIVERED", "CANCELED", "SHIPPED"].includes(record.status)) {
         return { success: false, message: "This fulfillment cannot request another driver." };
       }

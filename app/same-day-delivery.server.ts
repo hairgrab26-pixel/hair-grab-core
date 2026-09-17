@@ -3,12 +3,16 @@ import type { Seller } from "@prisma/client";
 import { shipday } from "./shipday.server.ts";
 // @ts-ignore Node's TypeScript stripping requires explicit extensions.
 import { priceSameDayDelivery } from "./delivery-pricing.server.ts";
+// @ts-ignore Node's TypeScript stripping requires explicit extensions.
+import { sellerIsOpenAt, type StoreHourRow } from "./store-hours.server.ts";
 
 export type SameDaySeller = Pick<Seller,
   "id" | "status" | "offersSameDayDelivery" | "businessName" | "phone" |
   "address1" | "address2" | "city" | "state" | "postalCode" | "country"> & {
     sameDayProvisioningStatus?: string; shopifyFulfillmentServiceId?: string | null;
     shopifyFulfillmentLocationId?: string | null; sameDayProvisioningData?: unknown;
+    useStoreHours?: boolean; storeOpenOverride?: string; timezone?: string | null;
+    storeHours?: StoreHourRow[];
   };
 export type DeliveryDestination = {
   address1: string;
@@ -57,6 +61,8 @@ async function loadSeller(sellerId: string): Promise<SameDaySeller | null> {
       id: true, status: true, offersSameDayDelivery: true, businessName: true,
       phone: true, address1: true, address2: true, city: true, state: true,
       postalCode: true, country: true,
+      useStoreHours: true, storeOpenOverride: true, timezone: true,
+      storeHours: { select: { dayOfWeek: true, isClosed: true, openTime: true, closeTime: true } },
     },
   });
 }
@@ -69,7 +75,7 @@ type Quote = ReturnType<typeof priceSameDayDelivery> & {
 };
 export type SameDayQuoteResult =
   | { available: true; sellerId: string; quotedAt: string; quotes: Quote[] }
-  | { available: false; reason: "INVALID_REQUEST" | "SELLER_INELIGIBLE" |
+  | { available: false; reason: "INVALID_REQUEST" | "SELLER_INELIGIBLE" | "STORE_CLOSED" |
       "UNSUPPORTED_CURRENCY" | "UNAVAILABLE" | "SERVICE_ERROR"; quotes: [] };
 
 /** Server-only dependency seam; production reads Seller and uses real HTTP.
@@ -90,6 +96,11 @@ export function createSameDayQuoteService(readSeller: typeof loadSeller = loadSe
       const seller = await readSeller(input.sellerId);
       if (!seller || seller.id !== input.sellerId || !sameDaySellerEligible(seller)) {
         return { available: false, reason: "SELLER_INELIGIBLE", quotes: [] };
+      }
+      // Checkout-quote gate: never quote same-day delivery outside the
+      // seller's posted hours (or while manually marked closed).
+      if (!sellerIsOpenAt(seller, seller.storeHours ?? [])) {
+        return { available: false, reason: "STORE_CLOSED", quotes: [] };
       }
       // Current HairGrab pricing is USD. Do not silently label foreign quotes USD.
       if (!isUS(seller.country) || !isUS(input.destination.country)) {

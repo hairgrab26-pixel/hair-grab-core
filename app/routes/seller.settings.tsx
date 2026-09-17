@@ -19,6 +19,15 @@ import {
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
+// @ts-ignore Node's TypeScript stripping requires explicit extensions.
+import { isValidSellerTimezone } from "../store-hours.server.ts";
+// SELLER_TIMEZONE_OPTIONS is pure client-safe data (no database or other
+// server-only dependency), so it comes from the neutral shared module
+// instead of store-hours.server.ts — this component is rendered on the
+// client, and a ".server" import here would pull that module into the
+// client bundle and fail the production build.
+// @ts-ignore Node's TypeScript stripping requires explicit extensions.
+import { SELLER_TIMEZONE_OPTIONS } from "../store-hours.shared.ts";
 
 type StagedTarget = {
   url: string;
@@ -624,6 +633,8 @@ export const loader = async ({
         seller.showStoreStatus,
       storeOpenOverride:
         seller.storeOpenOverride || "AUTO",
+      timezone:
+        seller.timezone || "",
       storefrontPublished:
         seller.storefrontPublished,
     },
@@ -763,6 +774,47 @@ export const action = async ({
       const offersSameDayDelivery =
         formData.get("offersSameDayDelivery") === "on";
 
+      const timezoneInput = String(
+        formData.get("timezone") || "",
+      ).trim();
+
+      // Seller.timezone is only ever read for two features: store hours
+      // (useStoreHours, saved below as !alwaysOpen) and Same-Day Delivery
+      // (sellerIsOpenAt gates both checkout quoting and pre-dispatch on it).
+      // A seller with both off has nothing that reads timezone, so leaving
+      // it unset must never block saving the rest of this form.
+      const timezoneRequired =
+        !alwaysOpen || offersSameDayDelivery;
+
+      // A non-empty value must always be a real, recognized IANA zone from
+      // our list, whether or not it's currently required - HairGrab never
+      // persists a value that would silently fail sellerIsOpenAt later.
+      if (
+        timezoneInput &&
+        !isValidSellerTimezone(timezoneInput)
+      ) {
+        return {
+          success: false,
+          message:
+            "That time zone is not recognized. Please choose one from the list.",
+        };
+      }
+
+      if (
+        timezoneRequired &&
+        !isValidSellerTimezone(timezoneInput)
+      ) {
+        return {
+          success: false,
+          message:
+            "Please select a time zone for your store. HairGrab needs it to know when your store hours are open and to run Same-Day Delivery.",
+        };
+      }
+
+      const timezone = isValidSellerTimezone(timezoneInput)
+        ? timezoneInput
+        : null;
+
       const wantsStoreLive =
         String(
           formData.get("storefrontVisibility") ||
@@ -887,6 +939,7 @@ export const action = async ({
               "showStoreStatus",
             ) === "on",
           storeOpenOverride,
+          timezone,
         },
       });
 
@@ -2587,6 +2640,44 @@ export default function SellerSettingsPage() {
                                 >
                                   Choose this if you do not want HairGrab to use weekly business hours.
                                 </span>
+                              </span>
+                            </label>
+
+                            <label
+                              style={{
+                                display: "block",
+                                marginTop: "10px",
+                                fontSize: "11px",
+                                fontWeight: 800,
+                              }}
+                            >
+                              Store Time Zone
+                              <select
+                                name="timezone"
+                                defaultValue={
+                                  seller.timezone
+                                }
+                                className="hg-field"
+                              >
+                                <option value="">
+                                  Select your time zone
+                                </option>
+                                {SELLER_TIMEZONE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <span
+                                style={{
+                                  display: "block",
+                                  color: "#756b79",
+                                  fontSize: "10px",
+                                  fontWeight: 400,
+                                  marginTop: "2px",
+                                }}
+                              >
+                                Required if Always Open is off or Same-Day Delivery is on — HairGrab uses this to know when your weekly hours below are open.
                               </span>
                             </label>
 
