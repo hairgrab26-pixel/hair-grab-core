@@ -4,7 +4,7 @@ import { Form, Link, redirect, useActionData, useLoaderData } from "react-router
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
-import { productTypeToCategoryLabel, PRODUCT_CATEGORY_LABELS, type ProductType } from "../product-categories";
+import { extensionTypeFromOptions, EXTENSION_TYPE_METAFIELD, productTypeToCategoryLabel, PRODUCT_CATEGORY_LABELS, type ProductType } from "../product-categories";
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, serializeMetafieldValue, type ExistingProductSnapshot } from "../product-builder-model";
 import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.server";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
@@ -273,6 +273,7 @@ function addExistingMetafield({
   output,
   names,
   value,
+  fallback,
 }: {
   definitions:
     ShopifyMetafieldDefinition[];
@@ -288,6 +289,11 @@ function addExistingMetafield({
     boolean |
     null |
     undefined;
+  fallback?: {
+    namespace: string;
+    key: string;
+    type: string;
+  };
 }) {
   if (
     value === null ||
@@ -307,6 +313,9 @@ function addExistingMetafield({
     );
 
   if (!definition) {
+    if (fallback && typeof value === "string" && value.trim()) {
+      output.push({ ...fallback, value: value.trim() });
+    }
     return;
   }
 
@@ -1113,7 +1122,20 @@ export const action = async ({
             value = extensionOptions.includes("CLIP_IN") ? "Clip-Ins" : extensionOptions.includes("TAPE_IN") ? "Tape-Ins" :
               extensionOptions.includes("I_TIP") ? "I-Tips & K Tips" : extensionOptions.includes("HALO") ? "Halo Extensions" : "Other";
           }
-          metafields.push({ namespace: definition.namespace, key: definition.key, type: definition.type.name, value });
+          addExistingMetafield({ definitions, output: metafields, names: ["Hair Category"], value });
+        }
+        const extensionDefinition = findMetafieldDefinition(definitions, ["Extension Type"]);
+        if (fields.productType === "EXTENSION") {
+          addExistingMetafield({
+            definitions,
+            output: metafields,
+            names: ["Extension Type"],
+            value: extensionTypeFromOptions(fields.selectedOptions),
+            fallback: extensionDefinition ? undefined : EXTENSION_TYPE_METAFIELD,
+          });
+        } else {
+          if (extensionDefinition) removeIfPresent(extensionDefinition.namespace, extensionDefinition.key);
+          removeIfPresent(EXTENSION_TYPE_METAFIELD.namespace, EXTENSION_TYPE_METAFIELD.key);
         }
       }
       const namedFields: Array<[string, string[]]> = [

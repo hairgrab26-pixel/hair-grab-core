@@ -93,6 +93,49 @@ export const CANONICAL_PRODUCT_CATEGORIES: string[] = Object.values(
   PRODUCT_CATEGORY_LABELS,
 );
 
+/**
+ * Structured subtype values for products in the canonical Extensions
+ * category. These labels are the persisted Extension Type vocabulary;
+ * shopper-facing category labels remain separate from these values.
+ */
+export const EXTENSION_TYPE_LABELS = {
+  CLIP_IN: "Clip-Ins",
+  TAPE_IN: "Tape-Ins",
+  SEW_IN: "Sew-In",
+  I_TIP: "I-Tips / Microlinks",
+  HALO: "Halo",
+  PONYTAIL: "Ponytail",
+  TOPPER: "Topper",
+  OTHER: "Other",
+} as const;
+
+export type ExtensionType = keyof typeof EXTENSION_TYPE_LABELS;
+
+/** Shopify fallback used until an Admin-defined Extension Type field exists. */
+export const EXTENSION_TYPE_METAFIELD = {
+  namespace: "hairgrab",
+  key: "extension_type",
+  type: "single_line_text_field",
+} as const;
+
+/** Resolve the first selected extension subtype to its persisted label. */
+export function extensionTypeFromOptions(
+  options: readonly string[] | null | undefined,
+): string {
+  const selected = new Set(options || []);
+  const ordered: ExtensionType[] = [
+    "CLIP_IN",
+    "TAPE_IN",
+    "SEW_IN",
+    "I_TIP",
+    "HALO",
+    "PONYTAIL",
+    "TOPPER",
+  ];
+  const match = ordered.find((value) => selected.has(value));
+  return match ? EXTENSION_TYPE_LABELS[match] : EXTENSION_TYPE_LABELS.OTHER;
+}
+
 const CANONICAL_LABEL_SET = new Set(CANONICAL_PRODUCT_CATEGORIES);
 
 /**

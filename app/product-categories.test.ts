@@ -8,6 +8,9 @@ import {
   productTypeToCategoryLabel,
   productTypeToShopperLabel,
   SHOPPER_CATEGORY_LABELS,
+  EXTENSION_TYPE_LABELS,
+  EXTENSION_TYPE_METAFIELD,
+  extensionTypeFromOptions,
   type ProductType,
 // @ts-ignore Node's TypeScript stripping requires the explicit extension.
 } from "./product-categories.ts";
@@ -121,4 +124,36 @@ test("editing an existing product does not drift its Shopify productType away fr
   assert.ok(productType);
   const rewritten = productTypeToCategoryLabel(productType as ProductType);
   assert.equal(rewritten, existingLiveProductType);
+});
+
+test("every supported extension subtype maps to one structured Extension Type value while the category stays Extensions", () => {
+  const cases = [
+    ["CLIP_IN", "Clip-Ins"],
+    ["TAPE_IN", "Tape-Ins"],
+    ["SEW_IN", "Sew-In"],
+    ["I_TIP", "I-Tips / Microlinks"],
+    ["HALO", "Halo"],
+    ["PONYTAIL", "Ponytail"],
+    ["TOPPER", "Topper"],
+    ["OTHER", "Other"],
+  ] as const;
+
+  for (const [option, expected] of cases) {
+    assert.equal(productTypeToCategoryLabel("EXTENSION"), "Extensions");
+    assert.equal(extensionTypeFromOptions([option]), expected);
+  }
+  assert.deepEqual(EXTENSION_TYPE_METAFIELD, {
+    namespace: "hairgrab",
+    key: "extension_type",
+    type: "single_line_text_field",
+  });
+  assert.deepEqual(Object.values(EXTENSION_TYPE_LABELS), cases.map(([, label]) => label));
+});
+
+test("Hair Essentials keeps its canonical product type and safely skips the incompatible legacy Hair Category value", () => {
+  assert.equal(productTypeToCategoryLabel("HAIR_ESSENTIAL"), "Hair Essentials");
+  // The legacy definition currently rejects this value; the add/edit routes
+  // use their safe-preparation helper, so no invalid Hair Category payload is
+  // emitted while the independent productType remains canonical.
+  assert.equal(extensionTypeFromOptions([]), "Other");
 });

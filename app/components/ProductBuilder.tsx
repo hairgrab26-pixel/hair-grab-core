@@ -319,6 +319,13 @@ export const productOptions:
       label:
         "Sew-In",
     },
+
+    {
+      value:
+        "OTHER",
+      label:
+        "Other",
+    },
   ],
 
   BRAIDING_HAIR: [

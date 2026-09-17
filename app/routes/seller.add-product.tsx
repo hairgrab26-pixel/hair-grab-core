@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
-import { productTypeToCategoryLabel } from "../product-categories";
+import { extensionTypeFromOptions, EXTENSION_TYPE_METAFIELD, productTypeToCategoryLabel } from "../product-categories";
 import ProductBuilder from "../components/ProductBuilder";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices } from "../components/ProductBuilder";
 
@@ -826,6 +826,7 @@ function addExistingMetafield({
   output,
   names,
   value,
+  fallback,
 }: {
   definitions:
     ShopifyMetafieldDefinition[];
@@ -845,6 +846,11 @@ function addExistingMetafield({
     | boolean
     | null
     | undefined;
+  fallback?: {
+    namespace: string;
+    key: string;
+    type: string;
+  };
 }) {
   if (
     value === null ||
@@ -874,6 +880,9 @@ function addExistingMetafield({
     );
 
   if (!definition) {
+    if (fallback && typeof value === "string" && value.trim()) {
+      output.push({ ...fallback, value: value.trim() });
+    }
     return;
   }
 
@@ -2138,6 +2147,16 @@ export const action =
         value:
           hairCategoryMetafieldValue,
       });
+
+      if (payload.productType === "EXTENSION") {
+        addExistingMetafield({
+          definitions: metafieldDefinitions,
+          output: metafields,
+          names: ["Extension Type"],
+          value: extensionTypeFromOptions(payload.selectedOptions),
+          fallback: EXTENSION_TYPE_METAFIELD,
+        });
+      }
 
       addExistingMetafield({
         definitions:
