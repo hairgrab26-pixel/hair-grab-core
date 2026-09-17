@@ -10,6 +10,10 @@ import {
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { requireSellerSession } from "../seller-session.server";
+// Server-only: used inside the loader only, never referenced by the
+// default-exported component, so it never reaches the client bundle.
+// @ts-ignore Node's TypeScript stripping requires explicit extensions.
+import { sellerIsOpenAt } from "../store-hours.server.ts";
 
 
 type ShopifyProductInfo = {
@@ -717,6 +721,14 @@ export const loader = async ({
         seller.showStoreStatus,
       storeOpenOverride:
         seller.storeOpenOverride || "AUTO",
+      // Computed server-side from the same sellerIsOpenAt() used by
+      // checkout-quote/dispatch enforcement, so the preview badge always
+      // matches the real rule (manual override, or AUTO + timezone/hours).
+      // seller.timezone itself is never forwarded to the client.
+      storeIsOpen:
+        sellerIsOpenAt(seller, storeHours),
+      storefrontPublished:
+        seller.storefrontPublished,
     },
 
     products:
@@ -878,15 +890,14 @@ export default function SellerStorePreviewPage() {
     "Saturday",
   ];
 
+  // Mirrors sellerIsOpenAt() exactly: the loader already computed
+  // storeIsOpen using the same rules as checkout-quote/dispatch
+  // enforcement (manual override wins, then AUTO + timezone/hours).
   const storeStatusLabel =
     seller.showStoreStatus
-      ? seller.storeOpenOverride === "OPEN"
+      ? seller.storeIsOpen
         ? "Open"
-        : seller.storeOpenOverride === "CLOSED"
-          ? "Closed"
-          : seller.useStoreHours
-            ? "Hours Listed"
-            : ""
+        : "Closed"
       : "";
 
   const sellerReviewAverage =
@@ -1286,6 +1297,19 @@ export default function SellerStorePreviewPage() {
                 VERIFIED HAIRGRAB SELLER · {seller.sellerCode}
               </div>
 
+              {!seller.storefrontPublished && (
+                <div
+                  style={{
+                    color: "#8a4d4d",
+                    fontSize: "9px",
+                    fontWeight: 900,
+                    marginTop: "2px",
+                  }}
+                >
+                  Hidden from shoppers
+                </div>
+              )}
+
               <h1
                 className="hg-preview-name"
                 style={{
@@ -1352,7 +1376,11 @@ export default function SellerStorePreviewPage() {
                 </div>
               )}
 
-              {(storeStatusLabel ||
+              {(seller.sellsNationwide ||
+                seller.offersLocalPickup ||
+                seller.offersLocalDelivery ||
+                seller.offersSameDayDelivery ||
+                storeStatusLabel ||
                 (seller.useStoreHours &&
                   seller.showStoreHours &&
                   storeHours.length > 0)) && (
@@ -1365,6 +1393,22 @@ export default function SellerStorePreviewPage() {
                     marginTop: "6px",
                   }}
                 >
+                  {seller.sellsNationwide && (
+                    <Badge>Ships Nationwide</Badge>
+                  )}
+
+                  {seller.offersLocalPickup && (
+                    <Badge>Local Pickup</Badge>
+                  )}
+
+                  {seller.offersLocalDelivery && (
+                    <Badge>Local Delivery</Badge>
+                  )}
+
+                  {seller.offersSameDayDelivery && (
+                    <Badge>Same-Day Delivery</Badge>
+                  )}
+
                   {storeStatusLabel && (
                     <span
                       style={{
@@ -1374,15 +1418,15 @@ export default function SellerStorePreviewPage() {
                         padding: "5px 9px",
                         borderRadius: "999px",
                         background:
-                          seller.storeOpenOverride === "CLOSED"
+                          !seller.storeIsOpen
                             ? "#f8eeee"
                             : "#f4ecf9",
                         color:
-                          seller.storeOpenOverride === "CLOSED"
+                          !seller.storeIsOpen
                             ? "#8a4d4d"
                             : "#4B1678",
                         border:
-                          seller.storeOpenOverride === "CLOSED"
+                          !seller.storeIsOpen
                             ? "1px solid #ead1d1"
                             : "1px solid #dfccec",
                         fontSize: "9px",
@@ -1772,6 +1816,20 @@ export default function SellerStorePreviewPage() {
             {seller.offersLocalPickup && (
               <PolicyRow
                 label="Pickup"
+                value="Available"
+              />
+            )}
+
+            {seller.offersLocalDelivery && (
+              <PolicyRow
+                label="Local Delivery"
+                value="Available"
+              />
+            )}
+
+            {seller.offersSameDayDelivery && (
+              <PolicyRow
+                label="Same-Day Delivery"
                 value="Available"
               />
             )}

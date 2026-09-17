@@ -8,6 +8,10 @@ import {
 
 import db from "../db.server";
 import { unauthenticated } from "../shopify.server";
+// Server-only: used inside the loader only, never referenced by the
+// default-exported component, so it never reaches the client bundle.
+// @ts-ignore Node's TypeScript stripping requires explicit extensions.
+import { sellerIsOpenAt } from "../store-hours.server.ts";
 
 
 function slugify(
@@ -636,6 +640,10 @@ export const loader = async ({
       showStoreHours: seller.showStoreHours,
       showStoreStatus: seller.showStoreStatus,
       storeOpenOverride: seller.storeOpenOverride,
+      // Computed server-side from the same sellerIsOpenAt() used by
+      // checkout-quote/dispatch enforcement, so the storefront badge
+      // always matches the real rule. seller.timezone is never forwarded.
+      storeIsOpen: sellerIsOpenAt(seller, storeHours),
 
       showFeaturedCollection: seller.showFeaturedCollection,
       showNewArrivalsCollection: seller.showNewArrivalsCollection,
@@ -1059,14 +1067,13 @@ export default function PublicSellerStorefrontPage() {
     .map((value) => businessPositioningLabels[value])
     .filter(Boolean);
   const location = [seller.city, seller.state].filter(Boolean).join(", ");
+  // Mirrors sellerIsOpenAt() exactly: the loader already computed
+  // storeIsOpen using the same rules as checkout-quote/dispatch
+  // enforcement (manual override wins, then AUTO + timezone/hours).
   const storeStatusLabel = seller.showStoreStatus
-    ? seller.storeOpenOverride === "OPEN"
+    ? seller.storeIsOpen
       ? "Open"
-      : seller.storeOpenOverride === "CLOSED"
-        ? "Closed"
-        : seller.useStoreHours
-          ? "Hours Listed"
-          : ""
+      : "Closed"
     : "";
   const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -1587,6 +1594,8 @@ export default function PublicSellerStorefrontPage() {
             <StoreInfoRow label="Returns" value={returnPolicyLabel} />
             {seller.sellsNationwide && <StoreInfoRow label="Shipping" value="Nationwide" />}
             {seller.offersLocalPickup && <StoreInfoRow label="Pickup" value="Available" />}
+            {seller.offersLocalDelivery && <StoreInfoRow label="Local Delivery" value="Available" />}
+            {seller.offersSameDayDelivery && <StoreInfoRow label="Same-Day Delivery" value="Available" />}
           </section>
         </div>
         {seller.useStoreHours && seller.showStoreHours && storeHours.length > 0 && (
