@@ -10,7 +10,7 @@ import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.ser
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
 import ProductBuilder from "../components/ProductBuilder";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
-import { normalizeShipsWithin, productAttributeTags, replaceAttributeTags } from "../product-attribute-tags";
+import { hydrateSellerAttributes, normalizeShipsWithin, productAttributeTags, replaceAttributeTags } from "../product-attribute-tags";
 
 type ShopifyMetafieldDefinition = {
   name: string;
@@ -137,6 +137,7 @@ function definitionIsConstrained(definition: ShopifyMetafieldDefinition) {
 function findMetafieldDefinition(
   definitions: ShopifyMetafieldDefinition[],
   names: string[],
+  { allowConstrained = false }: { allowConstrained?: boolean } = {},
 ) {
   const wanted = names.map(normalizeMetafieldName);
 
@@ -146,15 +147,17 @@ function findMetafieldDefinition(
     ),
   );
 
-  const unconstrained = matches.filter(
-    (definition) => !definitionIsConstrained(definition),
-  );
+  const candidates = allowConstrained
+    ? matches
+    : matches.filter(
+        (definition) => !definitionIsConstrained(definition),
+      );
 
-  if (unconstrained.length === 0) {
+  if (candidates.length === 0) {
     return undefined;
   }
 
-  const ranked = [...unconstrained].sort((a, b) => {
+  const ranked = [...candidates].sort((a, b) => {
     let score = (definition: ShopifyMetafieldDefinition) => {
       let points = 0;
       if (definition.namespace === "custom") points += 20;
@@ -517,20 +520,37 @@ function getMetafieldByDefinitionName(
   names:
     string[],
 ) {
-  const definition =
+  const preferred =
     findMetafieldDefinition(
       definitions,
       names,
     );
 
-  if (!definition) {
+  const preferredValue = preferred
+    ? getMetafieldValue(
+        productMetafields,
+        preferred.namespace,
+        preferred.key,
+      )
+    : "";
+
+  if (preferredValue) return preferredValue;
+
+  const anyDefinition =
+    findMetafieldDefinition(
+      definitions,
+      names,
+      { allowConstrained: true },
+    );
+
+  if (!anyDefinition) {
     return "";
   }
 
   return getMetafieldValue(
     productMetafields,
-    definition.namespace,
-    definition.key,
+    anyDefinition.namespace,
+    anyDefinition.key,
   );
 }
 
@@ -837,12 +857,25 @@ export const loader = async ({
 
     settings: {
       builderShippingMethod: originalShippingMethod,
-      material: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Hair Type", "Material"]),
-      colors: (() => { const raw = getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Color"]); try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : raw ? [raw] : []; } catch { return raw ? [raw] : []; } })(),
-      texture: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Texture"]),
-      density: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Density"]),
-      laceSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Size"]),
-      laceType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]),
+      ...(() => {
+        const hydrated = hydrateSellerAttributes({
+          tags: product.tags || [],
+          metafields: productMetafields,
+          named: {
+            material: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Hair Type", "Material"]),
+            colors: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Color"]),
+            texture: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Texture"]),
+            density: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Density"]),
+            laceType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]),
+            laceSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Size"]),
+            shipsWithin: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Ships Within"]),
+            sameDayDelivery:
+              getMetafieldValue(productMetafields, "custom", "same_day_delivery") === "true" ||
+              getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Same Day Delivery", "Same-Day Delivery"]) === "true",
+          },
+        });
+        return hydrated;
+      })(),
       capSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Cap Type", "Cap Size"]),
       // Read back through the same named-definition-first, documented
       // hairgrab-namespace-fallback path the action writes through below,
@@ -861,36 +894,6 @@ export const loader = async ({
           "hairgrab",
           "flat_rate_shipping",
         ),
-
-      shipsWithin:
-        normalizeShipsWithin(
-          getMetafieldByDefinitionName(
-            productMetafields,
-            metafieldDefinitions,
-            [
-              "Ships Within",
-            ],
-          ),
-        ),
-
-      sameDayDelivery:
-        getMetafieldValue(
-          productMetafields,
-          "custom",
-          "same_day_delivery",
-        ) === "true" ||
-        getMetafieldByDefinitionName(
-          productMetafields,
-          metafieldDefinitions,
-          ["Same Day Delivery", "Same-Day Delivery"],
-        ) === "true" ||
-        String(
-          getMetafieldByDefinitionName(
-            productMetafields,
-            metafieldDefinitions,
-            ["Ships Within"],
-          ) || "",
-        ).toLowerCase() === "same day",
 
       returnPolicy:
         getMetafieldByDefinitionName(
@@ -1139,13 +1142,13 @@ export const action = async ({
         const choice = locTypeChoices.find((item) => item.value === fields.locType);
         if (choice) tags.add(choice.label);
       }
-      const attributeFieldsDirty = ["material", "colors", "texture", "density", "laceType", "selectedOptions"].some((key) => dirty.has(key));
-      if (attributeFieldsDirty) {
-        const replaced = replaceAttributeTags(tags, productAttributeTags(fields));
-        tags.clear();
-        for (const tag of replaced) tags.add(tag);
-      }
-      if (["productType", "selectedOptions", "searchClassifications", "installationMethods", "locType", "material", "colors", "texture", "density", "laceType"].some((key) => dirty.has(key))) productInput.tags = [...tags];
+      const replaced = replaceAttributeTags(tags, productAttributeTags({
+        ...fields,
+        hairCategory: PRODUCT_CATEGORY_LABELS[fields.productType as ProductType] || String(productInput.productType || current.product.productType || ""),
+      }));
+      tags.clear();
+      for (const tag of replaced) tags.add(tag);
+      productInput.tags = [...tags];
       if (Object.keys(productInput).length > 1) {
         const response = await admin.graphql(`#graphql
           mutation HairGrabBuilderEditProduct($product: ProductUpdateInput!) {
@@ -1212,7 +1215,7 @@ export const action = async ({
       ];
       for (const [key, names] of namedFields) if (dirty.has(key)) {
         const value = key === "shipsWithin"
-          ? normalizeShipsWithin(String(fields[key] || ""))
+          ? normalizeShipsWithin(String(fields.shipsWithin || (fields.sameDayDelivery ? "Same Day" : "")))
           : String(fields[key] || "");
         if (value) addExistingMetafield({ definitions, output: metafields, names, value });
         else {
@@ -1220,12 +1223,12 @@ export const action = async ({
           if (definition) removeIfPresent(definition.namespace, definition.key);
         }
       }
-      if (dirty.has("sameDayDelivery")) {
+      if (dirty.has("sameDayDelivery") || dirty.has("shipsWithin")) {
         addExistingMetafield({
           definitions,
           output: metafields,
           names: ["Same Day Delivery", "Same-Day Delivery"],
-          value: Boolean(fields.sameDayDelivery),
+          value: Boolean(fields.sameDayDelivery) || String(fields.shipsWithin || "").toLowerCase() === "same day",
           fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
         });
       }

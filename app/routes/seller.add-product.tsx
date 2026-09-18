@@ -833,7 +833,7 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Same Day Delivery", "Same-Day Delivery"],
-    value: Boolean(payload.sameDayDelivery),
+    value: Boolean(payload.sameDayDelivery) || payload.shipsWithin === "Same Day",
     fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
   });
   addExistingMetafield({
@@ -856,7 +856,12 @@ function collectProductMetafields(
   });
   addExistingMetafield({ definitions, output: metafields, names: ["Shipping Territory"], value: seller.sellsNationwide ? "Nationwide" : "Local" });
   addExistingMetafield({ definitions, output: metafields, names: ["Show on HairGrab Map"], value: payload.showOnMap });
-  addExistingMetafield({ definitions, output: metafields, names: ["Ships Within"], value: normalizeShipsWithin(payload.shipsWithin) });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Ships Within"],
+    value: normalizeShipsWithin(payload.shipsWithin || (payload.sameDayDelivery ? "Same Day" : "")),
+  });
   addExistingMetafield({ definitions, output: metafields, names: ["Return Policy"], value: payload.returnPolicy });
   addExistingMetafield({
     definitions,
@@ -1060,7 +1065,10 @@ async function createSellerProductFromPayload({
             productTypeDisplay,
             ...selectedOptionTags,
             ...classificationTags,
-            ...productAttributeTags(payload),
+            ...productAttributeTags({
+              ...payload,
+              hairCategory: productTypeDisplay,
+            }),
           ])],
           productOptions: productOptionsInput,
           variants: variantsInput,

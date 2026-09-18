@@ -4,6 +4,7 @@ import { displayProductCategory, normalizeProductCategory, PRODUCT_CATEGORY_LABE
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, variantFieldsFromShopify, variantFieldsToShopify, type ExistingProductSnapshot } from "../product-builder-model";
 import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights } from "../product-vocabulary";
 import { parseCsvText, normalizeCsvHeader, resolveCsvProductFields, resolveStructuredProductOption, inferProductDetailsFromTitle, STRUCTURED_COLUMN_ALIASES, type CsvFieldName } from "../csv-product-import";
+import { weftOptionValues } from "../product-attribute-tags";
 import type { action as addAction } from "../routes/seller.add-product";
 
 type ProductType =
@@ -459,9 +460,11 @@ export const locTypeChoices: Choice[] = [
 ];
 
 export const shipsWithinChoices: Choice[] = [
+  { value: "Same Day", label: "Same Day Delivery / Pickup" },
   { value: "24 Hours", label: "24 Hours" },
   { value: "48 Hours", label: "48 Hours" },
   { value: "72 Hours", label: "72 Hours" },
+  { value: "3-5 Days", label: "3-5 Days" },
 ];
 
 
@@ -1181,7 +1184,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     const bundleDealText = existing.flatMap((variant) => variant.selectedOptions.map((option) => option.value)).find((value) => /bundle deal/i.test(value)) || "";
     const lengths = axisLengths.length ? axisLengths : Array.from(bundleDealText.matchAll(/(\d+)\s*(?:inch|in|\")/gi), (match) => match[1]);
     initialBundleLengths.current = lengths;
-    const initialOptions = (productOptions[type || "WIG"] || []).filter((item) => edit.product.tags.includes(item.label)).map((item) => item.value);
+    const initialOptions = [
+      ...new Set([
+        ...(productOptions[type || "WIG"] || []).filter((item) => edit.product.tags.includes(item.label)).map((item) => item.value),
+        ...weftOptionValues(settings.weft),
+      ]),
+    ];
     const initialClassifications = (productClassifications[type || "WIG"] || []).filter((item) => edit.product.tags.includes(item.label) ||
       (item.label === "Locs" && edit.product.tags.includes("Locs / Locks"))).map((item) => item.value);
     const initialInstallation = installationMethodChoices.filter((item) => edit.product.tags.includes(item.label)).map((item) => item.value);
@@ -1199,9 +1207,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       sameDayDelivery: Boolean(settings.sameDayDelivery) || String(settings.shipsWithin || "").toLowerCase() === "same day",
       shipsWithin: shipsWithinChoices.some((choice) => choice.value === settings.shipsWithin)
         ? settings.shipsWithin
-        : String(settings.shipsWithin || "").toLowerCase() === "same day"
-          ? "24 Hours"
-          : settings.shipsWithin || "48 Hours",
+        : settings.shipsWithin || "",
       returnPolicy: settings.returnPolicy || "", showOnMap: settings.showOnMap || "" };
     setTitle(edit.product.title);
     setDescription(initialDescription);
@@ -1212,12 +1218,23 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setSearchClassifications(initialClassifications);
     setInstallationMethods(initialInstallation);
     setLocType(initialLocType);
-    setMaterial(settings.material || "");
-    setSelectedColors(settings.colors?.length ? settings.colors : ["Natural / 1B"]);
-    setTexture(settings.texture || "");
-    setDensity(settings.density || "");
-    setLaceSize(settings.laceSize || "");
-    setLaceType(settings.laceType || "");
+    const knownMaterial = materials.find((item) => item.toLowerCase() === String(settings.material || "").toLowerCase());
+    const knownTexture = textures.find((item) => item.toLowerCase() === String(settings.texture || "").toLowerCase());
+    const knownDensity = densities.find((item) => item.toLowerCase() === String(settings.density || "").toLowerCase());
+    const knownLaceType = laceTypes.find((item) => item.toLowerCase() === String(settings.laceType || "").toLowerCase());
+    const knownLaceSize = laceSizes.find((item) => item.toLowerCase() === String(settings.laceSize || "").toLowerCase());
+    const hydratedColors = (Array.isArray(settings.colors) ? settings.colors : [])
+      .map((value) => colors.find((item) => item.toLowerCase() === String(value).toLowerCase()) || String(value).trim())
+      .filter(Boolean);
+    setMaterial(knownMaterial || (settings.material ? "Other" : ""));
+    setCustomMaterial(knownMaterial ? "" : settings.material || "");
+    setSelectedColors(hydratedColors);
+    if (hydratedColors[0]) setColor(colors.includes(hydratedColors[0]) ? hydratedColors[0] : "Other / Custom");
+    if (hydratedColors[0] && !colors.includes(hydratedColors[0])) setCustomColor(hydratedColors[0]);
+    setTexture(knownTexture || settings.texture || "");
+    setDensity(knownDensity || settings.density || "");
+    setLaceSize(knownLaceSize || settings.laceSize || "");
+    setLaceType(knownLaceType || settings.laceType || "");
     setCapSize(settings.capSize || "");
     setBundleWeight(settings.bundleWeight || "100g");
     setPieceCount(settings.pieceCount || "");
@@ -1229,9 +1246,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setShipsWithin(
       shipsWithinChoices.some((choice) => choice.value === settings.shipsWithin)
         ? settings.shipsWithin
-        : String(settings.shipsWithin || "").toLowerCase() === "same day"
-          ? "24 Hours"
-          : settings.shipsWithin || "48 Hours",
+        : settings.shipsWithin || "",
     );
     setReturnPolicy(settings.returnPolicy || "");
     setShowOnMap(settings.showOnMap || "");
@@ -5859,12 +5874,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                 }
                 onChange={(
                   event,
-                ) =>
-                  setShipsWithin(
-                    event.target
-                      .value,
-                  )
-                }
+                ) => {
+                  const next = event.target.value;
+                  setShipsWithin(next);
+                  if (next === "Same Day") setSameDayDelivery(true);
+                }}
                 style={
                   fieldStyle
                 }
