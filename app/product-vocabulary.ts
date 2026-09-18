@@ -118,6 +118,25 @@ export const bundleWeights = [
   "200g+",
 ];
 
+export const hairOrigins = [
+  "Brazilian",
+  "Peruvian",
+  "Indian",
+  "Malaysian",
+  "Vietnamese",
+  "Cambodian",
+  "Chinese",
+  "Mongolian",
+  "Other",
+];
+
+export const weftTypes = [
+  "Double Weft",
+  "Single Weft",
+  "Weft",
+  "No Weft",
+];
+
 // pieceCount intentionally has NO fixed choice list. A safety review
 // caught that the original "1", "2", "3", "4", "5+" list would have
 // collapsed a real 7-piece set into the lossy "5+" bucket -- HairGrab

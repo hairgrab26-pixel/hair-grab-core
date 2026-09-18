@@ -22,9 +22,20 @@ const ATTRIBUTE_TAG_SPECS = [
   { key: "capSize", label: "Cap Size" },
   { key: "capType", label: "Cap Type" },
   { key: "weft", label: "Weft" },
+  { key: "weftType", label: "Weft Type" },
+  { key: "origin", label: "Origin" },
   { key: "color", label: "Color" },
   { key: "shipsWithin", label: "Ships Within" },
   { key: "hairCategory", label: "Hair Category" },
+  { key: "hairType", label: "Hair Type" },
+  { key: "shippingMethod", label: "Shipping Method" },
+  { key: "showOnMap", label: "Show on HairGrab Map" },
+  { key: "returnPolicy", label: "Return Policy" },
+  { key: "shippingTerritory", label: "Shipping Territory" },
+  { key: "shipsFromCity", label: "Ships From City" },
+  { key: "shipsFromState", label: "Ships From State" },
+  { key: "city", label: "City" },
+  { key: "state", label: "State" },
   { key: "length", label: "Length" },
   { key: "weight", label: "Weight" },
   { key: "bundleWeight", label: "Bundle Weight" },
@@ -48,6 +59,7 @@ const LEGACY_TAG_PREFIXES = [
 
 const METAFIELD_FALLBACKS: Record<string, Array<[string, string]>> = {
   material: [
+    ["custom", "hair_type"],
     ["custom", "material"],
     ["hairgrab", "material"],
   ],
@@ -93,6 +105,42 @@ const METAFIELD_FALLBACKS: Record<string, Array<[string, string]>> = {
     ["custom", "extension_type"],
     ["hairgrab", "extension_type"],
   ],
+  origin: [
+    ["custom", "origin"],
+    ["hairgrab", "origin"],
+  ],
+  weftType: [
+    ["custom", "weft_type"],
+    ["hairgrab", "weft_type"],
+  ],
+  hairCategory: [
+    ["custom", "hair_category"],
+    ["hairgrab", "hair_category"],
+  ],
+  shippingMethod: [
+    ["custom", "shipping_method"],
+    ["hairgrab", "shipping_charge_type"],
+  ],
+  showOnMap: [
+    ["custom", "show_on_hairgrab_map"],
+    ["hairgrab", "show_on_hairgrab_map"],
+  ],
+  returnPolicy: [
+    ["custom", "return_policy"],
+    ["hairgrab", "return_policy"],
+  ],
+  shippingTerritory: [
+    ["custom", "shipping_territory"],
+    ["hairgrab", "shipping_territory"],
+  ],
+  shipsFromCity: [
+    ["custom", "ships_from_city"],
+    ["hairgrab", "ships_from_city"],
+  ],
+  shipsFromState: [
+    ["custom", "ships_from_state"],
+    ["hairgrab", "ships_from_state"],
+  ],
 };
 
 export type ProductAttributeTagFields = {
@@ -113,6 +161,14 @@ export type ProductAttributeTagFields = {
   bundleWeight?: string | null;
   extensionType?: string | null;
   styleTypes?: string[] | null;
+  origin?: string | null;
+  weftType?: string | null;
+  shippingMethod?: string | null;
+  showOnMap?: string | null;
+  returnPolicy?: string | null;
+  shippingTerritory?: string | null;
+  shipsFromCity?: string | null;
+  shipsFromState?: string | null;
 };
 
 export type HydratedSellerAttributes = {
@@ -131,6 +187,15 @@ export type HydratedSellerAttributes = {
   bundleWeight: string;
   extensionType: string;
   styleTypes: string[];
+  hairCategory: string;
+  origin: string;
+  weftType: string;
+  shippingMethod: string;
+  showOnMap: string;
+  returnPolicy: string;
+  shippingTerritory: string;
+  shipsFromCity: string;
+  shipsFromState: string;
 };
 
 type ProductMetafieldValue = {
@@ -224,6 +289,15 @@ function emptyHydratedAttributes(): HydratedSellerAttributes {
     bundleWeight: "",
     extensionType: "",
     styleTypes: [],
+    hairCategory: "",
+    origin: "",
+    weftType: "",
+    shippingMethod: "",
+    showOnMap: "",
+    returnPolicy: "",
+    shippingTerritory: "",
+    shipsFromCity: "",
+    shipsFromState: "",
   };
 }
 
@@ -256,7 +330,17 @@ export function attributesFromTags(tags: Iterable<string>) {
     }     else if (label === "lace size") result.laceSize = value;
     else if (label === "cap size") result.capSize = value;
     else if (label === "cap type" || label === "cap") assignCapValue(result, value);
-    else if (label === "weft") result.weft = value;
+    else if (label === "weft" || label === "weft type") {
+      result.weft = value;
+      result.weftType = value;
+    } else if (label === "origin") result.origin = value;
+    else if (label === "shipping method") result.shippingMethod = value;
+    else if (label === "show on hairgrab map") result.showOnMap = value;
+    else if (label === "return policy") result.returnPolicy = value;
+    else if (label === "shipping territory") result.shippingTerritory = value;
+    else if (label === "ships from city" || label === "city") result.shipsFromCity = value;
+    else if (label === "ships from state" || label === "state") result.shipsFromState = value;
+    else if (label === "hair category") result.hairCategory = result.hairCategory || value;
     else if (label === "color") result.colors.push(value);
     else if (label === "length") {
       const length = value.replace(/\s*inch(?:es)?$/i, "").trim();
@@ -317,7 +401,8 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
   const density = normalizeDensity(fields.density);
   const material = completedValue(fields.material);
   const texture = completedValue(fields.texture);
-  const weft = weftLabel(fields.selectedOptions);
+  const weftType = completedValue(fields.weftType) || weftLabel(fields.selectedOptions);
+  const origin = completedValue(fields.origin);
   const shipsWithin = normalizeShipsWithin(fields.shipsWithin);
   const hairCategory = completedValue(fields.hairCategory);
   const bundleWeight = completedValue(fields.bundleWeight);
@@ -326,6 +411,10 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
   if (material) {
     tags.push(formatAttributeTag("Material", material));
     tags.push(formatAttributeTag("Hair Material", material));
+    tags.push(formatAttributeTag("Hair Type", material));
+    if (material.toLowerCase() === "human hair") {
+      tags.push(formatAttributeTag("Hair Type", "100% Human Hair"));
+    }
     if (String(fields.productType || "") === "BRAIDING_HAIR") {
       tags.push(formatAttributeTag("Fiber", material));
     }
@@ -339,7 +428,11 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
     if (!capType) tags.push(formatAttributeTag("Cap Type", capSize));
   }
   if (capType) tags.push(formatAttributeTag("Cap Type", capType));
-  if (weft) tags.push(formatAttributeTag("Weft", weft));
+  if (weftType) {
+    tags.push(formatAttributeTag("Weft Type", weftType));
+    tags.push(formatAttributeTag("Weft", weftType));
+  }
+  if (origin) tags.push(formatAttributeTag("Origin", origin));
   for (const color of fields.colors || []) {
     const completed = completedValue(color);
     if (completed) tags.push(formatAttributeTag("Color", completed));
@@ -366,6 +459,24 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
     tags.push(formatAttributeTag("Ships Within", "Same Day"));
   }
   if (hairCategory) tags.push(formatAttributeTag("Hair Category", hairCategory));
+  const shippingMethod = completedValue(fields.shippingMethod);
+  const showOnMap = completedValue(fields.showOnMap);
+  const returnPolicy = completedValue(fields.returnPolicy);
+  const shippingTerritory = completedValue(fields.shippingTerritory);
+  const shipsFromCity = completedValue(fields.shipsFromCity);
+  const shipsFromState = completedValue(fields.shipsFromState);
+  if (shippingMethod) tags.push(formatAttributeTag("Shipping Method", shippingMethod));
+  if (showOnMap) tags.push(formatAttributeTag("Show on HairGrab Map", showOnMap));
+  if (returnPolicy) tags.push(formatAttributeTag("Return Policy", returnPolicy));
+  if (shippingTerritory) tags.push(formatAttributeTag("Shipping Territory", shippingTerritory));
+  if (shipsFromCity) {
+    tags.push(formatAttributeTag("Ships From City", shipsFromCity));
+    tags.push(formatAttributeTag("City", shipsFromCity));
+  }
+  if (shipsFromState) {
+    tags.push(formatAttributeTag("Ships From State", shipsFromState));
+    tags.push(formatAttributeTag("State", shipsFromState));
+  }
   return tags;
 }
 
@@ -399,6 +510,15 @@ export function hydrateSellerAttributes({
     bundleWeight?: string;
     extensionType?: string;
     lengths?: string | string[];
+    origin?: string;
+    weftType?: string;
+    hairCategory?: string;
+    shippingMethod?: string;
+    showOnMap?: string;
+    returnPolicy?: string;
+    shippingTerritory?: string;
+    shipsFromCity?: string;
+    shipsFromState?: string;
   };
 }) {
   const fromTags = attributesFromTags(tags);
@@ -466,7 +586,48 @@ export function hydrateSellerAttributes({
       fromTags.laceSize,
     capSize,
     capType: isCapSizeValue(capType) ? "" : capType,
-    weft: fromTags.weft,
+    weft:
+      unwrapMetafieldScalar(named.weftType) ||
+      metafieldFallback(metafields, "weftType") ||
+      fromTags.weftType ||
+      fromTags.weft,
+    weftType:
+      unwrapMetafieldScalar(named.weftType) ||
+      metafieldFallback(metafields, "weftType") ||
+      fromTags.weftType ||
+      fromTags.weft,
+    origin:
+      unwrapMetafieldScalar(named.origin) ||
+      metafieldFallback(metafields, "origin") ||
+      fromTags.origin,
+    hairCategory:
+      unwrapMetafieldScalar(named.hairCategory) ||
+      metafieldFallback(metafields, "hairCategory") ||
+      fromTags.hairCategory,
+    shippingMethod:
+      unwrapMetafieldScalar(named.shippingMethod) ||
+      metafieldFallback(metafields, "shippingMethod") ||
+      fromTags.shippingMethod,
+    showOnMap:
+      unwrapMetafieldScalar(named.showOnMap) ||
+      metafieldFallback(metafields, "showOnMap") ||
+      fromTags.showOnMap,
+    returnPolicy:
+      unwrapMetafieldScalar(named.returnPolicy) ||
+      metafieldFallback(metafields, "returnPolicy") ||
+      fromTags.returnPolicy,
+    shippingTerritory:
+      unwrapMetafieldScalar(named.shippingTerritory) ||
+      metafieldFallback(metafields, "shippingTerritory") ||
+      fromTags.shippingTerritory,
+    shipsFromCity:
+      unwrapMetafieldScalar(named.shipsFromCity) ||
+      metafieldFallback(metafields, "shipsFromCity") ||
+      fromTags.shipsFromCity,
+    shipsFromState:
+      unwrapMetafieldScalar(named.shipsFromState) ||
+      metafieldFallback(metafields, "shipsFromState") ||
+      fromTags.shipsFromState,
     shipsWithin,
     sameDayDelivery:
       sameDayFromNamed ||
@@ -488,7 +649,8 @@ export function hydrateSellerAttributes({
 
 export function weftOptionValues(weft: string | null | undefined) {
   const value = String(weft || "").trim().toLowerCase();
-  if (value === "weft") return ["WEFT"];
+  if (!value) return [] as string[];
   if (value === "no weft") return ["NO_WEFT"];
+  if (value.includes("weft")) return ["WEFT"];
   return [] as string[];
 }

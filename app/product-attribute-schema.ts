@@ -13,14 +13,16 @@ export type CategoryAttributeField =
   | "shipsWithin"
   | "weight"
   | "extensionType"
-  | "styleType";
+  | "styleType"
+  | "origin"
+  | "weftType";
 
 export const CATEGORY_ATTRIBUTE_FIELDS: Record<ProductType, CategoryAttributeField[]> = {
-  WIG: ["texture", "length", "density", "laceSize", "laceType", "capSize", "capType", "material", "color", "shipsWithin"],
-  BUNDLE: ["texture", "length", "weight", "material", "color", "shipsWithin"],
-  EXTENSION: ["extensionType", "texture", "length", "weight", "material", "color", "shipsWithin"],
-  BRAIDING_HAIR: ["styleType", "texture", "length", "material", "color", "shipsWithin"],
-  CLOSURE_FRONTAL: ["styleType", "texture", "length", "laceSize", "laceType", "material", "color", "shipsWithin"],
+  WIG: ["texture", "length", "density", "laceSize", "laceType", "capSize", "capType", "origin", "material", "color", "shipsWithin"],
+  BUNDLE: ["texture", "length", "weight", "origin", "weftType", "material", "color", "shipsWithin"],
+  EXTENSION: ["extensionType", "texture", "length", "weight", "origin", "weftType", "material", "color", "shipsWithin"],
+  BRAIDING_HAIR: ["styleType", "texture", "length", "origin", "material", "color", "shipsWithin"],
+  CLOSURE_FRONTAL: ["styleType", "texture", "length", "laceSize", "laceType", "origin", "weftType", "material", "color", "shipsWithin"],
   HAIR_ESSENTIAL: ["styleType", "color", "shipsWithin"],
 };
 

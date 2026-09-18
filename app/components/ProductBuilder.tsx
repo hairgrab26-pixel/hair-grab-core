@@ -2,7 +2,7 @@ import { useActionData, useFetcher } from "react-router";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type Ref } from "react";
 import { displayProductCategory, normalizeProductCategory, PRODUCT_CATEGORY_LABELS } from "../product-categories";
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, variantFieldsFromShopify, variantFieldsToShopify, type ExistingProductSnapshot } from "../product-builder-model";
-import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights } from "../product-vocabulary";
+import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights, hairOrigins, weftTypes } from "../product-vocabulary";
 import { parseCsvText, normalizeCsvHeader, resolveCsvProductFields, resolveStructuredProductOption, inferProductDetailsFromTitle, STRUCTURED_COLUMN_ALIASES, type CsvFieldName } from "../csv-product-import";
 import { weftOptionValues, normalizeDensity } from "../product-attribute-tags";
 import { CAP_SIZE_VALUES, CAP_TYPE_VALUES, categoryMaterialLabel, categoryShowsAttribute } from "../product-attribute-schema";
@@ -58,6 +58,11 @@ type ProductPayload = {
   laceType: string;
   capSize: string;
   capType: string;
+  origin: string;
+  weftType: string;
+  shipsFromCity: string;
+  shipsFromState: string;
+  shippingTerritory: string;
   bundleWeight: string;
   pieceCount: string;
 
@@ -89,7 +94,7 @@ type ProductPayload = {
 
 
 
-export type SellerForBuilder = { businessName: string; sellsNationwide: boolean; offersLocalPickup: boolean; offersLocalDelivery: boolean; storeSlug?: string | null; storefrontPublished?: boolean };
+export type SellerForBuilder = { businessName: string; sellsNationwide: boolean; offersLocalPickup: boolean; offersLocalDelivery: boolean; storeSlug?: string | null; storefrontPublished?: boolean; city?: string | null; state?: string | null };
 // ==========================================================
 // PRODUCT CONFIG
 // ==========================================================
@@ -1055,6 +1060,36 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     useState("");
 
   const [
+    origin,
+    setOrigin,
+  ] =
+    useState("");
+
+  const [
+    weftType,
+    setWeftType,
+  ] =
+    useState("");
+
+  const [
+    shipsFromCity,
+    setShipsFromCity,
+  ] =
+    useState(seller.city || "");
+
+  const [
+    shipsFromState,
+    setShipsFromState,
+  ] =
+    useState(seller.state || "");
+
+  const [
+    shippingTerritory,
+    setShippingTerritory,
+  ] =
+    useState(seller.sellsNationwide ? "Nationwide" : "Local");
+
+  const [
     bundleWeight,
     setBundleWeight,
   ] =
@@ -1196,7 +1231,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     const initialOptions = [
       ...new Set([
         ...(productOptions[type || "WIG"] || []).filter((item) => edit.product.tags.includes(item.label)).map((item) => item.value),
-        ...weftOptionValues(settings.weft),
+        ...weftOptionValues(settings.weftType || settings.weft),
       ]),
     ];
     const initialClassifications = (productClassifications[type || "WIG"] || []).filter((item) => edit.product.tags.includes(item.label) ||
@@ -1212,6 +1247,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     const capSizeChoices = [...CAP_SIZE_VALUES];
     const knownCapSize = capSizeChoices.find((item) => item.toLowerCase() === String(settings.capSize || "").toLowerCase());
     const knownCapType = CAP_TYPE_VALUES.find((item) => item.toLowerCase() === String(settings.capType || "").toLowerCase());
+    const knownOrigin = hairOrigins.find((item) => item.toLowerCase() === String(settings.origin || "").toLowerCase());
+    const knownWeftType = weftTypes.find((item) => item.toLowerCase() === String(settings.weftType || settings.weft || "").toLowerCase());
     initialEditFields.current = { title: edit.product.title.trim(), description: initialDescription, productType: type,
       selectedOptions: initialOptions, searchClassifications: initialClassifications,
       installationMethods: initialInstallation, locType: initialLocType,
@@ -1220,6 +1257,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       laceSize: knownLaceSize || settings.laceSize || "",
       laceType: knownLaceType || settings.laceType || "", capSize: knownCapSize || settings.capSize || "",
       capType: knownCapType || settings.capType || "",
+      origin: knownOrigin || settings.origin || "",
+      weftType: knownWeftType || settings.weftType || settings.weft || "",
+      shipsFromCity: settings.shipsFromCity || seller.city || "",
+      shipsFromState: settings.shipsFromState || seller.state || "",
+      shippingTerritory: settings.shippingTerritory || (seller.sellsNationwide ? "Nationwide" : "Local"),
       lengths: lengths,
       bundleWeight: settings.bundleWeight || "100g", pieceCount: settings.pieceCount || "",
       shippingMethod: settings.builderShippingMethod || settings.shippingMethod || "Free Shipping", flatRateShipping: settings.flatRateShipping || "",
@@ -1252,6 +1294,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setLaceType(knownLaceType || settings.laceType || "");
     setCapSize(knownCapSize || settings.capSize || "");
     setCapType(knownCapType || settings.capType || "");
+    setOrigin(knownOrigin || settings.origin || "");
+    setWeftType(knownWeftType || settings.weftType || settings.weft || "");
+    setShipsFromCity(settings.shipsFromCity || seller.city || "");
+    setShipsFromState(settings.shipsFromState || seller.state || "");
+    setShippingTerritory(settings.shippingTerritory || (seller.sellsNationwide ? "Nationwide" : "Local"));
     setBundleWeight(settings.bundleWeight || "100g");
     setPieceCount(settings.pieceCount || "");
     setShippingMethod(settings.builderShippingMethod || settings.shippingMethod || "Free Shipping");
@@ -2615,7 +2662,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       laceSize: item.laceSize || "",
       laceType: item.laceType || "",
       capSize: item.capSize || "",
-      capType: "",
+      capType: item.capType || "",
+      origin: "",
+      weftType: item.productOption === "NO_WEFT" ? "No Weft" : item.productOption === "WEFT" ? "Weft" : "",
+      shipsFromCity: seller.city || "",
+      shipsFromState: seller.state || "",
+      shippingTerritory: seller.sellsNationwide ? "Nationwide" : "Local",
       bundleWeight: item.bundleWeight || "100g",
       pieceCount: item.pieceCount || "",
       shippingMethod: "Free Shipping",
@@ -2735,6 +2787,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       const fields = { title: title.trim(), description: description.trim(), productType,
         selectedOptions, searchClassifications, installationMethods, locType,
         material: resolvedMaterial, colors: selectedColors, texture, density, laceSize, laceType, capSize, capType,
+        origin, weftType, shipsFromCity, shipsFromState, shippingTerritory,
         bundleWeight, pieceCount, lengths: [...selectedLengths, ...customLengths],
         shippingMethod, flatRateShipping, localPickupAvailable, localDeliveryAvailable,
         sameDayDelivery, shipsWithin, returnPolicy, showOnMap };
@@ -2795,6 +2848,25 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
         capSize,
 
         capType,
+
+        origin,
+
+        weftType:
+          weftType ||
+          (selectedOptions.includes("NO_WEFT")
+            ? "No Weft"
+            : selectedOptions.includes("WEFT")
+              ? "Weft"
+              : ""),
+
+        shipsFromCity:
+          shipsFromCity || seller.city || "",
+
+        shipsFromState:
+          shipsFromState || seller.state || "",
+
+        shippingTerritory:
+          shippingTerritory || (seller.sellsNationwide ? "Nationwide" : "Local"),
 
         bundleWeight,
 
@@ -3060,7 +3132,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
             />
 
             <ReviewValue
-              label="Material"
+              label="Hair Type"
               value={
                 resolvedMaterial
               }
@@ -3082,6 +3154,20 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                 "—"
               }
             />
+
+            {origin ? (
+              <ReviewValue
+                label="Origin"
+                value={origin}
+              />
+            ) : null}
+
+            {weftType ? (
+              <ReviewValue
+                label="Weft Type"
+                value={weftType}
+              />
+            ) : null}
 
             {productType ===
               "BRAIDING_HAIR" && (
@@ -4255,6 +4341,16 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                     }}
                   />
                 )}
+                <div
+                  style={{
+                    marginTop: "6px",
+                    color: "#817787",
+                    fontSize: "10px",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  Saved to Shopify as Hair Type (and Material). Human Hair also tags as 100% Human Hair.
+                </div>
               </div>
 
               <div>
@@ -5054,7 +5150,9 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
           {productType && (categoryShowsAttribute(productType, "density") ||
             categoryShowsAttribute(productType, "laceSize") ||
             categoryShowsAttribute(productType, "capSize") ||
-            categoryShowsAttribute(productType, "weight")) && (
+            categoryShowsAttribute(productType, "weight") ||
+            categoryShowsAttribute(productType, "origin") ||
+            categoryShowsAttribute(productType, "weftType")) && (
             <div
               style={{
                 ...gridTwo,
@@ -5107,6 +5205,30 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                   value={bundleWeight}
                   values={bundleWeights}
                   onChange={setBundleWeight}
+                />
+              )}
+              {categoryShowsAttribute(productType, "origin") && (
+                <SimpleSelect
+                  label="Origin"
+                  value={origin}
+                  values={hairOrigins}
+                  onChange={setOrigin}
+                />
+              )}
+              {categoryShowsAttribute(productType, "weftType") && (
+                <SimpleSelect
+                  label="Weft Type"
+                  value={weftType}
+                  values={weftTypes}
+                  onChange={(value) => {
+                    setWeftType(value);
+                    setSelectedOptions((current) => {
+                      const rest = current.filter((item) => item !== "WEFT" && item !== "NO_WEFT");
+                      if (value === "No Weft") return [...rest, "NO_WEFT"];
+                      if (value) return [...rest, "WEFT"];
+                      return rest;
+                    });
+                  }}
                 />
               )}
             </div>
@@ -6028,6 +6150,47 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
               >
                 Yes makes this product eligible for HairGrab local/map discovery.
               </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                Ships From City
+              </label>
+              <input
+                value={shipsFromCity}
+                onChange={(event) => setShipsFromCity(event.target.value)}
+                placeholder={seller.city || "City"}
+                style={fieldStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                Ships From State
+              </label>
+              <input
+                value={shipsFromState}
+                onChange={(event) => setShipsFromState(event.target.value)}
+                placeholder={seller.state || "State"}
+                style={fieldStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                Shipping Territory
+              </label>
+              <select
+                value={shippingTerritory}
+                onChange={(event) => setShippingTerritory(event.target.value)}
+                style={fieldStyle}
+              >
+                <option value="Nationwide">Nationwide</option>
+                <option value="Local">Local</option>
+                {shippingTerritory && !["Nationwide", "Local"].includes(shippingTerritory) ? (
+                  <option value={shippingTerritory}>{shippingTerritory}</option>
+                ) : null}
+              </select>
             </div>
           </div>
 

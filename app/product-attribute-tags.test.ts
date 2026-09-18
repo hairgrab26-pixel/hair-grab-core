@@ -28,12 +28,15 @@ test("builds Shopify filter tags as Label: Value", () => {
     [
       "Material: Human Hair",
       "Hair Material: Human Hair",
+      "Hair Type: Human Hair",
+      "Hair Type: 100% Human Hair",
       "Texture: Body Wave",
       "Density: 180%",
       "Lace Type: HD Lace",
       "Lace Size: 13x4",
       "Cap Size: Medium",
       "Cap Type: Medium",
+      "Weft Type: Weft",
       "Weft: Weft",
       "Color: Natural / 1B",
       "Color: 613 - Blonde",
@@ -192,4 +195,45 @@ test("hydrates Cap Type construction separately from Cap Size", () => {
   assert.deepEqual(hydrated.lengths, ["16"]);
   assert.equal(hydrated.bundleWeight, "100g");
   assert.equal(hydrated.extensionType, "Clip-Ins");
+});
+
+test("writes and hydrates the 16 Admin metafield tags", () => {
+  const tags = productAttributeTags({
+    weftType: "Double Weft",
+    origin: "Brazilian",
+    hairCategory: "Bundles",
+    shippingMethod: "Free Shipping",
+    showOnMap: "Yes",
+    returnPolicy: "14-Day Returns",
+    shipsWithin: "Same Day",
+    capType: "Glueless",
+    shippingTerritory: "Nationwide",
+    shipsFromCity: "New Haven",
+    shipsFromState: "CT",
+    material: "Human Hair",
+    texture: "Body Wave",
+    density: "180%",
+    colors: ["Natural / 1B"],
+    lengths: ["18"],
+  });
+  assert.ok(tags.includes("Weft Type: Double Weft"));
+  assert.ok(tags.includes("Origin: Brazilian"));
+  assert.ok(tags.includes("Hair Type: Human Hair"));
+  assert.ok(tags.includes("City: New Haven"));
+  assert.ok(tags.includes("State: CT"));
+  assert.ok(tags.includes("Ships From City: New Haven"));
+  assert.ok(tags.includes("Show on HairGrab Map: Yes"));
+
+  const hydrated = hydrateSellerAttributes({
+    tags,
+    metafields: [
+      { namespace: "custom", key: "origin", value: "Peruvian" },
+      { namespace: "custom", key: "hair_type", value: "Human Hair" },
+      { namespace: "custom", key: "ships_from_city", value: "Bridgeport" },
+    ],
+  });
+  assert.equal(hydrated.origin, "Peruvian");
+  assert.equal(hydrated.material, "Human Hair");
+  assert.equal(hydrated.shipsFromCity, "Bridgeport");
+  assert.equal(hydrated.weftType, "Double Weft");
 });

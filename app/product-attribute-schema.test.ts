@@ -17,6 +17,8 @@ test("every hair category has a storefront attribute set", () => {
   assert.equal(categoryShowsAttribute("WIG", "density"), true);
   assert.equal(categoryShowsAttribute("WIG", "capType"), true);
   assert.equal(categoryShowsAttribute("BUNDLE", "weight"), true);
+  assert.equal(categoryShowsAttribute("BUNDLE", "origin"), true);
+  assert.equal(categoryShowsAttribute("BUNDLE", "weftType"), true);
   assert.equal(categoryShowsAttribute("BUNDLE", "density"), false);
   assert.equal(categoryShowsAttribute("EXTENSION", "extensionType"), true);
   assert.equal(categoryShowsAttribute("EXTENSION", "weight"), true);

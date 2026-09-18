@@ -1,5 +1,7 @@
 // @ts-ignore Node's TypeScript stripping requires the explicit extension.
 import { displayProductCategory } from "./product-categories.ts";
+// @ts-ignore Node's TypeScript stripping requires the explicit extension.
+import { parseAdminProductAttributes } from "../lib/shopify/attributeParser.ts";
 
 export type DiscoveryProduct = {
   id: string; title: string; handle: string; category: string; subtype: string;
@@ -55,9 +57,11 @@ export function discoverProducts(products: DiscoveryProduct[], params: Discovery
 }
 
 export function normalizeShopifyDiscoveryProduct(node: any, seller: { businessName: string; sellerCode: string; city: string | null; state: string | null }): DiscoveryProduct {
-  const values = (key: string) => node.metafields?.nodes?.filter((m: any) => m?.key?.toLowerCase() === key).flatMap((m: any) => { try { const parsed = JSON.parse(m.value); return Array.isArray(parsed) ? parsed : [parsed]; } catch { return [m.value]; } }).filter(Boolean).map(String) || [];
+  const metafields = node.metafields?.nodes || [];
+  const parsed = parseAdminProductAttributes({ metafields, tags: node.tags || [] });
+  const values = (key: string) => metafields.filter((m: any) => m?.key?.toLowerCase() === key).flatMap((m: any) => { try { const parsedValue = JSON.parse(m.value); return Array.isArray(parsedValue) ? parsedValue : [parsedValue]; } catch { return [m.value]; } }).filter(Boolean).map(String);
   const variants = node.variants?.nodes || []; const prices = variants.map((v: any) => Number(v.price)).filter(Number.isFinite); const compare = variants.map((v: any) => Number(v.compareAtPrice)).filter(Number.isFinite);
   const h = node.hairgrabMetafields?.nodes || [];
-  const fulfillment = [h.find((m: any) => m.key === "shipping_territory")?.value === "Nationwide" ? "Nationwide Shipping" : "", h.find((m: any) => m.key === "local_pickup_available")?.value === "true" ? "Local Pickup" : "", h.find((m: any) => m.key === "local_delivery_available")?.value === "true" ? "Local Delivery" : ""].filter(Boolean);
-  return { id: node.id, title: node.title, handle: node.handle, category: displayProductCategory(node.productType), subtype: values("subtype")[0] || "", texture: values("texture")[0] || "", lengths: values("length"), colors: values("color"), priceCents: Math.round((Math.min(...(prices.length ? prices : [0]))) * 100), compareAtPriceCents: compare.length ? Math.round(Math.max(...compare) * 100) : null, shipsWithin: values("ships within")[0] || h.find((m: any) => m.key === "ships_within")?.value || "", fulfillment, seller: seller.businessName, sellerCode: seller.sellerCode, city: seller.city || "", state: seller.state || "", available: variants.some((v: any) => Number(v.inventoryQuantity) > 0), createdAt: node.createdAt || "", imageUrl: node.featuredImage?.url || null };
+  const fulfillment = [parsed.shippingTerritory === "Nationwide" || h.find((m: any) => m.key === "shipping_territory")?.value === "Nationwide" ? "Nationwide Shipping" : "", h.find((m: any) => m.key === "local_pickup_available")?.value === "true" ? "Local Pickup" : "", h.find((m: any) => m.key === "local_delivery_available")?.value === "true" ? "Local Delivery" : ""].filter(Boolean);
+  return { id: node.id, title: node.title, handle: node.handle, category: displayProductCategory(node.productType), subtype: values("subtype")[0] || String(parsed.hairCategory || ""), texture: values("texture")[0] || String(parsed.texture || ""), lengths: values("length").length ? values("length") : Array.isArray(parsed.lengths) ? parsed.lengths : [], colors: values("color").length ? values("color") : Array.isArray(parsed.colors) ? parsed.colors : [], priceCents: Math.round((Math.min(...(prices.length ? prices : [0]))) * 100), compareAtPriceCents: compare.length ? Math.round(Math.max(...compare) * 100) : null, shipsWithin: String(parsed.shipsWithin || values("ships_within")[0] || values("ships within")[0] || h.find((m: any) => m.key === "ships_within")?.value || ""), fulfillment, seller: seller.businessName, sellerCode: seller.sellerCode, city: String(parsed.shipsFromCity || seller.city || ""), state: String(parsed.shipsFromState || seller.state || ""), available: variants.some((v: any) => Number(v.inventoryQuantity) > 0), createdAt: node.createdAt || "", imageUrl: node.featuredImage?.url || null };
 }

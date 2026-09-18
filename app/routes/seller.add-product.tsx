@@ -52,6 +52,11 @@ type ProductPayload = {
   laceType: string;
   capSize: string;
   capType: string;
+  origin: string;
+  weftType: string;
+  shipsFromCity: string;
+  shipsFromState: string;
+  shippingTerritory: string;
   bundleWeight: string;
   pieceCount: string;
 
@@ -253,6 +258,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       businessName: seller.businessName,
       shopifyVendor: seller.shopifyVendor,
       sellsNationwide: seller.sellsNationwide,
+      city: seller.city || seller.approvedApplication?.city || "",
+      state: seller.state || seller.approvedApplication?.state || "",
       offersLocalPickup: seller.offersLocalPickup,
       offersLocalDelivery: seller.offersLocalDelivery,
       storeSlug: seller.storeSlug,
@@ -767,13 +774,7 @@ type SavedProductResult = {
 };
 
 function hairCategoryValue(payload: ProductPayload) {
-  const category = productTypeToCategoryLabel(payload.productType);
-  if (payload.productType !== "EXTENSION") return category;
-  if (payload.selectedOptions.includes("CLIP_IN")) return "Clip-Ins";
-  if (payload.selectedOptions.includes("TAPE_IN")) return "Tape-Ins";
-  if (payload.selectedOptions.includes("I_TIP")) return "I-Tips & K Tips";
-  if (payload.selectedOptions.includes("HALO")) return "Halo Extensions";
-  return "Other";
+  return productTypeToCategoryLabel(payload.productType);
 }
 
 function collectProductMetafields(
@@ -783,16 +784,35 @@ function collectProductMetafields(
 ) {
   const metafields: Array<{ namespace: string; key: string; type: string; value: string }> = [];
   const selectedLengthValues = [...new Set(payload.variants.map((variant) => variant.length).filter(Boolean))];
+  const shipsFromCity = payload.shipsFromCity || seller.city || seller.approvedApplication?.city || "";
+  const shipsFromState = payload.shipsFromState || seller.state || seller.approvedApplication?.state || "";
+  const shippingTerritory = payload.shippingTerritory || (seller.sellsNationwide ? "Nationwide" : "Local");
+  const weftType = payload.weftType || (payload.selectedOptions.includes("NO_WEFT") ? "No Weft" : payload.selectedOptions.includes("WEFT") ? "Weft" : "");
 
-  addExistingMetafield({ definitions, output: metafields, names: ["Hair Category"], value: hairCategoryValue(payload) });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Hair Category"],
+    value: hairCategoryValue(payload),
+    fallback: { namespace: "custom", key: "hair_category", type: "single_line_text_field" },
+  });
   addExistingMetafield({
     definitions,
     output: metafields,
     names: ["Hair Type", "Material"],
     value: payload.material,
-    fallback: { namespace: "custom", key: "material", type: "single_line_text_field" },
+    fallback: { namespace: "custom", key: "hair_type", type: "single_line_text_field" },
   });
-  addExistingMetafield({ definitions, output: metafields, names: ["Color"], value: payload.colors });
+  if (payload.material) {
+    addExistingMetafield({
+      definitions,
+      output: metafields,
+      names: ["Material"],
+      value: payload.material,
+      fallback: { namespace: "custom", key: "material", type: "single_line_text_field" },
+    });
+  }
+  addExistingMetafield({ definitions, output: metafields, names: ["Color"], value: payload.colors, fallback: { namespace: "custom", key: "color", type: "list.single_line_text_field" } });
   addExistingMetafield({
     definitions,
     output: metafields,
@@ -800,7 +820,21 @@ function collectProductMetafields(
     value: payload.texture,
     fallback: { namespace: "custom", key: "texture", type: "single_line_text_field" },
   });
-  addExistingMetafield({ definitions, output: metafields, names: ["Length"], value: selectedLengthValues });
+  addExistingMetafield({ definitions, output: metafields, names: ["Length"], value: selectedLengthValues, fallback: { namespace: "custom", key: "length", type: "list.single_line_text_field" } });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Origin"],
+    value: payload.origin,
+    fallback: { namespace: "custom", key: "origin", type: "single_line_text_field" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Weft Type"],
+    value: weftType,
+    fallback: { namespace: "custom", key: "weft_type", type: "single_line_text_field" },
+  });
   addExistingMetafield({
     definitions,
     output: metafields,
@@ -812,7 +846,7 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Cap Type"],
-    value: payload.capType || payload.capSize,
+    value: payload.capType,
     fallback: { namespace: "custom", key: "cap_type", type: "single_line_text_field" },
   });
   addExistingMetafield({
@@ -847,29 +881,51 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Ships From City"],
-    value: seller.city || seller.approvedApplication?.city || "",
+    value: shipsFromCity,
+    fallback: { namespace: "custom", key: "ships_from_city", type: "single_line_text_field" },
   });
   addExistingMetafield({
     definitions,
     output: metafields,
     names: ["Ships From State"],
-    value: seller.state || seller.approvedApplication?.state || "",
+    value: shipsFromState,
+    fallback: { namespace: "custom", key: "ships_from_state", type: "single_line_text_field" },
   });
   addExistingMetafield({
     definitions,
     output: metafields,
     names: ["Shipping Method / Shipping Options", "Shipping Method / Shipping", "Shipping Method", "Shipping Methods"],
     value: payload.shippingMethod,
+    fallback: { namespace: "custom", key: "shipping_method", type: "single_line_text_field" },
   });
-  addExistingMetafield({ definitions, output: metafields, names: ["Shipping Territory"], value: seller.sellsNationwide ? "Nationwide" : "Local" });
-  addExistingMetafield({ definitions, output: metafields, names: ["Show on HairGrab Map"], value: payload.showOnMap });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Shipping Territory"],
+    value: shippingTerritory,
+    fallback: { namespace: "custom", key: "shipping_territory", type: "single_line_text_field" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Show on HairGrab Map"],
+    value: payload.showOnMap,
+    fallback: { namespace: "custom", key: "show_on_hairgrab_map", type: "single_line_text_field" },
+  });
   addExistingMetafield({
     definitions,
     output: metafields,
     names: ["Ships Within"],
     value: normalizeShipsWithin(payload.shipsWithin || (payload.sameDayDelivery ? "Same Day" : "")),
+    fallback: { namespace: "custom", key: "ships_within", type: "single_line_text_field" },
   });
-  addExistingMetafield({ definitions, output: metafields, names: ["Return Policy"], value: payload.returnPolicy });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Return Policy"],
+    value: payload.returnPolicy,
+    fallback: { namespace: "custom", key: "return_policy", type: "single_line_text_field" },
+  });
   addExistingMetafield({
     definitions,
     output: metafields,
