@@ -62,6 +62,7 @@ type ProductPayload = {
   flatRateShipping: string;
   localPickupAvailable: boolean;
   localDeliveryAvailable: boolean;
+  sameDayDelivery: boolean;
   shipsWithin: string;
   returnPolicy: string;
   showOnMap: string;
@@ -458,7 +459,6 @@ export const locTypeChoices: Choice[] = [
 ];
 
 export const shipsWithinChoices: Choice[] = [
-  { value: "Same Day", label: "Same Day Delivery / Pickup" },
   { value: "24 Hours", label: "24 Hours" },
   { value: "48 Hours", label: "48 Hours" },
   { value: "72 Hours", label: "72 Hours" },
@@ -1083,6 +1083,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     useState(false);
 
   const [
+    sameDayDelivery,
+    setSameDayDelivery,
+  ] =
+    useState(false);
+
+  const [
     shipsWithin,
     setShipsWithin,
   ] =
@@ -1190,7 +1196,13 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       bundleWeight: settings.bundleWeight || "100g", pieceCount: settings.pieceCount || "",
       shippingMethod: settings.builderShippingMethod || settings.shippingMethod || "Free Shipping", flatRateShipping: settings.flatRateShipping || "",
       localPickupAvailable: settings.localPickupAvailable ?? false, localDeliveryAvailable: settings.localDeliveryAvailable ?? false,
-      shipsWithin: settings.shipsWithin || "", returnPolicy: settings.returnPolicy || "", showOnMap: settings.showOnMap || "" };
+      sameDayDelivery: Boolean(settings.sameDayDelivery) || String(settings.shipsWithin || "").toLowerCase() === "same day",
+      shipsWithin: shipsWithinChoices.some((choice) => choice.value === settings.shipsWithin)
+        ? settings.shipsWithin
+        : String(settings.shipsWithin || "").toLowerCase() === "same day"
+          ? "24 Hours"
+          : settings.shipsWithin || "48 Hours",
+      returnPolicy: settings.returnPolicy || "", showOnMap: settings.showOnMap || "" };
     setTitle(edit.product.title);
     setDescription(initialDescription);
     setProductType(type);
@@ -1213,7 +1225,14 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setFlatRateShipping(settings.flatRateShipping || "");
     setLocalPickupAvailable(settings.localPickupAvailable ?? false);
     setLocalDeliveryAvailable(settings.localDeliveryAvailable ?? false);
-    setShipsWithin(settings.shipsWithin || "");
+    setSameDayDelivery(Boolean(settings.sameDayDelivery) || String(settings.shipsWithin || "").toLowerCase() === "same day");
+    setShipsWithin(
+      shipsWithinChoices.some((choice) => choice.value === settings.shipsWithin)
+        ? settings.shipsWithin
+        : String(settings.shipsWithin || "").toLowerCase() === "same day"
+          ? "24 Hours"
+          : settings.shipsWithin || "48 Hours",
+    );
     setReturnPolicy(settings.returnPolicy || "");
     setShowOnMap(settings.showOnMap || "");
     setOnSale(existing.some((variant) => variant.compareAtPrice !== null));
@@ -2571,6 +2590,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       flatRateShipping: "",
       localPickupAvailable: false,
       localDeliveryAvailable: false,
+      sameDayDelivery: false,
       shipsWithin: "48 Hours",
       returnPolicy: "14-Day Returns",
       showOnMap: "Yes",
@@ -2685,7 +2705,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
         material: resolvedMaterial, colors: selectedColors, texture, density, laceSize, laceType, capSize,
         bundleWeight, pieceCount,
         shippingMethod, flatRateShipping, localPickupAvailable, localDeliveryAvailable,
-        shipsWithin, returnPolicy, showOnMap };
+        sameDayDelivery, shipsWithin, returnPolicy, showOnMap };
       const changedFields = Object.keys(fields).filter((key) =>
         JSON.stringify((fields as Record<string, unknown>)[key]) !== JSON.stringify(initialEditFields.current?.[key]));
       setEditDirty(false);
@@ -2761,6 +2781,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
         localDeliveryAvailable:
           seller.offersLocalDelivery &&
           localDeliveryAvailable,
+
+        sameDayDelivery,
 
         shipsWithin,
 
@@ -5856,6 +5878,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                   </option>
                 ))}
                 {shipsWithin &&
+                  shipsWithin.toLowerCase() !== "same day" &&
                   !shipsWithinChoices.some(
                     (choice) => choice.value === shipsWithin,
                   ) && (
@@ -5881,6 +5904,61 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                 }}
               >
                 This is your normal processing time before the package is handed to the carrier. Same-day courier delivery is a separate HairGrab feature.
+              </div>
+            </div>
+
+            <div>
+              <label
+                style={
+                  labelStyle
+                }
+              >
+                Same-Day Delivery / Pickup
+              </label>
+
+              <select
+                value={
+                  sameDayDelivery
+                    ? "Yes"
+                    : "No"
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setSameDayDelivery(
+                    event.target
+                      .value ===
+                      "Yes",
+                  )
+                }
+                style={
+                  fieldStyle
+                }
+              >
+                <option value="No">
+                  Not offered on this product
+                </option>
+                <option value="Yes">
+                  Eligible for nearby same-day
+                </option>
+              </select>
+
+              <div
+                style={{
+                  marginTop:
+                    "6px",
+
+                  color:
+                    "#817787",
+
+                  fontSize:
+                    "10px",
+
+                  lineHeight:
+                    "1.4",
+                }}
+              >
+                Saved as a separate product flag. HairGrab can offer this only when a shopper is within about 10 miles, using Shipday. It does not replace the Ships Within timeline.
               </div>
             </div>
 
@@ -6723,6 +6801,9 @@ function PostSaveSellerActions({
             style={postSaveNavButton}
           >
             Store View
+          </a>
+          <a href="/seller/products" style={postSaveNavButton}>
+            Back to Products
           </a>
           <a href="/seller/dashboard" style={postSaveNavButton}>
             Back to Dashboard

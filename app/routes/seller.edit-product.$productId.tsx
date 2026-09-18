@@ -10,6 +10,7 @@ import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.ser
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
 import ProductBuilder from "../components/ProductBuilder";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
+import { normalizeShipsWithin, productAttributeTags, replaceAttributeTags } from "../product-attribute-tags";
 
 type ShopifyMetafieldDefinition = {
   name: string;
@@ -344,11 +345,13 @@ function addExistingMetafield({
   if (!definition) {
     if (
       fallback &&
-      fallback.namespace !== "shopify" &&
-      typeof value === "string" &&
-      value.trim()
+      fallback.namespace !== "shopify"
     ) {
-      output.push({ ...fallback, value: value.trim() });
+      if (typeof value === "boolean") {
+        output.push({ ...fallback, value: value ? "true" : "false" });
+      } else if (typeof value === "string" && value.trim()) {
+        output.push({ ...fallback, value: value.trim() });
+      }
     }
     return;
   }
@@ -860,13 +863,34 @@ export const loader = async ({
         ),
 
       shipsWithin:
+        normalizeShipsWithin(
+          getMetafieldByDefinitionName(
+            productMetafields,
+            metafieldDefinitions,
+            [
+              "Ships Within",
+            ],
+          ),
+        ),
+
+      sameDayDelivery:
+        getMetafieldValue(
+          productMetafields,
+          "custom",
+          "same_day_delivery",
+        ) === "true" ||
         getMetafieldByDefinitionName(
           productMetafields,
           metafieldDefinitions,
-          [
-            "Ships Within",
-          ],
-        ),
+          ["Same Day Delivery", "Same-Day Delivery"],
+        ) === "true" ||
+        String(
+          getMetafieldByDefinitionName(
+            productMetafields,
+            metafieldDefinitions,
+            ["Ships Within"],
+          ) || "",
+        ).toLowerCase() === "same day",
 
       returnPolicy:
         getMetafieldByDefinitionName(
@@ -1059,7 +1083,7 @@ export const action = async ({
       const fields = submitted.fields as Record<string, any>;
       const allowedFields = new Set(["title", "description", "productType", "selectedOptions", "searchClassifications", "installationMethods", "locType",
         "material", "colors", "texture", "density", "laceSize", "laceType", "capSize", "bundleWeight", "pieceCount", "shippingMethod", "flatRateShipping",
-        "localPickupAvailable", "localDeliveryAvailable", "shipsWithin", "returnPolicy", "showOnMap"]);
+        "localPickupAvailable", "localDeliveryAvailable", "sameDayDelivery", "shipsWithin", "returnPolicy", "showOnMap"]);
       const dirty = new Set<string>(submitted.changedFields);
       if ([...dirty].some((key) => !allowedFields.has(key))) throw new Error("Unsupported product field in edit request");
       const mediaFiles = [...formData.entries()].filter(([key]) => key.startsWith("media:")).map(([key, value]) => ({ key: key.slice(6), file: value as File }));
@@ -1115,7 +1139,13 @@ export const action = async ({
         const choice = locTypeChoices.find((item) => item.value === fields.locType);
         if (choice) tags.add(choice.label);
       }
-      if (["productType", "selectedOptions", "searchClassifications", "installationMethods", "locType"].some((key) => dirty.has(key))) productInput.tags = [...tags];
+      const attributeFieldsDirty = ["material", "colors", "texture", "density", "laceType", "selectedOptions"].some((key) => dirty.has(key));
+      if (attributeFieldsDirty) {
+        const replaced = replaceAttributeTags(tags, productAttributeTags(fields));
+        tags.clear();
+        for (const tag of replaced) tags.add(tag);
+      }
+      if (["productType", "selectedOptions", "searchClassifications", "installationMethods", "locType", "material", "colors", "texture", "density", "laceType"].some((key) => dirty.has(key))) productInput.tags = [...tags];
       if (Object.keys(productInput).length > 1) {
         const response = await admin.graphql(`#graphql
           mutation HairGrabBuilderEditProduct($product: ProductUpdateInput!) {
@@ -1181,12 +1211,23 @@ export const action = async ({
         ["shipsWithin", ["Ships Within"]], ["returnPolicy", ["Return Policy"]], ["showOnMap", ["Show on HairGrab Map"]],
       ];
       for (const [key, names] of namedFields) if (dirty.has(key)) {
-        const value = String(fields[key] || "");
+        const value = key === "shipsWithin"
+          ? normalizeShipsWithin(String(fields[key] || ""))
+          : String(fields[key] || "");
         if (value) addExistingMetafield({ definitions, output: metafields, names, value });
         else {
           const definition = findMetafieldDefinition(definitions, names);
           if (definition) removeIfPresent(definition.namespace, definition.key);
         }
+      }
+      if (dirty.has("sameDayDelivery")) {
+        addExistingMetafield({
+          definitions,
+          output: metafields,
+          names: ["Same Day Delivery", "Same-Day Delivery"],
+          value: Boolean(fields.sameDayDelivery),
+          fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
+        });
       }
       // bundleWeight/pieceCount cannot use the namedFields loop above:
       // that loop silently no-ops when no Shopify Admin metafield

@@ -16,6 +16,7 @@ import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
 import { extensionTypeFromOptions, EXTENSION_TYPE_METAFIELD, productTypeToCategoryLabel } from "../product-categories";
 import ProductBuilder from "../components/ProductBuilder";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices } from "../components/ProductBuilder";
+import { normalizeShipsWithin, productAttributeTags } from "../product-attribute-tags";
 
 // ==========================================================
 // TYPES
@@ -504,11 +505,13 @@ function addExistingMetafield({
     // category-constrained and would recreate the owner-subtype error.
     if (
       fallback &&
-      fallback.namespace !== "shopify" &&
-      typeof value === "string" &&
-      value.trim()
+      fallback.namespace !== "shopify"
     ) {
-      output.push({ ...fallback, value: value.trim() });
+      if (typeof value === "boolean") {
+        output.push({ ...fallback, value: value ? "true" : "false" });
+      } else if (typeof value === "string" && value.trim()) {
+        output.push({ ...fallback, value: value.trim() });
+      }
     }
     return;
   }
@@ -830,7 +833,7 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Same Day Delivery", "Same-Day Delivery"],
-    value: payload.shipsWithin === "Same Day" || payload.sameDayDelivery,
+    value: Boolean(payload.sameDayDelivery),
     fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
   });
   addExistingMetafield({
@@ -853,7 +856,7 @@ function collectProductMetafields(
   });
   addExistingMetafield({ definitions, output: metafields, names: ["Shipping Territory"], value: seller.sellsNationwide ? "Nationwide" : "Local" });
   addExistingMetafield({ definitions, output: metafields, names: ["Show on HairGrab Map"], value: payload.showOnMap });
-  addExistingMetafield({ definitions, output: metafields, names: ["Ships Within"], value: payload.shipsWithin });
+  addExistingMetafield({ definitions, output: metafields, names: ["Ships Within"], value: normalizeShipsWithin(payload.shipsWithin) });
   addExistingMetafield({ definitions, output: metafields, names: ["Return Policy"], value: payload.returnPolicy });
   addExistingMetafield({
     definitions,
@@ -1051,13 +1054,14 @@ async function createSellerProductFromPayload({
           productType: productTypeDisplay,
           vendor: seller.shopifyVendor || seller.businessName,
           status: saveAsDraft ? "DRAFT" : "ACTIVE",
-          tags: [
+          tags: [...new Set([
             "HairGrab",
             `HairGrab Seller ${seller.sellerCode}`,
             productTypeDisplay,
             ...selectedOptionTags,
             ...classificationTags,
-          ],
+            ...productAttributeTags(payload),
+          ])],
           productOptions: productOptionsInput,
           variants: variantsInput,
           ...(productFiles.length > 0 ? { files: productFiles } : {}),
