@@ -1,0 +1,517 @@
+diff --git a/app/routes/seller.add-product.tsx b/app/routes/seller.add-product.tsx
+index 8da8d61..cf81df8 100644
+--- a/app/routes/seller.add-product.tsx
++++ b/app/routes/seller.add-product.tsx
+@@ -1430,6 +1430,14 @@ export const action =
+           payloadRaw,
+         ) as ProductPayload;
+ 
++      const saveAsDraft =
++        String(
++          formData.get(
++            "saveAsDraft",
++          ) ||
++          "",
++        ) === "true";
++
+       if (
+         payload.shippingMethod !==
+           "Free Shipping" &&
+@@ -1454,6 +1462,7 @@ export const action =
+       }
+ 
+       if (
++        !saveAsDraft &&
+         !payload.description
+           ?.trim()
+       ) {
+@@ -1481,17 +1490,44 @@ export const action =
+         payload.variants
+           .length === 0
+       ) {
+-        return {
+-          success: false,
+-          message:
+-            "At least one product variant is required.",
+-        };
++        if (saveAsDraft) {
++          payload.variants = [
++            {
++              label: "Draft",
++              length: "",
++              option: "",
++              color:
++                payload.colors?.[0] ||
++                "Natural / 1B",
++              price: "0",
++              salePrice: "",
++              inventory: "",
++              sku: "",
++            },
++          ];
++        } else {
++          return {
++            success: false,
++            message:
++              "At least one product variant is required.",
++          };
++        }
+       }
+ 
+       for (
+         const variant of
+         payload.variants
+       ) {
++        if (
++          saveAsDraft &&
++          !String(
++            variant.price ||
++            "",
++          ).trim()
++        ) {
++          variant.price = "0";
++        }
++
+         const price =
+           Number(
+             variant.price,
+@@ -2016,12 +2052,24 @@ export const action =
+       }> = [];
+ 
+       const productTypeDisplay =
+-        productTypes.find(
+-          (type) =>
+-            type.value ===
+-            payload.productType,
+-        )?.label ||
+-        payload.productType;
++        payload.productType === "WIG"
++          ? "Wigs"
++          : payload.productType === "BUNDLE"
++            ? "Bundles"
++            : payload.productType === "CLOSURE_FRONTAL"
++              ? "Closures & Frontals"
++              : payload.productType === "EXTENSION"
++                ? "Extensions"
++                : payload.productType === "BRAIDING_HAIR"
++                  ? "Braiding Hair"
++                  : payload.productType === "HAIR_ESSENTIAL"
++                    ? "Hair Essentials"
++                    : productTypes.find(
++                        (type) =>
++                          type.value ===
++                          payload.productType,
++                      )?.label ||
++                      payload.productType;
+ 
+       const selectedLengthValues =
+         Array.from(
+@@ -2751,7 +2799,12 @@ export const action =
+         success: true,
+ 
+         message:
+-          "Product saved successfully as a Shopify draft.",
++          saveAsDraft
++            ? "Draft saved. You can continue editing it from My Products."
++            : "Product saved successfully. HairGrab received it for review.",
++
++        draftSaved:
++          saveAsDraft,
+ 
+         shopifyProductId:
+           String(
+@@ -3459,6 +3512,24 @@ export default function SellerAddProductPage() {
+     saveFetcher.data ||
+     actionData;
+ 
++  useEffect(
++    () => {
++      if (
++        saveResult?.success &&
++        saveResult?.draftSaved &&
++        saveResult?.sellerProductId
++      ) {
++        window.location.href =
++          `/seller/edit-product/${saveResult.sellerProductId}`;
++      }
++    },
++    [
++      saveResult?.success,
++      saveResult?.draftSaved,
++      saveResult?.sellerProductId,
++    ],
++  );
++
+   const [
+     reviewing,
+     setReviewing,
+@@ -3602,11 +3673,17 @@ export default function SellerAddProductPage() {
+   useEffect(
+     () => {
+       setOptionsAreVariants(
+-        selectedOptions.length > 1,
++        productType === "BUNDLE" &&
++        selectedOptions.includes(
++          "BUNDLE_DEAL",
++        )
++          ? false
++          : selectedOptions.length > 1,
+       );
+     },
+     [
+-      selectedOptions.length,
++      productType,
++      selectedOptions,
+     ],
+   );
+ 
+@@ -3877,6 +3954,13 @@ export default function SellerAddProductPage() {
+       ],
+     );
+ 
++  const isBundleDeal =
++    productType ===
++      "BUNDLE" &&
++    selectedOptions.includes(
++      "BUNDLE_DEAL",
++    );
++
+   const variantRows =
+     useMemo<
+       VariantRow[]
+@@ -3913,6 +3997,41 @@ export default function SellerAddProductPage() {
+           ];
+         }
+ 
++        if (
++          isBundleDeal
++        ) {
++          if (
++            selectedLengths.length ===
++            0
++          ) {
++            return [];
++          }
++
++          return [
++            {
++              key:
++                `BUNDLE_DEAL__${selectedLengths.join(
++                  "_",
++                )}`,
++              label:
++                 `Bundle Deal — ${selectedLengths
++                  .map(
++                    (length) =>
++                      `${length}"`,
++                  )
++                  .join(
++                    " + ",
++                  )}`,
++              length: "",
++              option:
++                "BUNDLE_DEAL",
++              color:
++                selectedColors[0] ||
++                "Natural / 1B",
++            },
++          ];
++        }
++
+         if (
+           selectedLengths.length ===
+           0
+@@ -3995,6 +4114,7 @@ export default function SellerAddProductPage() {
+       },
+       [
+         productType,
++        isBundleDeal,
+         selectedLengths,
+         optionsAreVariants,
+         selectedOptions,
+@@ -5055,10 +5175,14 @@ export default function SellerAddProductPage() {
+   }, [csvImportFetcher.data]);
+ 
+ 
+-  function saveProduct() {
++  function saveProduct(
++    saveAsDraft = false,
++  ) {
+     if (
+-      !ready ||
+-      !productType
++      !productType ||
++      !title.trim() ||
++      (!saveAsDraft &&
++        !ready)
+     ) {
+       return;
+     }
+@@ -5125,7 +5249,22 @@ export default function SellerAddProductPage() {
+         showOnMap,
+ 
+         variants:
+-          variantRows.map(
++          (variantRows.length > 0
++            ? variantRows
++            : saveAsDraft
++              ? [
++                  {
++                    key: "DRAFT",
++                    label: "Draft",
++                    length: "",
++                    option: "",
++                    color:
++                      selectedColors[0] ||
++                      "Natural / 1B",
++                  },
++                ]
++              : []
++          ).map(
+             (
+               row,
+             ) => ({
+@@ -5145,7 +5284,9 @@ export default function SellerAddProductPage() {
+                 variantValues[
+                   row.key
+                 ]?.price ||
+-                "",
++                (saveAsDraft
++                  ? "0"
++                  : ""),
+ 
+               salePrice:
+                 onSale
+@@ -5181,6 +5322,13 @@ export default function SellerAddProductPage() {
+       ),
+     );
+ 
++    formData.append(
++      "saveAsDraft",
++      saveAsDraft
++        ? "true"
++        : "false",
++    );
++
+     for (
+       const image of
+       images
+@@ -5588,9 +5736,17 @@ export default function SellerAddProductPage() {
+                       thStyle
+                     }
+                   >
+-                    Price
++                    {onSale
++                      ? "Regular Price"
++                      : "Price"}
+                   </th>
+ 
++                  {onSale && (
++                    <th style={thStyle}>
++                      Sale Price
++                    </th>
++                  )}
++
+                   <th
+                     style={
+                       thStyle
+@@ -5642,6 +5798,18 @@ export default function SellerAddProductPage() {
+                         }
+                       </td>
+ 
++                      {onSale && (
++                        <td style={tdStyle}>
++                          $
++                          {
++                            variantValues[
++                              row.key
++                            ]?.salePrice ||
++                            "—"
++                          }
++                        </td>
++                      )}
++
+                       <td
+                         style={
+                           tdStyle
+@@ -5715,8 +5883,8 @@ export default function SellerAddProductPage() {
+                 saveResult?.success,
+               )
+             }
+-            onClick={
+-              saveProduct
++            onClick={() =>
++              saveProduct(false)
+             }
+             style={
+               primaryButton
+@@ -5728,6 +5896,34 @@ export default function SellerAddProductPage() {
+                 ? "✓ Product Saved"
+                 : "Save Product"}
+           </button>
++
++          {saveResult?.success && (
++            <>
++              <a
++                href="/seller/add-product"
++                style={{
++                  ...primaryButton,
++                  textDecoration: "none",
++                  display: "inline-flex",
++                  alignItems: "center",
++                }}
++              >
++                + Add Another Product
++              </a>
++
++              <a
++                href="/seller/products"
++                style={{
++                  ...secondaryButton,
++                  textDecoration: "none",
++                  display: "inline-flex",
++                  alignItems: "center",
++                }}
++              >
++                View My Products
++              </a>
++            </>
++          )}
+         </div>
+ 
+         <div
+@@ -5745,9 +5941,7 @@ export default function SellerAddProductPage() {
+               "10px",
+           }}
+         >
+-          Products are saved
+-          to Shopify as DRAFT
+-          during testing.
++          Once you save your product, HairGrab receives it for review. Approved products will be published to the marketplace.
+         </div>
+       </PageShell>
+     );
+@@ -6791,13 +6985,39 @@ export default function SellerAddProductPage() {
+                     }
+                     onClick={() =>
+                       setSelectedOptions(
+-                        (
+-                          current,
+-                        ) =>
+-                          toggleValue(
++                        (current) => {
++                          if (
++                            productType ===
++                              "BUNDLE" &&
++                            item.value ===
++                              "BUNDLE_DEAL"
++                          ) {
++                            return current.includes(
++                              "BUNDLE_DEAL",
++                            )
++                              ? []
++                              : [
++                                  "BUNDLE_DEAL",
++                                ];
++                          }
++
++                          if (
++                            productType ===
++                              "BUNDLE" &&
++                            current.includes(
++                              "BUNDLE_DEAL",
++                            )
++                          ) {
++                            return [
++                              item.value,
++                            ];
++                          }
++
++                          return toggleValue(
+                             current,
+                             item.value,
+-                          ),
++                          );
++                        },
+                       )
+                     }
+                   />
+@@ -7485,6 +7705,25 @@ export default function SellerAddProductPage() {
+               </div>
+             )}
+ 
++          {isBundleDeal &&
++            selectedLengths.length > 0 && (
++              <div
++                style={{
++                  marginBottom: "12px",
++                  padding: "12px",
++                  border: "1px solid #e2d1ef",
++                  borderRadius: "10px",
++                  background: "#f7f0fb",
++                  color: "#4B1678",
++                  fontSize: "11px",
++                  lineHeight: 1.5,
++                  fontWeight: 700,
++                }}
++              >
++                Bundle Deal pricing is one price for the complete set: {selectedLengths.map((length) => `${length}"`).join(" + ")}. Enter the full deal price below.
++              </div>
++            )}
++
+           {variantRows.length >
+             0 && (
+             <>
+@@ -8671,7 +8910,43 @@ export default function SellerAddProductPage() {
+           sectionStyle
+         }
+       >
+-        <button
++        <div
++          style={{
++            display: "grid",
++            gridTemplateColumns: "minmax(0, .65fr) minmax(0, 1fr)",
++            gap: "10px",
++          }}
++        >
++          <button
++            type="button"
++            disabled={
++              saving ||
++              !productType ||
++              !title.trim()
++            }
++            onClick={() =>
++              saveProduct(true)
++            }
++            style={{
++              ...secondaryButton,
++              opacity:
++                !productType ||
++                !title.trim()
++                  ? 0.45
++                  : 1,
++              cursor:
++                !productType ||
++                !title.trim()
++                  ? "not-allowed"
++                  : "pointer",
++            }}
++          >
++            {saving
++              ? "Saving..."
++              : "Save Draft"}
++          </button>
++
++          <button
+           type="button"
+           disabled={
+             !ready
+@@ -8700,6 +8975,7 @@ export default function SellerAddProductPage() {
+         >
+           Review Product
+         </button>
++        </div>
+       </div>
+       </>)}
+     </PageShell>

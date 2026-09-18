@@ -77,6 +77,10 @@ export default function App() {
         <s-link href="/app/communications">
           Communications
         </s-link>
+
+        <s-link href="/app/review-imports">
+          Review Imports
+        </s-link>
       </s-app-nav>
 
       <Outlet />

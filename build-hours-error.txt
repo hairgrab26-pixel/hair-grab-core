@@ -1,0 +1,204 @@
+
+> build
+> react-router build
+
+[36mvite v6.4.3 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 3 modules transformed.
+[31m✗[39m Build failed in 313ms
+[31m[vite:esbuild] Transform failed with 5 errors:
+C:/Users/crown/hair-grab-core/app/routes/seller.store.tsx?__react-router-build-client-route:1956:14: ERROR: Unexpected closing "Card" tag does not match opening "div" tag
+C:/Users/crown/hair-grab-core/app/routes/seller.store.tsx?__react-router-build-client-route:1957:12: ERROR: Unexpected closing "div" tag does not match opening "Form" tag
+C:/Users/crown/hair-grab-core/app/routes/seller.store.tsx?__react-router-build-client-route:1977:10: ERROR: Unexpected closing "Form" tag does not match opening "main" tag
+C:/Users/crown/hair-grab-core/app/routes/seller.store.tsx?__react-router-build-client-route:2418:8: ERROR: Unexpected closing "main" tag does not match opening "div" tag
+C:/Users/crown/hair-grab-core/app/routes/seller.store.tsx?__react-router-build-client-route:2419:10: ERROR: Unterminated regular expression[39m
+file: [36mC:/Users/crown/hair-grab-core/app/routes/seller.store.tsx?__react-router-build-client-route:1956:14[39m
+[33m
+[33mUnexpected closing "Card" tag does not match opening "div" tag[33m
+1954|                </div>
+1955|              </Card>
+1956|              </Card>
+   |                ^
+1957|            </div>
+1958|  
+
+[33mUnexpected closing "div" tag does not match opening "Form" tag[33m
+1955|              </Card>
+1956|              </Card>
+1957|            </div>
+   |              ^
+1958|  
+1959|            <div className="hg-sticky">
+
+[33mUnexpected closing "Form" tag does not match opening "main" tag[33m
+1975|              </button>
+1976|            </div>
+1977|          </Form>
+   |            ^
+1978|  
+1979|          <div
+
+[33mUnexpected closing "main" tag does not match opening "div" tag[33m
+2416|            </Card>
+2417|          </div>
+2418|        </main>
+   |          ^
+2419|      </div>
+2420|    );
+
+[33mUnterminated regular expression[33m
+2417|          </div>
+2418|        </main>
+2419|      </div>
+   |            ^
+2420|    );
+2421|  }
+[39m
+    at failureErrorWithLog (C:\Users\crown\hair-grab-core\node_modules\.pnpm\esbuild@0.25.12\node_modules\esbuild\lib\main.js:1467:15)
+    at C:\Users\crown\hair-grab-core\node_modules\.pnpm\esbuild@0.25.12\node_modules\esbuild\lib\main.js:736:50
+    at responseCallbacks.<computed> (C:\Users\crown\hair-grab-core\node_modules\.pnpm\esbuild@0.25.12\node_modules\esbuild\lib\main.js:603:9)
+    at handleIncomingPacket (C:\Users\crown\hair-grab-core\node_modules\.pnpm\esbuild@0.25.12\node_modules\esbuild\lib\main.js:658:12)
+    at Socket.readFromStdout (C:\Users\crown\hair-grab-core\node_modules\.pnpm\esbuild@0.25.12\node_modules\esbuild\lib\main.js:581:7)
+    at Socket.emit (node:events:514:28)
+    at addChunk (node:internal/streams/readable:567:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:518:3)
+    at Socket.Readable.push (node:internal/streams/readable:398:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+  errors: [Getter/Setter],
+  warnings: [Getter/Setter],
+  frame: '\n' +
+    '\x1B[33mUnexpected closing "Card" tag does not match opening "div" tag\x1B[39m\n' +
+    '1954|                </div>\n' +
+    '1955|              </Card>\n' +
+    '1956|              </Card>\n' +
+    '   |                ^\n' +
+    '1957|            </div>\n' +
+    '1958|  \n' +
+    '\n' +
+    '\x1B[33mUnexpected closing "div" tag does not match opening "Form" tag\x1B[39m\n' +
+    '1955|              </Card>\n' +
+    '1956|              </Card>\n' +
+    '1957|            </div>\n' +
+    '   |              ^\n' +
+    '1958|  \n' +
+    '1959|            <div className="hg-sticky">\n' +
+    '\n' +
+    '\x1B[33mUnexpected closing "Form" tag does not match opening "main" tag\x1B[39m\n' +
+    '1975|              </button>\n' +
+    '1976|            </div>\n' +
+    '1977|          </Form>\n' +
+    '   |            ^\n' +
+    '1978|  \n' +
+    '1979|          <div\n' +
+    '\n' +
+    '\x1B[33mUnexpected closing "main" tag does not match opening "div" tag\x1B[39m\n' +
+    '2416|            </Card>\n' +
+    '2417|          </div>\n' +
+    '2418|        </main>\n' +
+    '   |          ^\n' +
+    '2419|      </div>\n' +
+    '2420|    );\n' +
+    '\n' +
+    '\x1B[33mUnterminated regular expression\x1B[39m\n' +
+    '2417|          </div>\n' +
+    '2418|        </main>\n' +
+    '2419|      </div>\n' +
+    '   |            ^\n' +
+    '2420|    );\n' +
+    '2421|  }\n',
+  loc: {
+    column: 14,
+    file: 'C:/Users/crown/hair-grab-core/app/routes/seller.store.tsx?__react-router-build-client-route',
+    length: 4,
+    line: 1956,
+    lineText: '            </Card>',
+    namespace: '',
+    suggestion: 'div'
+  },
+  code: 'PLUGIN_ERROR',
+  plugin: 'vite:esbuild',
+  hook: 'transform',
+  id: 'C:/Users/crown/hair-grab-core/app/routes/seller.store.tsx?__react-router-build-client-route',
+  watchFiles: [
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.customers.data_request.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.app.fulfillment-event-create.tsx',
+    'C:/Users/crown/hair-grab-core/app/root.tsx',
+    'C:/Users/crown/hair-grab-core/node_modules/.pnpm/@react-router+dev@7.18.3_@r_2ef7e417aa46323f2d25eb6d15200b16/node_modules/@react-router/dev/dist/config/defaults/entry.client.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.app.refunds-create.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.edit-product.$productId.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.app.scopes_update.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/api.homepage-merchandising.ts',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.app.orders-paid.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.app.uninstalled.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.app.orders-create.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.customers.redact.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.orders.create.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/api.featured-boutiques.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/api.customer-favorites.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.notifications.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/webhooks.shop.redact.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller-store.$storeSlug.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.store-preview.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.ai-assistant.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.order-alerts.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.ai-generate.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.financials.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.add-product.details.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.onboarding.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.onboarding.agreements.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.onboarding.fulfillment.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.onboarding.storefront.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.onboarding.business.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.onboarding._index.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.onboarding.returns.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.onboarding.payouts.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.messages.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.agreement.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.products.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.settings.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/favorites-proxy.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.add-product.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.shopify.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.shopify.callback.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.register.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller._index.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.shopify.connect.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.shopify.products.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.login.verify.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.login.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.picks.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.orders.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/FILENAME.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/sellers.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.help.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/auth.login/route.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/_index/route.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/auth.$.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/seller.store.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.communications_.$sellerCode.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.payout-batch.$batchCode.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.homepage-merchandising.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.sellers_.$sellerCode.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.sellers_.$sellerCode.backup.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.communications.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.seller.$sellerCode.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.eligibility.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.additional.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.applications.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.inventory.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.products.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.settings.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.payouts.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.sellers.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.ledger.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app._index.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.orders.tsx',
+    'C:/Users/crown/hair-grab-core/app/routes/app.guide.tsx',
+    'C:/Users/crown/hair-grab-core/node_modules/.pnpm/react@18.3.1/node_modules/react/jsx-runtime.js',
+    'C:/Users/crown/hair-grab-core/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/client.js',
+    'C:/Users/crown/hair-grab-core/node_modules/.pnpm/react@18.3.1/node_modules/react/index.js',
+    'C:/Users/crown/hair-grab-core/node_modules/.pnpm/react-router@7.18.3_react-d_1ad31ebd059bdeff8ab250ef9dbbfe81/node_modules/react-router/dist/development/dom-export.mjs',
+    'C:\\Users\\crown\\hair-grab-core\\package.json'
+  ]
+}

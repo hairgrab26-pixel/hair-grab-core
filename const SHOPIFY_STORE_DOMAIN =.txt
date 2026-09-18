@@ -1,0 +1,120 @@
+const SHOPIFY_STORE_DOMAIN =
+  process.env.EXPO_PUBLIC_SHOPIFY_STORE_DOMAIN;
+
+const SHOPIFY_STOREFRONT_TOKEN =
+  process.env.EXPO_PUBLIC_SHOPIFY_STOREFRONT_TOKEN;
+
+const SHOPIFY_API_VERSION = '2026-07';
+
+if (!SHOPIFY_STORE_DOMAIN) {
+  throw new Error(
+    'Missing EXPO_PUBLIC_SHOPIFY_STORE_DOMAIN in .env'
+  );
+}
+
+if (!SHOPIFY_STOREFRONT_TOKEN) {
+  throw new Error(
+    'Missing EXPO_PUBLIC_SHOPIFY_STOREFRONT_TOKEN in .env'
+  );
+}
+
+const SHOPIFY_ENDPOINT =
+  `https://${SHOPIFY_STORE_DOMAIN}/api/${SHOPIFY_API_VERSION}/graphql.json`;
+
+type ShopifyRequestOptions = {
+  query: string;
+  variables?: Record<string, unknown>;
+};
+
+export async function shopifyFetch<T>({
+  query,
+  variables = {},
+}: ShopifyRequestOptions): Promise<T> {
+  const response = await fetch(SHOPIFY_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Storefront-Access-Token':
+        SHOPIFY_STOREFRONT_TOKEN,
+    },
+    body: JSON.stringify({
+      query,
+      variables,
+    }),
+  });
+
+  const json = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      `Shopify request failed: ${response.status}`
+    );
+  }
+
+  if (json.errors) {
+    throw new Error(
+      `Shopify GraphQL error: ${JSON.stringify(json.errors)}`
+    );
+  }
+
+  return json.data as T;
+}
+
+export type HairGrabProduct = {
+  id: string;
+  handle: string;
+  title: string;
+  featuredImage: {
+    url: string;
+    altText: string | null;
+    width: number | null;
+    height: number | null;
+  } | null;
+  priceRange: {
+    minVariantPrice: {
+      amount: string;
+      currencyCode: string;
+    };
+  };
+};
+
+type ProductsResponse = {
+  products: {
+    nodes: HairGrabProduct[];
+  };
+};
+
+export async function getProducts(
+  first = 12
+): Promise<HairGrabProduct[]> {
+  const data = await shopifyFetch<ProductsResponse>({
+    query: `
+      query HairGrabProducts($first: Int!) {
+        products(first: $first, sortKey: CREATED_AT, reverse: true) {
+          nodes {
+            id
+            handle
+            title
+            featuredImage {
+              url
+              altText
+              width
+              height
+            }
+            priceRange {
+              minVariantPrice {
+                amount
+                currencyCode
+              }
+            }
+          }
+        }
+      }
+    `,
+    variables: {
+      first,
+    },
+  });
+
+  return data.products.nodes;
+}

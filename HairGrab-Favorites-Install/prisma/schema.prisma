@@ -63,12 +63,6 @@ model SellerApplication {
   productCountRange String?
   canImportCsv      Boolean?
 
-  // STOCKED_SELF / OWNED_3PL / DROPSHIP / MIXED
-  inventoryFulfillmentType String?
-
-  // Seller certification that inventory/fulfillment information is accurate.
-  inventoryCertificationAccepted Boolean @default(false)
-
   sellsNationwide       Boolean @default(true)
   offersLocalPickup     Boolean @default(false)
   offersLocalDelivery   Boolean @default(false)
@@ -113,11 +107,9 @@ model Seller {
   phone            String?
 
   storeSlug        String? @unique
-  storeDescription     String?
-  logoUrl             String?
-  bannerUrl           String?
-  businessPositioning String[] @default([])
-  storefrontPublished Boolean  @default(false)
+  storeDescription String?
+  logoUrl          String?
+  bannerUrl        String?
 
   address1   String?
   address2   String?
@@ -170,14 +162,6 @@ model Seller {
   fastPayoutSuspendedAt      DateTime?
   fastPayoutSuspensionReason String?
 
-  shopifyFulfillmentServiceId      String? @unique
-  shopifyFulfillmentLocationId     String? @unique
-  sameDayProvisioningStatus        String  @default("NOT_STARTED")
-  sameDayProvisioningError         String?
-  sameDayProvisioningAttemptedAt   DateTime?
-  sameDayProvisionedAt             DateTime?
-  sameDayProvisioningData          Json?
-
   approvedAt    DateTime?
   suspendedAt   DateTime?
   deactivatedAt DateTime?
@@ -200,41 +184,7 @@ model Seller {
   // Homepage merchandising
   homepagePicks SellerHomepagePick[]
 
-  // Seller storefront
-  storeCollections SellerStoreCollection[]
-  storeMedia       SellerStoreMedia[]
-  storeHours       SellerStoreHour[]
-  sellerReviews    SellerReview[]
-
-  // Storefront section visibility
-  showFeaturedCollection    Boolean @default(true)
-  showNewArrivalsCollection Boolean @default(true)
-  showOnSaleCollection      Boolean @default(true)
-  showCustomCollections     Boolean @default(true)
-  showGallery               Boolean @default(true)
-  showReviews               Boolean @default(true)
-
-  // Seller-controlled store hours / status visibility
-  useStoreHours   Boolean @default(false)
-  showStoreHours  Boolean @default(false)
-  showStoreStatus Boolean @default(false)
-
-  // AUTO / OPEN / CLOSED
-  // AUTO follows the seller's saved business hours when useStoreHours is enabled.
-  storeOpenOverride String @default("AUTO")
-
-  // IANA timezone identifier (e.g. "America/New_York") that SellerStoreHour's
-  // local HH:MM values are interpreted in. Nullable at the database level
-  // (existing sellers may never have set one), but the settings UI requires
-  // it before store hours can be enabled/saved.
-  timezone String?
-
-  // Homepage boutique merchandising
-  homepageFeatured     Boolean @default(false)
-  homepageFeaturedRank Int?
-
   approvedApplication SellerApplication? @relation("ApprovedSellerApplication")
-  reviewImports      ReviewImport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -409,12 +359,6 @@ model SellerProduct {
   // Shopper favorites
   customerFavorites CustomerFavorite[]
 
-  // Seller storefront merchandising + HairGrab reviews
-  storeCollectionItems SellerStoreCollectionProduct[]
-  productReviews       ProductReview[]
-  reviewImportRows     ReviewImportRow[] @relation("ReviewImportRowProduct")
-  reviewImportMappings ReviewImportProductMapping[] @relation("ReviewImportMappingProduct")
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -423,306 +367,19 @@ model SellerProduct {
 }
 
 // ==========================================================
-// REVIEW IMPORTS
-// Seller-submitted external review migrations. Imported reviews
-// remain distinct from HairGrab-verified ProductReview records.
-// ==========================================================
-
-model ReviewImport {
-  id String @id @default(cuid())
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Restrict)
-
-  sourcePlatform String
-  sourceStoreDomain String?
-  originalFileName String
-  storageKey String?
-  fileSha256 String
-  fileSizeBytes Int
-  rowCount Int @default(0)
-
-  status String @default("DRAFT")
-  certificationAccepted Boolean @default(false)
-  certificationPolicyVersion String?
-  certifiedAt DateTime?
-  certifiedByPortalAccountId String?
-  submittedAt DateTime?
-  reviewedAt DateTime?
-  reviewedBy String?
-  reviewDecisionReason String?
-
-  validCount Int @default(0)
-  warningCount Int @default(0)
-  rejectedCount Int @default(0)
-  duplicateCount Int @default(0)
-  unmatchedCount Int @default(0)
-
-  rows ReviewImportRow[]
-  mappings ReviewImportProductMapping[]
-  events ReviewImportEvent[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([sellerId, status])
-  @@index([sourcePlatform, createdAt])
-  @@index([fileSha256])
-  @@unique([sellerId, fileSha256])
-}
-
-model ReviewImportRow {
-  id String @id @default(cuid())
-
-  importId String
-  import ReviewImport @relation(fields: [importId], references: [id], onDelete: Cascade)
-
-  rowNumber Int
-  sourceReviewId String?
-  sourceProductIdentifier String?
-  sourceProductTitle String?
-  sellerProductId String?
-  sellerProduct SellerProduct? @relation("ReviewImportRowProduct", fields: [sellerProductId], references: [id], onDelete: Restrict)
-
-  rating Float?
-  reviewTitle String?
-  reviewBody String?
-  reviewerDisplayName String?
-  reviewerEmail String?
-  reviewDate DateTime?
-  mediaUrls Json?
-  sourceVerified Boolean?
-  disclosureStatus String @default("IMPORTED_NOT_HAIRGRAB_VERIFIED")
-
-  validationStatus String @default("PENDING")
-  rejectionReason String?
-  warningReason String?
-  dedupeFingerprint String
-  sourceRowHash String?
-  approvedAt DateTime?
-  exportedAt DateTime?
-  externalImportReference String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([importId, rowNumber])
-  @@index([sellerProductId, validationStatus])
-  @@index([dedupeFingerprint])
-  @@index([sourceReviewId])
-}
-
-model ReviewImportProductMapping {
-  id String @id @default(cuid())
-
-  importId String
-  import ReviewImport @relation(fields: [importId], references: [id], onDelete: Cascade)
-
-  sourceProductIdentifier String
-  sourceProductTitle String?
-  sellerProductId String?
-  sellerProduct SellerProduct? @relation("ReviewImportMappingProduct", fields: [sellerProductId], references: [id], onDelete: Restrict)
-  matchMethod String @default("MANUAL")
-  confirmedBy String?
-  confirmedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([importId, sourceProductIdentifier])
-  @@index([sellerProductId])
-}
-
-model ReviewImportEvent {
-  id String @id @default(cuid())
-
-  importId String
-  import ReviewImport @relation(fields: [importId], references: [id], onDelete: Cascade)
-
-  fromStatus String?
-  toStatus String
-  actorType String
-  actorId String?
-  reason String?
-  metadata Json?
-  createdAt DateTime @default(now())
-
-  @@index([importId, createdAt])
-  @@index([toStatus])
-}
-
-// ==========================================================
-// SELLER STOREFRONT COLLECTIONS
-// Custom seller-created collections inside HairGrab.
-// Automatic collections (All Products, New Arrivals, On Sale,
-// Featured) are controlled by Seller visibility fields above.
-// ==========================================================
-
-model SellerStoreCollection {
-  id String @id @default(cuid())
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  name     String
-  slug     String
-  imageUrl String?
-
-  isVisible Boolean @default(true)
-  rank      Int     @default(1)
-
-  products SellerStoreCollectionProduct[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([sellerId, slug])
-  @@index([sellerId, rank])
-  @@index([sellerId, isVisible])
-}
-
-model SellerStoreCollectionProduct {
-  id String @id @default(cuid())
-
-  collectionId String
-  collection   SellerStoreCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-
-  sellerProductId String
-  sellerProduct   SellerProduct @relation(fields: [sellerProductId], references: [id], onDelete: Cascade)
-
-  rank Int @default(1)
-
-  createdAt DateTime @default(now())
-
-  @@unique([collectionId, sellerProductId])
-  @@index([collectionId, rank])
-  @@index([sellerProductId])
-}
-
-// ==========================================================
-// SELLER STOREFRONT MEDIA
-// Seller-controlled gallery images and brand/product video.
-// Media is hosted by HairGrab's Shopify files system.
-// ==========================================================
-
-model SellerStoreMedia {
-  id String @id @default(cuid())
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  // IMAGE / VIDEO
-  mediaType String
-
-  url       String
-  altText   String?
-  isVisible Boolean @default(true)
-  rank      Int     @default(1)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([sellerId, rank])
-  @@index([sellerId, isVisible])
-}
-
-// ==========================================================
-// SELLER STORE HOURS
-// Used for local pickup/delivery/same-day availability.
-// dayOfWeek: 0 Sunday through 6 Saturday.
-// ==========================================================
-
-model SellerStoreHour {
-  id String @id @default(cuid())
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  dayOfWeek Int
-  isClosed  Boolean @default(false)
-
-  // Stored as local HH:MM strings to avoid timezone shifting.
-  openTime  String?
-  closeTime String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([sellerId, dayOfWeek])
-  @@index([sellerId])
-}
-
-// ==========================================================
-// HAIRGRAB SELLER REVIEWS
-// Marketplace-controlled. Sellers cannot create/edit ratings.
-// ==========================================================
-
-model SellerReview {
-  id String @id @default(cuid())
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  shopifyCustomerId String?
-  shopifyOrderId    String?
-
-  rating Int
-  title  String?
-  body   String?
-
-  verifiedPurchase Boolean @default(false)
-  status           String  @default("PUBLISHED")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([sellerId, status])
-  @@index([shopifyCustomerId])
-  @@index([shopifyOrderId])
-}
-
-// ==========================================================
-// HAIRGRAB PRODUCT REVIEWS
-// Marketplace-controlled. Sellers cannot create/edit ratings.
-// ==========================================================
-
-model ProductReview {
-  id String @id @default(cuid())
-
-  sellerProductId String
-  sellerProduct   SellerProduct @relation(fields: [sellerProductId], references: [id], onDelete: Cascade)
-
-  shopifyCustomerId String?
-  shopifyOrderId    String?
-
-  rating Int
-  title  String?
-  body   String?
-
-  verifiedPurchase Boolean @default(false)
-  status           String  @default("PUBLISHED")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([sellerProductId, status])
-  @@index([shopifyCustomerId])
-  @@index([shopifyOrderId])
-}
-
-// ==========================================================
 // CUSTOMER FAVORITES
-// Persistent shopper favorites stored by Shopify customer.
+// Shopify customer favorites saved against HairGrab products.
+// Customer identity comes from Shopify's signed app proxy request.
 // ==========================================================
 
 model CustomerFavorite {
-  id String @id
+  id String @id @default(cuid())
 
   shop              String
   shopifyCustomerId String
 
   sellerProductId String
-  sellerProduct   SellerProduct @relation(fields: [sellerProductId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sellerProduct   SellerProduct @relation(fields: [sellerProductId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 
@@ -802,9 +459,6 @@ model SellerLedgerEntry {
 
   grossAmountCents      Int @default(0)
   commissionAmountCents Int @default(0)
-  processingFeeCents    Int @default(0)
-  processingFeeStatus   String @default("PENDING")
-  processingFeeFinalizedAt DateTime?
   sellerEarningsCents   Int @default(0)
   refundAmountCents     Int @default(0)
   payoutAmountCents     Int @default(0)
@@ -1005,7 +659,6 @@ model SellerOrderFulfillment {
   courierDeliveryId String?
   courierStatus     String?
   courierFeeCents   Int?
-  courierDispatchData Json?
 
   readyForPickupAt DateTime?
   shippedAt        DateTime?
@@ -1133,67 +786,4 @@ model Announcement {
 //
 // For SELECTED announcements these rows also identify the
 // sellers who should receive the announcement.
-// ==========================================================
-
-model AnnouncementRead {
-  id String @id @default(cuid())
-
-  announcementId String
-  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  deliveredAt DateTime  @default(now())
-  readAt      DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@unique([announcementId, sellerId])
-  @@index([announcementId])
-  @@index([sellerId])
-  @@index([readAt])
-}
-
-// ==========================================================
-// SELLER NOTIFICATION
-//
-// System-generated alerts shown in the seller portal.
-// Examples:
-// NEW_ORDER
-// PRODUCT_APPROVED
-// PRODUCT_REJECTED
-// PAYOUT_READY
-// PAYOUT_SENT
-// NEW_MESSAGE
-// ANNOUNCEMENT
-// SHIPPING
-// ACCOUNT
-// ==========================================================
-
-model SellerNotification {
-  id String @id @default(cuid())
-
-  sellerId String
-  seller   Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  type String
-
-  title   String
-  message String
-
-  // Optional seller portal destination
-  linkUrl String?
-
-  // Optional unique key prevents duplicate webhook notifications.
-  dedupeKey String? @unique
-
-  readAt DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([sellerId])
-  @@index([type])
-  @@index([readAt])
-  @@index([createdAt])
-}
+// ========================================================
