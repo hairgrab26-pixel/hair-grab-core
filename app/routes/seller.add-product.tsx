@@ -16,7 +16,8 @@ import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
 import { extensionTypeFromOptions, EXTENSION_TYPE_METAFIELD, productTypeToCategoryLabel } from "../product-categories";
 import ProductBuilder from "../components/ProductBuilder";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices } from "../components/ProductBuilder";
-import { normalizeShipsWithin, productAttributeTags } from "../product-attribute-tags";
+import { sellerProductAttributeTags } from "../seller-product-attributes";
+import { normalizeDensity, normalizeShipsWithin } from "../product-attribute-tags";
 
 // ==========================================================
 // TYPES
@@ -50,6 +51,7 @@ type ProductPayload = {
   laceSize: string;
   laceType: string;
   capSize: string;
+  capType: string;
   bundleWeight: string;
   pieceCount: string;
 
@@ -498,41 +500,39 @@ function addExistingMetafield({
   if (typeof value === "string" && !value.trim()) return;
   if (Array.isArray(value) && value.length === 0) return;
 
-  const definition = findMetafieldDefinition(definitions, names);
-
-  if (!definition) {
-    // Never fall back to Shopify-standard metafields. Those are often
-    // category-constrained and would recreate the owner-subtype error.
-    if (
-      fallback &&
-      fallback.namespace !== "shopify"
-    ) {
-      if (typeof value === "boolean") {
-        output.push({ ...fallback, value: value ? "true" : "false" });
-      } else if (typeof value === "string" && value.trim()) {
-        output.push({ ...fallback, value: value.trim() });
-      }
+  const seen = new Set<string>();
+  let wrote = false;
+  for (const name of names) {
+    const definition = findMetafieldDefinition(definitions, [name]);
+    if (!definition) continue;
+    const identity = `${definition.namespace}:${definition.key}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    const preparedValue = prepareMetafieldValue(definition, value);
+    if (preparedValue === null) {
+      console.warn(
+        `[HairGrab Core] Skipping metafield "${definition.name}" because "${String(
+          value
+        )}" is not one of its allowed Shopify choices.`
+      );
+      continue;
     }
-    return;
+    output.push({
+      namespace: definition.namespace,
+      key: definition.key,
+      type: definition.type.name,
+      value: preparedValue,
+    });
+    wrote = true;
   }
 
-  const preparedValue = prepareMetafieldValue(definition, value);
-
-  if (preparedValue === null) {
-    console.warn(
-      `[HairGrab Core] Skipping metafield "${definition.name}" because "${String(
-        value
-      )}" is not one of its allowed Shopify choices.`
-    );
-    return;
+  if (!wrote && fallback && fallback.namespace !== "shopify") {
+    if (typeof value === "boolean") {
+      output.push({ ...fallback, value: value ? "true" : "false" });
+    } else if (typeof value === "string" && value.trim()) {
+      output.push({ ...fallback, value: value.trim() });
+    }
   }
-
-  output.push({
-    namespace: definition.namespace,
-    key: definition.key,
-    type: definition.type.name,
-    value: preparedValue,
-  });
 }
 
 function formatErrors(
@@ -804,15 +804,22 @@ function collectProductMetafields(
   addExistingMetafield({
     definitions,
     output: metafields,
-    names: ["Cap Type", "Cap Size"],
+    names: ["Cap Size"],
     value: payload.capSize,
     fallback: { namespace: "custom", key: "cap_size", type: "single_line_text_field" },
   });
   addExistingMetafield({
     definitions,
     output: metafields,
+    names: ["Cap Type"],
+    value: payload.capType || payload.capSize,
+    fallback: { namespace: "custom", key: "cap_type", type: "single_line_text_field" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
     names: ["Density"],
-    value: payload.density,
+    value: normalizeDensity(payload.density),
     fallback: { namespace: "custom", key: "density", type: "single_line_text_field" },
   });
   addExistingMetafield({
@@ -1065,9 +1072,10 @@ async function createSellerProductFromPayload({
             productTypeDisplay,
             ...selectedOptionTags,
             ...classificationTags,
-            ...productAttributeTags({
+            ...sellerProductAttributeTags({
               ...payload,
               hairCategory: productTypeDisplay,
+              lengths: uniqueLengths,
             }),
           ])],
           productOptions: productOptionsInput,

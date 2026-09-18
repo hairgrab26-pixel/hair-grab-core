@@ -4,7 +4,8 @@ import { displayProductCategory, normalizeProductCategory, PRODUCT_CATEGORY_LABE
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, variantFieldsFromShopify, variantFieldsToShopify, type ExistingProductSnapshot } from "../product-builder-model";
 import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights } from "../product-vocabulary";
 import { parseCsvText, normalizeCsvHeader, resolveCsvProductFields, resolveStructuredProductOption, inferProductDetailsFromTitle, STRUCTURED_COLUMN_ALIASES, type CsvFieldName } from "../csv-product-import";
-import { weftOptionValues } from "../product-attribute-tags";
+import { weftOptionValues, normalizeDensity } from "../product-attribute-tags";
+import { CAP_SIZE_VALUES, CAP_TYPE_VALUES, categoryMaterialLabel, categoryShowsAttribute } from "../product-attribute-schema";
 import type { action as addAction } from "../routes/seller.add-product";
 
 type ProductType =
@@ -56,6 +57,7 @@ type ProductPayload = {
   laceSize: string;
   laceType: string;
   capSize: string;
+  capType: string;
   bundleWeight: string;
   pieceCount: string;
 
@@ -895,6 +897,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     density?: string;
     laceType?: string;
     capSize?: string;
+    capType?: string;
     bundleWeight?: string;
     pieceCount?: string;
     excluded?: boolean;
@@ -1042,6 +1045,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
   const [
     capSize,
     setCapSize,
+  ] =
+    useState("");
+
+  const [
+    capType,
+    setCapType,
   ] =
     useState("");
 
@@ -1195,12 +1204,23 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     const initialInstallation = installationMethodChoices.filter((item) => edit.product.tags.includes(item.label)).map((item) => item.value);
     const initialLocType = locTypeChoices.find((item) => item.label === settings.locType)?.value || "";
     const initialDescription = edit.product.descriptionHtml.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]*>/g, "").trim();
+    const knownMaterial = materials.find((item) => item.toLowerCase() === String(settings.material || "").toLowerCase());
+    const knownTexture = textures.find((item) => item.toLowerCase() === String(settings.texture || "").toLowerCase());
+    const knownDensity = densities.find((item) => item.toLowerCase() === String(normalizeDensity(settings.density) || "").toLowerCase());
+    const knownLaceType = laceTypes.find((item) => item.toLowerCase() === String(settings.laceType || "").toLowerCase());
+    const knownLaceSize = laceSizes.find((item) => item.toLowerCase() === String(settings.laceSize || "").toLowerCase());
+    const capSizeChoices = [...CAP_SIZE_VALUES];
+    const knownCapSize = capSizeChoices.find((item) => item.toLowerCase() === String(settings.capSize || "").toLowerCase());
+    const knownCapType = CAP_TYPE_VALUES.find((item) => item.toLowerCase() === String(settings.capType || "").toLowerCase());
     initialEditFields.current = { title: edit.product.title.trim(), description: initialDescription, productType: type,
       selectedOptions: initialOptions, searchClassifications: initialClassifications,
       installationMethods: initialInstallation, locType: initialLocType,
       material: settings.material || "", colors: settings.colors?.length ? settings.colors : ["Natural / 1B"],
-      texture: settings.texture || "", density: settings.density || "", laceSize: settings.laceSize || "",
-      laceType: settings.laceType || "", capSize: settings.capSize || "",
+      texture: knownTexture || settings.texture || "", density: knownDensity || normalizeDensity(settings.density) || "",
+      laceSize: knownLaceSize || settings.laceSize || "",
+      laceType: knownLaceType || settings.laceType || "", capSize: knownCapSize || settings.capSize || "",
+      capType: knownCapType || settings.capType || "",
+      lengths: lengths,
       bundleWeight: settings.bundleWeight || "100g", pieceCount: settings.pieceCount || "",
       shippingMethod: settings.builderShippingMethod || settings.shippingMethod || "Free Shipping", flatRateShipping: settings.flatRateShipping || "",
       localPickupAvailable: settings.localPickupAvailable ?? false, localDeliveryAvailable: settings.localDeliveryAvailable ?? false,
@@ -1218,11 +1238,6 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setSearchClassifications(initialClassifications);
     setInstallationMethods(initialInstallation);
     setLocType(initialLocType);
-    const knownMaterial = materials.find((item) => item.toLowerCase() === String(settings.material || "").toLowerCase());
-    const knownTexture = textures.find((item) => item.toLowerCase() === String(settings.texture || "").toLowerCase());
-    const knownDensity = densities.find((item) => item.toLowerCase() === String(settings.density || "").toLowerCase());
-    const knownLaceType = laceTypes.find((item) => item.toLowerCase() === String(settings.laceType || "").toLowerCase());
-    const knownLaceSize = laceSizes.find((item) => item.toLowerCase() === String(settings.laceSize || "").toLowerCase());
     const hydratedColors = (Array.isArray(settings.colors) ? settings.colors : [])
       .map((value) => colors.find((item) => item.toLowerCase() === String(value).toLowerCase()) || String(value).trim())
       .filter(Boolean);
@@ -1232,10 +1247,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     if (hydratedColors[0]) setColor(colors.includes(hydratedColors[0]) ? hydratedColors[0] : "Other / Custom");
     if (hydratedColors[0] && !colors.includes(hydratedColors[0])) setCustomColor(hydratedColors[0]);
     setTexture(knownTexture || settings.texture || "");
-    setDensity(knownDensity || settings.density || "");
+    setDensity(knownDensity || normalizeDensity(settings.density) || "");
     setLaceSize(knownLaceSize || settings.laceSize || "");
     setLaceType(knownLaceType || settings.laceType || "");
-    setCapSize(settings.capSize || "");
+    setCapSize(knownCapSize || settings.capSize || "");
+    setCapType(knownCapType || settings.capType || "");
     setBundleWeight(settings.bundleWeight || "100g");
     setPieceCount(settings.pieceCount || "");
     setShippingMethod(settings.builderShippingMethod || settings.shippingMethod || "Free Shipping");
@@ -2599,6 +2615,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       laceSize: item.laceSize || "",
       laceType: item.laceType || "",
       capSize: item.capSize || "",
+      capType: "",
       bundleWeight: item.bundleWeight || "100g",
       pieceCount: item.pieceCount || "",
       shippingMethod: "Free Shipping",
@@ -2717,8 +2734,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       } catch (error) { window.alert(error instanceof Error ? error.message : "Invalid product edit"); return; }
       const fields = { title: title.trim(), description: description.trim(), productType,
         selectedOptions, searchClassifications, installationMethods, locType,
-        material: resolvedMaterial, colors: selectedColors, texture, density, laceSize, laceType, capSize,
-        bundleWeight, pieceCount,
+        material: resolvedMaterial, colors: selectedColors, texture, density, laceSize, laceType, capSize, capType,
+        bundleWeight, pieceCount, lengths: [...selectedLengths, ...customLengths],
         shippingMethod, flatRateShipping, localPickupAvailable, localDeliveryAvailable,
         sameDayDelivery, shipsWithin, returnPolicy, showOnMap };
       const changedFields = Object.keys(fields).filter((key) =>
@@ -2776,6 +2793,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
         laceType,
 
         capSize,
+
+        capType,
 
         bundleWeight,
 
@@ -4174,7 +4193,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                     labelStyle
                   }
                 >
-                  Material *
+                  {categoryMaterialLabel(productType)}{productType !== "HAIR_ESSENTIAL" ? " *" : ""}
                 </label>
 
                 <select
@@ -5032,135 +5051,64 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
             </div>
           </div>
 
-          {productType ===
-            "WIG" && (
-            <details
-              style={{
-                marginTop:
-                  "18px",
-              }}
-            >
-              <summary
-                style={{
-                  color:
-                    "#4B1678",
-
-                  fontWeight:
-                    "800",
-
-                  cursor:
-                    "pointer",
-                }}
-              >
-                Additional wig details — recommended
-              </summary>
-
-              <div
-                style={{
-                  marginTop:
-                    "9px",
-
-                  color:
-                    "#7d7480",
-
-                  fontSize:
-                    "10px",
-
-                  lineHeight:
-                    1.5,
-                }}
-              >
-                Fill in everything that applies to maximize search and filter visibility. Leave a field blank only when it truly does not apply to this wig.
-              </div>
-
-              <div
-                style={{
-                  ...gridTwo,
-                  marginTop:
-                    "14px",
-                }}
-              >
-                <SimpleSelect
-                  label="Density"
-                  value={
-                    density
-                  }
-                  values={
-                    densities
-                  }
-                  onChange={
-                    setDensity
-                  }
-                />
-
-                <SimpleSelect
-                  label="Lace Size"
-                  value={
-                    laceSize
-                  }
-                  values={
-                    laceSizes
-                  }
-                  onChange={
-                    setLaceSize
-                  }
-                />
-
-                <SimpleSelect
-                  label="Lace Type"
-                  value={
-                    laceType
-                  }
-                  values={
-                    laceTypes
-                  }
-                  onChange={
-                    setLaceType
-                  }
-                />
-
-                <SimpleSelect
-                  label="Cap Size"
-                  value={
-                    capSize
-                  }
-                  values={[
-                    "Small",
-                    "Medium",
-                    "Large",
-                    "Adjustable",
-                  ]}
-                  onChange={
-                    setCapSize
-                  }
-                />
-              </div>
-            </details>
-          )}
-
-          {productType ===
-            "BUNDLE" && (
+          {productType && (categoryShowsAttribute(productType, "density") ||
+            categoryShowsAttribute(productType, "laceSize") ||
+            categoryShowsAttribute(productType, "capSize") ||
+            categoryShowsAttribute(productType, "weight")) && (
             <div
               style={{
-                marginTop:
-                  "18px",
-
-                maxWidth:
-                  "300px",
+                ...gridTwo,
+                marginTop: "18px",
               }}
             >
-              <SimpleSelect
-                label="Bundle Weight"
-                value={
-                  bundleWeight
-                }
-                values={
-                  bundleWeights
-                }
-                onChange={
-                  setBundleWeight
-                }
-              />
+              {categoryShowsAttribute(productType, "density") && (
+                <SimpleSelect
+                  label="Density"
+                  value={density}
+                  values={densities}
+                  onChange={setDensity}
+                />
+              )}
+              {categoryShowsAttribute(productType, "laceSize") && (
+                <SimpleSelect
+                  label="Lace Size"
+                  value={laceSize}
+                  values={laceSizes}
+                  onChange={setLaceSize}
+                />
+              )}
+              {categoryShowsAttribute(productType, "laceType") && (
+                <SimpleSelect
+                  label="Lace Type"
+                  value={laceType}
+                  values={laceTypes}
+                  onChange={setLaceType}
+                />
+              )}
+              {categoryShowsAttribute(productType, "capSize") && (
+                <SimpleSelect
+                  label="Cap Size"
+                  value={capSize}
+                  values={[...CAP_SIZE_VALUES]}
+                  onChange={setCapSize}
+                />
+              )}
+              {categoryShowsAttribute(productType, "capType") && (
+                <SimpleSelect
+                  label="Cap Type"
+                  value={capType}
+                  values={[...CAP_TYPE_VALUES]}
+                  onChange={setCapType}
+                />
+              )}
+              {categoryShowsAttribute(productType, "weight") && (
+                <SimpleSelect
+                  label={productType === "BUNDLE" ? "Bundle Weight" : "Weight"}
+                  value={bundleWeight}
+                  values={bundleWeights}
+                  onChange={setBundleWeight}
+                />
+              )}
             </div>
           )}
 
@@ -6988,6 +6936,12 @@ function SimpleSelect({
           Select
         </option>
 
+        {value && !values.includes(value) ? (
+          <option key={value} value={value}>
+            {value}
+          </option>
+        ) : null}
+
         {values.map(
           (
             item,
@@ -6996,6 +6950,7 @@ function SimpleSelect({
               key={
                 item
               }
+              value={item}
             >
               {item}
             </option>
