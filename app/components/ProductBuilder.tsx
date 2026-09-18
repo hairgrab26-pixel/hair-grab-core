@@ -2,7 +2,7 @@ import { useActionData, useFetcher } from "react-router";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type Ref } from "react";
 import { displayProductCategory, normalizeProductCategory, PRODUCT_CATEGORY_LABELS } from "../product-categories";
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, variantFieldsFromShopify, variantFieldsToShopify, type ExistingProductSnapshot } from "../product-builder-model";
-import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights, hairOrigins, weftTypes } from "../product-vocabulary";
+import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights, hairOrigins, weftTypes, normalizeLaceSize, normalizeLaceType } from "../product-vocabulary";
 import { parseCsvText, normalizeCsvHeader, resolveCsvProductFields, resolveStructuredProductOption, inferProductDetailsFromTitle, STRUCTURED_COLUMN_ALIASES, type CsvFieldName } from "../csv-product-import";
 import { weftOptionValues, normalizeDensity } from "../product-attribute-tags";
 import { CAP_SIZE_VALUES, CAP_TYPE_VALUES, categoryMaterialLabel, categoryShowsAttribute } from "../product-attribute-schema";
@@ -1242,8 +1242,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     const knownMaterial = materials.find((item) => item.toLowerCase() === String(settings.material || "").toLowerCase());
     const knownTexture = textures.find((item) => item.toLowerCase() === String(settings.texture || "").toLowerCase());
     const knownDensity = densities.find((item) => item.toLowerCase() === String(normalizeDensity(settings.density) || "").toLowerCase());
-    const knownLaceType = laceTypes.find((item) => item.toLowerCase() === String(settings.laceType || "").toLowerCase());
-    const knownLaceSize = laceSizes.find((item) => item.toLowerCase() === String(settings.laceSize || "").toLowerCase());
+    const knownLaceType = laceTypes.find((item) => item.toLowerCase() === String(normalizeLaceType(settings.laceType) || "").toLowerCase());
+    const knownLaceSize = laceSizes.find((item) => item.toLowerCase() === String(normalizeLaceSize(settings.laceSize) || "").toLowerCase());
     const capSizeChoices = [...CAP_SIZE_VALUES];
     const knownCapSize = capSizeChoices.find((item) => item.toLowerCase() === String(settings.capSize || "").toLowerCase());
     const knownCapType = CAP_TYPE_VALUES.find((item) => item.toLowerCase() === String(settings.capType || "").toLowerCase());
@@ -1254,8 +1254,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       installationMethods: initialInstallation, locType: initialLocType,
       material: settings.material || "", colors: settings.colors?.length ? settings.colors : ["Natural / 1B"],
       texture: knownTexture || settings.texture || "", density: knownDensity || normalizeDensity(settings.density) || "",
-      laceSize: knownLaceSize || settings.laceSize || "",
-      laceType: knownLaceType || settings.laceType || "", capSize: knownCapSize || settings.capSize || "",
+      laceSize: knownLaceSize || normalizeLaceSize(settings.laceSize) || "",
+      laceType: knownLaceType || normalizeLaceType(settings.laceType) || "", capSize: knownCapSize || settings.capSize || "",
       capType: knownCapType || settings.capType || "",
       origin: knownOrigin || settings.origin || "",
       weftType: knownWeftType || settings.weftType || settings.weft || "",
@@ -1290,8 +1290,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     if (hydratedColors[0] && !colors.includes(hydratedColors[0])) setCustomColor(hydratedColors[0]);
     setTexture(knownTexture || settings.texture || "");
     setDensity(knownDensity || normalizeDensity(settings.density) || "");
-    setLaceSize(knownLaceSize || settings.laceSize || "");
-    setLaceType(knownLaceType || settings.laceType || "");
+    setLaceSize(knownLaceSize || normalizeLaceSize(settings.laceSize) || "");
+    setLaceType(knownLaceType || normalizeLaceType(settings.laceType) || "");
     setCapSize(knownCapSize || settings.capSize || "");
     setCapType(knownCapType || settings.capType || "");
     setOrigin(knownOrigin || settings.origin || "");
@@ -5149,6 +5149,9 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
 
           {productType && (categoryShowsAttribute(productType, "density") ||
             categoryShowsAttribute(productType, "laceSize") ||
+            categoryShowsAttribute(productType, "laceType") ||
+            productType === "WIG" ||
+            productType === "CLOSURE_FRONTAL" ||
             categoryShowsAttribute(productType, "capSize") ||
             categoryShowsAttribute(productType, "weight") ||
             categoryShowsAttribute(productType, "origin") ||
@@ -5167,7 +5170,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                   onChange={setDensity}
                 />
               )}
-              {categoryShowsAttribute(productType, "laceSize") && (
+              {(productType === "WIG" || productType === "CLOSURE_FRONTAL" || categoryShowsAttribute(productType, "laceSize")) && (
                 <SimpleSelect
                   label="Lace Size"
                   value={laceSize}
@@ -5175,7 +5178,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                   onChange={setLaceSize}
                 />
               )}
-              {categoryShowsAttribute(productType, "laceType") && (
+              {(productType === "WIG" || productType === "CLOSURE_FRONTAL" || categoryShowsAttribute(productType, "laceType")) && (
                 <SimpleSelect
                   label="Lace Type"
                   value={laceType}

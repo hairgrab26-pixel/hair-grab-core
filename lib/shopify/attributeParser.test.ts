@@ -51,3 +51,23 @@ test("reads Hair Type and City tags when metafields are missing", () => {
   assert.equal(parsed.weftType, "No Weft");
   assert.equal(parsed.shipsWithin, "48 Hours");
 });
+
+test("parses Origin plus Lace Size and Lace Type metafields and tags", () => {
+  const fromMetafields = parseAdminProductAttributes({
+    metafields: [
+      { key: "origin", value: "Eurasian" },
+      { key: "lace_size", value: "13x4" },
+      { key: "lace_type", value: "HD Lace" },
+    ],
+  });
+  assert.equal(fromMetafields.origin, "Eurasian");
+  assert.equal(fromMetafields.laceSize, "13x4");
+  assert.equal(fromMetafields.laceType, "HD Lace");
+
+  const fromTags = parseAdminProductAttributes({
+    tags: ["Origin: Russian", "Lace Size: 13x6", "Lace Type: Swiss Lace"],
+  });
+  assert.equal(fromTags.origin, "Russian");
+  assert.equal(fromTags.laceSize, "13x6");
+  assert.equal(fromTags.laceType, "Swiss Lace");
+});

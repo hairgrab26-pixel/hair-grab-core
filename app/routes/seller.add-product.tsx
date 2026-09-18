@@ -542,6 +542,17 @@ function addExistingMetafield({
   }
 }
 
+function ensureCustomMetafield(
+  output: Array<{ namespace: string; key: string; type: string; value: string }>,
+  key: string,
+  value: string | null | undefined,
+) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return;
+  if (output.some((item) => item.namespace === "custom" && item.key === key && String(item.value || "").trim())) return;
+  output.push({ namespace: "custom", key, type: "single_line_text_field", value: trimmed });
+}
+
 function formatErrors(
   errors: Array<{ field?: string[]; message?: string }> | undefined
 ) {
@@ -828,6 +839,7 @@ function collectProductMetafields(
     value: payload.origin,
     fallback: { namespace: "custom", key: "origin", type: "single_line_text_field" },
   });
+  ensureCustomMetafield(metafields, "origin", payload.origin);
   addExistingMetafield({
     definitions,
     output: metafields,
@@ -863,6 +875,7 @@ function collectProductMetafields(
     value: payload.laceSize,
     fallback: { namespace: "custom", key: "lace_size", type: "single_line_text_field" },
   });
+  ensureCustomMetafield(metafields, "lace_size", payload.laceSize);
   addExistingMetafield({
     definitions,
     output: metafields,
@@ -870,6 +883,7 @@ function collectProductMetafields(
     value: payload.laceType,
     fallback: { namespace: "custom", key: "lace_type", type: "single_line_text_field" },
   });
+  ensureCustomMetafield(metafields, "lace_type", payload.laceType);
   addExistingMetafield({
     definitions,
     output: metafields,
