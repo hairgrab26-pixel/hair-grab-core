@@ -57,17 +57,17 @@ test("parses Origin plus Lace Size and Lace Type metafields and tags", () => {
     metafields: [
       { key: "origin", value: "Eurasian" },
       { key: "lace_size", value: "13x4" },
-      { key: "lace_type", value: "HD Lace" },
+      { key: "lace_type", value: '["HD Lace","Glueless"]' },
     ],
   });
   assert.equal(fromMetafields.origin, "Eurasian");
   assert.equal(fromMetafields.laceSize, "13x4");
-  assert.equal(fromMetafields.laceType, "HD Lace");
+  assert.deepEqual(fromMetafields.laceType, ["HD Lace", "Glueless"]);
 
   const fromTags = parseAdminProductAttributes({
-    tags: ["Origin: Russian", "Lace Size: 13x6", "Lace Type: Swiss Lace"],
+    tags: ["Origin: Russian", "Lace Size: 13x6", "Lace Type: Swiss Lace", "Lace Type: Glueless"],
   });
   assert.equal(fromTags.origin, "Russian");
   assert.equal(fromTags.laceSize, "13x6");
-  assert.equal(fromTags.laceType, "Swiss Lace");
+  assert.deepEqual(fromTags.laceType, ["Swiss Lace", "Glueless"]);
 });

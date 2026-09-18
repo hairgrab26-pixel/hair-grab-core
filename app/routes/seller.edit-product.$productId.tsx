@@ -271,35 +271,29 @@ function prepareMetafieldValue(
   definition:
     ShopifyMetafieldDefinition,
   value:
-    string | boolean,
+    string | boolean | string[],
 ) {
   const choices =
     getDefinitionChoices(
       definition,
     );
+  const type = definition.type.name;
+  const rawValues = Array.isArray(value)
+    ? value.map(String)
+    : [typeof value === "boolean" ? (value ? "true" : "false") : String(value)];
+  const resolvedValues = rawValues
+    .map((item) => resolveChoiceValue(item, choices))
+    .filter((item): item is string => Boolean(item));
 
-  const raw =
-    typeof value === "boolean"
-      ? value
-        ? "true"
-        : "false"
-      : String(value);
-
-  const resolved =
-    resolveChoiceValue(
-      raw,
-      choices,
-    );
-
-  if (
-    choices.length > 0 &&
-    !resolved
-  ) {
+  if (choices.length > 0 && resolvedValues.length === 0) {
     return null;
   }
 
-  if (definition.type.name === "boolean") return String(Boolean(value));
-  return serializeMetafieldValue(definition.type.name, resolved ?? raw);
+  if (type === "boolean") return String(Boolean(value));
+  if (type.startsWith("list.")) {
+    return JSON.stringify(resolvedValues.length ? resolvedValues : rawValues);
+  }
+  return serializeMetafieldValue(type, resolvedValues[0] ?? rawValues[0]);
 }
 
 function addExistingMetafield({
@@ -320,6 +314,7 @@ function addExistingMetafield({
 
   value:
     string |
+    string[] |
     boolean |
     null |
     undefined;
@@ -335,7 +330,8 @@ function addExistingMetafield({
     (
       typeof value === "string" &&
       !value.trim()
-    )
+    ) ||
+    (Array.isArray(value) && value.length === 0)
   ) {
     return;
   }
@@ -362,10 +358,32 @@ function addExistingMetafield({
   if (!wrote && fallback && fallback.namespace !== "shopify") {
     if (typeof value === "boolean") {
       output.push({ ...fallback, value: value ? "true" : "false" });
+    } else if (Array.isArray(value) && value.length) {
+      output.push({
+        ...fallback,
+        type: fallback.type.startsWith("list.") ? fallback.type : "list.single_line_text_field",
+        value: JSON.stringify(value.map((item) => String(item).trim()).filter(Boolean)),
+      });
     } else if (typeof value === "string" && value.trim()) {
       output.push({ ...fallback, value: value.trim() });
     }
   }
+}
+
+function ensureCustomListMetafield(
+  output: ProductMetafield[],
+  key: string,
+  values: string | string[] | null | undefined,
+) {
+  const items = [...new Set((Array.isArray(values) ? values : String(values || "").split(",")).map((item) => String(item).trim()).filter(Boolean))];
+  if (!items.length) return;
+  const existing = output.find((item) => item.namespace === "custom" && item.key === key);
+  if (existing) {
+    existing.type = "list.single_line_text_field";
+    existing.value = JSON.stringify(items);
+    return;
+  }
+  output.push({ namespace: "custom", key, type: "list.single_line_text_field", value: JSON.stringify(items) });
 }
 
 function ensureCustomMetafield(
@@ -1239,7 +1257,6 @@ export const action = async ({
         { key: "origin", names: ["Origin"], fallback: { namespace: "custom", key: "origin", type: "single_line_text_field" }, always: true },
         { key: "weftType", names: ["Weft Type"], fallback: { namespace: "custom", key: "weft_type", type: "single_line_text_field" }, always: true },
         { key: "laceSize", names: ["Lace Size"], fallback: { namespace: "custom", key: "lace_size", type: "single_line_text_field" }, always: true },
-        { key: "laceType", names: ["Lace Type"], fallback: { namespace: "custom", key: "lace_type", type: "single_line_text_field" }, always: true },
         { key: "capSize", names: ["Cap Size"], fallback: { namespace: "custom", key: "cap_size", type: "single_line_text_field" }, always: true },
         { key: "capType", names: ["Cap Type"], fallback: { namespace: "custom", key: "cap_type", type: "single_line_text_field" }, always: true },
         { key: "shippingMethod", names: ["Shipping Method / Shipping Options", "Shipping Method / Shipping", "Shipping Method", "Shipping Methods"], fallback: { namespace: "custom", key: "shipping_method", type: "single_line_text_field" }, always: true },
@@ -1274,7 +1291,23 @@ export const action = async ({
       }
       ensureCustomMetafield(metafields, "origin", String(fields.origin || ""));
       ensureCustomMetafield(metafields, "lace_size", String(fields.laceSize || ""));
-      ensureCustomMetafield(metafields, "lace_type", String(fields.laceType || ""));
+      const laceTypeValues = Array.isArray(fields.laceType)
+        ? fields.laceType
+        : String(fields.laceType || "").split(",").map((item: string) => item.trim()).filter(Boolean);
+      if (laceTypeValues.length) {
+        addExistingMetafield({
+          definitions,
+          output: metafields,
+          names: ["Lace Type"],
+          value: laceTypeValues,
+          fallback: { namespace: "custom", key: "lace_type", type: "list.single_line_text_field" },
+        });
+        ensureCustomListMetafield(metafields, "lace_type", laceTypeValues);
+      } else {
+        const laceTypeDefinition = findMetafieldDefinition(definitions, ["Lace Type"]);
+        if (laceTypeDefinition) removeIfPresent(laceTypeDefinition.namespace, laceTypeDefinition.key);
+        removeIfPresent("custom", "lace_type");
+      }
       addExistingMetafield({
         definitions,
         output: metafields,

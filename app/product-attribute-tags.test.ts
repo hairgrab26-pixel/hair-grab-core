@@ -104,6 +104,7 @@ test("hydrates edit-form attributes from metafield fallbacks and tags", () => {
   assert.equal(hydrated.texture, "Body Wave");
   assert.equal(hydrated.density, "180%");
   assert.equal(hydrated.laceType, "HD Lace");
+  assert.deepEqual(hydrated.laceTypes, ["HD Lace"]);
   assert.equal(hydrated.laceSize, "13x4");
   assert.equal(hydrated.weft, "No Weft");
   assert.deepEqual(hydrated.colors, ["613 - Blonde"]);
@@ -258,9 +259,14 @@ test("writes Origin and lace tags from seller form values", () => {
   const tags = productAttributeTags({
     origin: "Eurasian",
     laceSize: "13x4",
-    laceType: "HD Lace",
+    laceType: ["HD Lace", "Glueless"],
+    capType: "Glueless",
   });
   assert.ok(tags.includes("Origin: Eurasian"));
   assert.ok(tags.includes("Lace Size: 13x4"));
   assert.ok(tags.includes("Lace Type: HD Lace"));
+  assert.ok(tags.includes("Lace Type: Glueless"));
+  assert.ok(tags.includes("Cap Type: Glueless"));
+  assert.ok(!tags.includes("Style: Glueless"));
+  assert.ok(!tags.includes("Type: Glueless"));
 });

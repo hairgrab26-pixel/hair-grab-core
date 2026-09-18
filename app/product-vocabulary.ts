@@ -104,6 +104,7 @@ export const laceTypes = [
   "Transparent Lace",
   "Swiss Lace",
   "Regular Lace",
+  "Glueless",
 ];
 
 // New in Phase 2A: controlled choices for bundleWeight, whose

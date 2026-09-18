@@ -146,7 +146,8 @@ const METAFIELD_FALLBACKS: Record<string, Array<[string, string]>> = {
 };
 
 export type ProductAttributeTagFields = {
-  laceType?: string | null;
+  laceType?: string | string[] | null;
+  laceTypes?: string[] | null;
   laceSize?: string | null;
   capSize?: string | null;
   capType?: string | null;
@@ -179,6 +180,7 @@ export type HydratedSellerAttributes = {
   texture: string;
   density: string;
   laceType: string;
+  laceTypes: string[];
   laceSize: string;
   capSize: string;
   capType: string;
@@ -274,6 +276,11 @@ export function parseListMetafield(raw: string | null | undefined) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
+export function parseLaceTypeValues(value: string | string[] | null | undefined) {
+  const items = Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : parseListMetafield(value);
+  return [...new Set(items.map((item) => normalizeLaceType(item)).filter(Boolean))];
+}
+
 function emptyHydratedAttributes(): HydratedSellerAttributes {
   return {
     material: "",
@@ -281,6 +288,7 @@ function emptyHydratedAttributes(): HydratedSellerAttributes {
     texture: "",
     density: "",
     laceType: "",
+    laceTypes: [],
     laceSize: "",
     capSize: "",
     capType: "",
@@ -323,14 +331,16 @@ export function attributesFromTags(tags: Iterable<string>) {
       result.material = value;
     } else if (label === "texture") result.texture = value;
     else if (label === "density") result.density = normalizeDensity(value);
+    else if (label === "lace size") result.laceSize = normalizeLaceSize(value);
     else if (label === "lace type" || label === "lace") {
-      if (isLaceSizeChoice(value)) {
+      const laceType = normalizeLaceType(value);
+      if (isLaceSizeChoice(value) && !["HD Lace", "Transparent Lace", "Swiss Lace", "Regular Lace", "Glueless"].includes(laceType)) {
         result.laceSize = result.laceSize || normalizeLaceSize(value);
-      } else {
-        result.laceType = normalizeLaceType(value);
+      } else if (laceType) {
+        if (!result.laceTypes.includes(laceType)) result.laceTypes.push(laceType);
+        result.laceType = result.laceType || laceType;
       }
-    }     else if (label === "lace size") result.laceSize = normalizeLaceSize(value);
-    else if (label === "cap size") result.capSize = value;
+    } else if (label === "cap size") result.capSize = value;
     else if (label === "cap type" || label === "cap") assignCapValue(result, value);
     else if (label === "weft" || label === "weft type") {
       result.weft = value;
@@ -396,7 +406,7 @@ function extensionTypeAliases(label: string) {
 
 export function productAttributeTags(fields: ProductAttributeTagFields) {
   const tags: string[] = [];
-  const laceType = completedValue(fields.laceType);
+  const laceTypeValues = parseLaceTypeValues(fields.laceTypes || fields.laceType);
   const laceSize = completedValue(fields.laceSize);
   const capSize = completedValue(fields.capSize);
   const capType = completedValue(fields.capType);
@@ -423,7 +433,7 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
   }
   if (texture) tags.push(formatAttributeTag("Texture", texture));
   if (density) tags.push(formatAttributeTag("Density", density));
-  if (laceType) tags.push(formatAttributeTag("Lace Type", laceType));
+  for (const laceType of laceTypeValues) tags.push(formatAttributeTag("Lace Type", laceType));
   if (laceSize) tags.push(formatAttributeTag("Lace Size", laceSize));
   if (capSize) {
     tags.push(formatAttributeTag("Cap Size", capSize));
@@ -503,7 +513,7 @@ export function hydrateSellerAttributes({
     colors?: string | string[];
     texture?: string;
     density?: string;
-    laceType?: string;
+    laceType?: string | string[];
     laceSize?: string;
     capSize?: string;
     capType?: string;
@@ -552,32 +562,35 @@ export function hydrateSellerAttributes({
     .filter(Boolean);
 
   const namedLengths = Array.isArray(named.lengths) ? named.lengths : parseListMetafield(named.lengths);
+  const namedLaceTypes = parseLaceTypeValues(named.laceType);
   const namedLaceSize = unwrapMetafieldScalar(named.laceSize);
-  const namedLaceType = unwrapMetafieldScalar(named.laceType);
   const laceValues = {
     laceSize: "",
-    laceType: "",
+    laceTypes: [] as string[],
   };
-  const knownLaceTypes = ["HD Lace", "Transparent Lace", "Swiss Lace", "Regular Lace"];
+  const knownLaceTypes = ["HD Lace", "Transparent Lace", "Swiss Lace", "Regular Lace", "Glueless"];
   const placeLace = (value: string) => {
     const completed = completedValue(value);
     if (!completed) return;
     if (knownLaceTypes.some((item) => item.toLowerCase() === completed.toLowerCase())) {
-      laceValues.laceType = laceValues.laceType || normalizeLaceType(completed);
+      const laceType = normalizeLaceType(completed);
+      if (laceType && !laceValues.laceTypes.includes(laceType)) laceValues.laceTypes.push(laceType);
       return;
     }
     if (isLaceSizeChoice(completed)) {
       laceValues.laceSize = laceValues.laceSize || normalizeLaceSize(completed);
       return;
     }
-    laceValues.laceType = laceValues.laceType || normalizeLaceType(completed);
+    const laceType = normalizeLaceType(completed);
+    if (laceType && !laceValues.laceTypes.includes(laceType)) laceValues.laceTypes.push(laceType);
   };
+  for (const item of namedLaceTypes) placeLace(item);
   placeLace(namedLaceSize);
-  placeLace(namedLaceType);
   placeLace(metafieldFallback(metafields, "laceSize"));
-  placeLace(metafieldFallback(metafields, "laceType"));
+  for (const item of parseLaceTypeValues(metafieldFallback(metafields, "laceType"))) placeLace(item);
   placeLace(fromTags.laceSize);
-  placeLace(fromTags.laceType);
+  for (const item of fromTags.laceTypes) placeLace(item);
+  if (!laceValues.laceTypes.length && fromTags.laceType) placeLace(fromTags.laceType);
   const namedCapSize = unwrapMetafieldScalar(named.capSize);
   const namedCapType = unwrapMetafieldScalar(named.capType);
   const capSize =
@@ -604,7 +617,8 @@ export function hydrateSellerAttributes({
       normalizeDensity(named.density) ||
       normalizeDensity(metafieldFallback(metafields, "density")) ||
       fromTags.density,
-    laceType: laceValues.laceType,
+    laceType: laceValues.laceTypes.join(", "),
+    laceTypes: laceValues.laceTypes,
     laceSize: laceValues.laceSize,
     capSize,
     capType: isCapSizeValue(capType) ? "" : capType,

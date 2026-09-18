@@ -49,7 +49,7 @@ type ProductPayload = {
 
   density: string;
   laceSize: string;
-  laceType: string;
+  laceType: string[];
   capSize: string;
   capType: string;
   origin: string;
@@ -536,6 +536,12 @@ function addExistingMetafield({
   if (!wrote && fallback && fallback.namespace !== "shopify") {
     if (typeof value === "boolean") {
       output.push({ ...fallback, value: value ? "true" : "false" });
+    } else if (Array.isArray(value) && value.length) {
+      output.push({
+        ...fallback,
+        type: fallback.type.startsWith("list.") ? fallback.type : "list.single_line_text_field",
+        value: JSON.stringify(value.map((item) => String(item).trim()).filter(Boolean)),
+      });
     } else if (typeof value === "string" && value.trim()) {
       output.push({ ...fallback, value: value.trim() });
     }
@@ -551,6 +557,22 @@ function ensureCustomMetafield(
   if (!trimmed) return;
   if (output.some((item) => item.namespace === "custom" && item.key === key && String(item.value || "").trim())) return;
   output.push({ namespace: "custom", key, type: "single_line_text_field", value: trimmed });
+}
+
+function ensureCustomListMetafield(
+  output: Array<{ namespace: string; key: string; type: string; value: string }>,
+  key: string,
+  values: string | string[] | null | undefined,
+) {
+  const items = [...new Set((Array.isArray(values) ? values : String(values || "").split(",")).map((item) => String(item).trim()).filter(Boolean))];
+  if (!items.length) return;
+  const existing = output.find((item) => item.namespace === "custom" && item.key === key);
+  if (existing) {
+    existing.type = "list.single_line_text_field";
+    existing.value = JSON.stringify(items);
+    return;
+  }
+  output.push({ namespace: "custom", key, type: "list.single_line_text_field", value: JSON.stringify(items) });
 }
 
 function formatErrors(
@@ -880,10 +902,10 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Lace Type"],
-    value: payload.laceType,
-    fallback: { namespace: "custom", key: "lace_type", type: "single_line_text_field" },
+    value: Array.isArray(payload.laceType) ? payload.laceType : String(payload.laceType || "").split(",").map((item) => item.trim()).filter(Boolean),
+    fallback: { namespace: "custom", key: "lace_type", type: "list.single_line_text_field" },
   });
-  ensureCustomMetafield(metafields, "lace_type", payload.laceType);
+  ensureCustomListMetafield(metafields, "lace_type", payload.laceType);
   addExistingMetafield({
     definitions,
     output: metafields,

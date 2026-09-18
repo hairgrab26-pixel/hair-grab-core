@@ -11,6 +11,7 @@ query HairGrabDiscoveryProducts($ids: [ID!]!) {
       featuredImage { url altText }
       metafields(first: 50, namespace: "custom") { nodes { key value } }
       hairgrabMetafields: metafields(first: 50, namespace: "hairgrab") { nodes { key value } }
+      tags
       variants(first: 100) { nodes { price compareAtPrice inventoryQuantity } }
     }
   }

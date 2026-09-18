@@ -2,7 +2,7 @@ import { ADMIN_PRODUCT_METAFIELDS } from "./admin-product-metafields.ts";
 
 const EXTRA_ATTRIBUTE_SPECS = [
   { formKey: "laceSize", names: ["Lace Size"], key: "lace_size", tagLabels: ["Lace Size"], list: false },
-  { formKey: "laceType", names: ["Lace Type"], key: "lace_type", tagLabels: ["Lace Type"], list: false },
+  { formKey: "laceType", names: ["Lace Type"], key: "lace_type", tagLabels: ["Lace Type"], list: true },
 ] as const;
 
 export type AttributeSource = {
@@ -107,4 +107,6 @@ export const DISCOVERY_FILTER_KEYS = [
   "state",
   "length",
   "color",
+  "laceSize",
+  "laceType",
 ] as const;
