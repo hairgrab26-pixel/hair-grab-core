@@ -8,7 +8,6 @@ import {
   useLoaderData,
 } from "react-router";
 
-import { useState } from "react";
 import crypto from "node:crypto";
 
 import db from "../db.server";
@@ -29,18 +28,6 @@ type ProductType =
   | "EXTENSION"
   | "BRAIDING_HAIR"
   | "HAIR_ESSENTIAL";
-
-type Choice = {
-  value: string;
-  label: string;
-};
-
-type VariantData = {
-  price: string;
-  salePrice: string;
-  inventory: string;
-  sku: string;
-};
 
 type ProductPayload = {
   title: string;
@@ -265,6 +252,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       sellsNationwide: seller.sellsNationwide,
       offersLocalPickup: seller.offersLocalPickup,
       offersLocalDelivery: seller.offersLocalDelivery,
+      storeSlug: seller.storeSlug,
+      storefrontPublished: seller.storefrontPublished,
     },
   };
 };
@@ -344,6 +333,12 @@ async function getProductMetafieldDefinitions(admin: any) {
   return (json?.data?.metafieldDefinitions?.nodes || []) as ShopifyMetafieldDefinition[];
 }
 
+function definitionIsConstrained(definition: ShopifyMetafieldDefinition) {
+  // Category/taxonomy constraints cause metafieldsSet to fail with
+  // "Owner subtype does not match the metafield definition's constraints".
+  return Boolean(definition.constraints?.key);
+}
+
 function findMetafieldDefinition(
   definitions: ShopifyMetafieldDefinition[],
   names: string[]
@@ -354,11 +349,18 @@ function findMetafieldDefinition(
     normalizedNames.includes(normalizeMetafieldName(definition.name))
   );
 
-  if (matches.length === 0) {
+  // Skip category/subtype-constrained definitions so HairGrab does not
+  // write a metafield Shopify will reject with
+  // "Owner subtype does not match the metafield definition's constraints".
+  const unconstrained = matches.filter(
+    (definition) => !definitionIsConstrained(definition)
+  );
+
+  if (unconstrained.length === 0) {
     return undefined;
   }
 
-  const ranked = [...matches].sort((a, b) => {
+  const ranked = [...unconstrained].sort((a, b) => {
     const score = (definition: ShopifyMetafieldDefinition) => {
       let points = 0;
       if (definition.namespace === "custom") points += 20;
@@ -399,6 +401,7 @@ const METAFIELD_VALUE_ALIASES: Record<string, string[]> = {
   localdelivery: ["localdeliveryavailable"],
   true: ["yes"],
   false: ["no"],
+  sameday: ["samedaydeliverypickup", "samedaydelivery", "samedaypickup"],
 };
 
 function resolveChoiceValue(value: string, choices: string[]) {
@@ -497,7 +500,14 @@ function addExistingMetafield({
   const definition = findMetafieldDefinition(definitions, names);
 
   if (!definition) {
-    if (fallback && typeof value === "string" && value.trim()) {
+    // Never fall back to Shopify-standard metafields. Those are often
+    // category-constrained and would recreate the owner-subtype error.
+    if (
+      fallback &&
+      fallback.namespace !== "shopify" &&
+      typeof value === "string" &&
+      value.trim()
+    ) {
       output.push({ ...fallback, value: value.trim() });
     }
     return;
@@ -587,11 +597,11 @@ async function setProductMetafieldsSafely({
       const result = json?.data?.metafieldsSet;
       const errors = result?.userErrors || [];
 
-      if (errors.length > 0) {
+      if (json?.errors?.length || errors.length > 0) {
         skipped.push(`${metafield.namespace}.${metafield.key}`);
         console.warn(
           `[HairGrab Core] Skipping incompatible Shopify metafield ${metafield.namespace}.${metafield.key}:`,
-          errors.map((e: { message?: string }) => e.message).join(" | ")
+          [...(json.errors || []), ...errors].map((e: { message?: string }) => e.message).join(" | ")
         );
         continue;
       }
@@ -740,6 +750,382 @@ async function stageFiles(
 // ACTION — SAVE PRODUCT
 // ==========================================================
 
+type SavedProductResult = {
+  success: true;
+  message: string;
+  draftSaved: boolean;
+  shopifyProductId: string;
+  productHandle: string | null;
+  sellerProductId: string;
+  variantCount: number;
+  mediaCount: number;
+  metafieldsSaved: number;
+  metafieldsSkipped: number;
+};
+
+function hairCategoryValue(payload: ProductPayload) {
+  const category = productTypeToCategoryLabel(payload.productType);
+  if (payload.productType !== "EXTENSION") return category;
+  if (payload.selectedOptions.includes("CLIP_IN")) return "Clip-Ins";
+  if (payload.selectedOptions.includes("TAPE_IN")) return "Tape-Ins";
+  if (payload.selectedOptions.includes("I_TIP")) return "I-Tips & K Tips";
+  if (payload.selectedOptions.includes("HALO")) return "Halo Extensions";
+  return "Other";
+}
+
+function collectProductMetafields(
+  definitions: ShopifyMetafieldDefinition[],
+  payload: ProductPayload,
+  seller: { city?: string | null; state?: string | null; sellsNationwide: boolean; approvedApplication?: { city?: string | null; state?: string | null } | null }
+) {
+  const metafields: Array<{ namespace: string; key: string; type: string; value: string }> = [];
+  const selectedLengthValues = [...new Set(payload.variants.map((variant) => variant.length).filter(Boolean))];
+
+  addExistingMetafield({ definitions, output: metafields, names: ["Hair Category"], value: hairCategoryValue(payload) });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Hair Type", "Material"],
+    value: payload.material,
+    fallback: { namespace: "custom", key: "material", type: "single_line_text_field" },
+  });
+  addExistingMetafield({ definitions, output: metafields, names: ["Color"], value: payload.colors });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Texture"],
+    value: payload.texture,
+    fallback: { namespace: "custom", key: "texture", type: "single_line_text_field" },
+  });
+  addExistingMetafield({ definitions, output: metafields, names: ["Length"], value: selectedLengthValues });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Cap Type", "Cap Size"],
+    value: payload.capSize,
+    fallback: { namespace: "custom", key: "cap_size", type: "single_line_text_field" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Density"],
+    value: payload.density,
+    fallback: { namespace: "custom", key: "density", type: "single_line_text_field" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Lace Size"],
+    value: payload.laceSize,
+    fallback: { namespace: "custom", key: "lace_size", type: "single_line_text_field" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Lace Type"],
+    value: payload.laceType,
+    fallback: { namespace: "custom", key: "lace_type", type: "single_line_text_field" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Same Day Delivery", "Same-Day Delivery"],
+    value: payload.shipsWithin === "Same Day" || payload.sameDayDelivery,
+    fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Ships From City"],
+    value: seller.city || seller.approvedApplication?.city || "",
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Ships From State"],
+    value: seller.state || seller.approvedApplication?.state || "",
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Shipping Method / Shipping Options", "Shipping Method / Shipping", "Shipping Method", "Shipping Methods"],
+    value: payload.shippingMethod,
+  });
+  addExistingMetafield({ definitions, output: metafields, names: ["Shipping Territory"], value: seller.sellsNationwide ? "Nationwide" : "Local" });
+  addExistingMetafield({ definitions, output: metafields, names: ["Show on HairGrab Map"], value: payload.showOnMap });
+  addExistingMetafield({ definitions, output: metafields, names: ["Ships Within"], value: payload.shipsWithin });
+  addExistingMetafield({ definitions, output: metafields, names: ["Return Policy"], value: payload.returnPolicy });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Bundle Weight", "Weight"],
+    value: payload.bundleWeight,
+    fallback: { namespace: "hairgrab", key: "bundle_weight", type: "single_line_text_field" },
+  });
+  addExistingMetafield({
+    definitions,
+    output: metafields,
+    names: ["Piece Count", "Number of Pieces"],
+    value: payload.pieceCount,
+    fallback: { namespace: "hairgrab", key: "piece_count", type: "number_integer" },
+  });
+
+  if (payload.productType === "EXTENSION") {
+    addExistingMetafield({
+      definitions,
+      output: metafields,
+      names: ["Extension Type"],
+      value: extensionTypeFromOptions(payload.selectedOptions),
+      fallback: EXTENSION_TYPE_METAFIELD,
+    });
+  }
+
+  metafields.push(
+    { namespace: "hairgrab", key: "shipping_charge_type", type: "single_line_text_field", value: payload.shippingMethod },
+    { namespace: "hairgrab", key: "local_pickup_available", type: "boolean", value: String(Boolean(payload.localPickupAvailable)) },
+    { namespace: "hairgrab", key: "local_delivery_available", type: "boolean", value: String(Boolean(payload.localDeliveryAvailable)) },
+  );
+  if (payload.shippingMethod === "Flat Rate Shipping" && Number(payload.flatRateShipping) > 0) {
+    metafields.push({
+      namespace: "hairgrab",
+      key: "flat_rate_shipping",
+      type: "number_decimal",
+      value: Number(payload.flatRateShipping).toFixed(2),
+    });
+  }
+  if (payload.installationMethods?.length) {
+    metafields.push({
+      namespace: "hairgrab",
+      key: "installation_methods",
+      type: "list.single_line_text_field",
+      value: JSON.stringify(
+        installationMethodChoices
+          .filter((item) => payload.installationMethods.includes(item.value))
+          .map((item) => item.label)
+      ),
+    });
+  }
+  if (payload.locType) {
+    metafields.push({
+      namespace: "hairgrab",
+      key: "loc_type",
+      type: "single_line_text_field",
+      value: locTypeChoices.find((item) => item.value === payload.locType)?.label || payload.locType,
+    });
+  }
+
+  return metafields;
+}
+
+async function createSellerProductFromPayload({
+  seller,
+  payload,
+  imageFiles,
+  videoFiles,
+  saveAsDraft,
+}: {
+  seller: NonNullable<Awaited<ReturnType<typeof getSellerFromRequest>>>;
+  payload: ProductPayload;
+  imageFiles: File[];
+  videoFiles: File[];
+  saveAsDraft: boolean;
+}): Promise<SavedProductResult> {
+  if (!payload.title?.trim()) throw new Error("Product name is required.");
+  if (!saveAsDraft && !payload.description?.trim()) throw new Error("Product description is required.");
+  if (!payload.productType) throw new Error("Product type is required.");
+
+  if (!Array.isArray(payload.variants) || payload.variants.length === 0) {
+    if (!saveAsDraft) throw new Error("At least one product variant is required.");
+    payload.variants = [{
+      label: "Draft",
+      length: "",
+      option: "",
+      color: payload.colors?.[0] || "Natural / 1B",
+      price: "0",
+      salePrice: "",
+      inventory: "",
+      sku: "",
+    }];
+  }
+
+  for (const variant of payload.variants) {
+    if (saveAsDraft && !String(variant.price || "").trim()) variant.price = "0";
+    const price = Number(variant.price);
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error(`Enter a valid price for ${variant.label}.`);
+    }
+  }
+
+  const { admin } = await getShopifyAdmin();
+  const locationId = await getPrimaryLocationId(admin);
+  const uploadedImages = await stageFiles(admin, imageFiles, "PRODUCT_IMAGE");
+  const uploadedVideos = await stageFiles(admin, videoFiles, "VIDEO");
+  const productFiles = [
+    ...uploadedImages,
+    ...uploadedVideos,
+    ...(payload.imageUrls || []).filter(Boolean).map((url) => ({
+      originalSource: url,
+      contentType: "IMAGE" as const,
+      alt: payload.title,
+    })),
+  ];
+
+  const hairProduct = payload.productType !== "HAIR_ESSENTIAL";
+  const uniqueLengths = [...new Set(payload.variants.map((variant) => variant.length).filter(Boolean))];
+  const uniqueStyleOptions = [...new Set(payload.variants.map((variant) => variant.option).filter(Boolean))];
+  const currentOptions = productOptions[payload.productType] || [];
+  const styleLabel = (value: string) => currentOptions.find((option) => option.value === value)?.label || value;
+  const productOptionsInput: Array<{ name: string; values: Array<{ name: string }> }> = [];
+
+  if (hairProduct && uniqueLengths.length > 0) {
+    productOptionsInput.push({ name: "Length", values: uniqueLengths.map((length) => ({ name: `${length}"` })) });
+  }
+  if (payload.optionsAreVariants && uniqueStyleOptions.length > 0) {
+    productOptionsInput.push({ name: "Style", values: uniqueStyleOptions.map((option) => ({ name: styleLabel(option) })) });
+  }
+  if (Array.isArray(payload.colors) && payload.colors.length > 1) {
+    productOptionsInput.push({ name: "Color", values: payload.colors.map((colorValue) => ({ name: colorValue })) });
+  }
+  if (productOptionsInput.length === 0) {
+    productOptionsInput.push({ name: "Option", values: [{ name: "Standard" }] });
+  }
+
+  const variantsInput = payload.variants.map((variant, index) => {
+    const optionValues: Array<{ optionName: string; name: string }> = [];
+    if (hairProduct && variant.length) optionValues.push({ optionName: "Length", name: `${variant.length}"` });
+    if (payload.optionsAreVariants && variant.option) optionValues.push({ optionName: "Style", name: styleLabel(variant.option) });
+    if (Array.isArray(payload.colors) && payload.colors.length > 1 && variant.color) {
+      optionValues.push({ optionName: "Color", name: variant.color });
+    }
+    if (optionValues.length === 0) optionValues.push({ optionName: "Option", name: "Standard" });
+    const inventory = String(variant.inventory || "").trim();
+    const hasInventory = inventory !== "" && Number.isFinite(Number(inventory));
+    return {
+      optionValues,
+      price: Number(variant.price),
+      ...(variant.sku?.trim() ? { sku: variant.sku.trim() } : {}),
+      inventoryPolicy: "DENY",
+      inventoryItem: { tracked: hasInventory },
+      ...(hasInventory
+        ? {
+            inventoryQuantities: [{
+              locationId,
+              name: "available",
+              quantity: Math.max(0, Math.floor(Number(inventory))),
+            }],
+          }
+        : {}),
+      position: index + 1,
+    };
+  });
+
+  const definitions = await getProductMetafieldDefinitions(admin);
+  const metafields = collectProductMetafields(definitions, payload, seller);
+  const productTypeDisplay = productTypeToCategoryLabel(payload.productType);
+  const selectedOptionTags = payload.selectedOptions
+    .map((value) => currentOptions.find((option) => option.value === value)?.label || "")
+    .filter(Boolean);
+  const classificationTags = (productClassifications[payload.productType] || [])
+    .filter((choice) => payload.searchClassifications?.includes(choice.value))
+    .map((choice) => choice.label);
+
+  const productSetResponse = await admin.graphql(
+    `#graphql
+    mutation HairGrabCreateSellerProduct($productSet: ProductSetInput!, $synchronous: Boolean!) {
+      productSet(input: $productSet, synchronous: $synchronous) {
+        product {
+          id
+          handle
+          variants(first: 250) { nodes { id } }
+          media(first: 20) { nodes { id } }
+        }
+        userErrors { field message }
+      }
+    }`,
+    {
+      variables: {
+        synchronous: true,
+        productSet: {
+          title: payload.title.trim(),
+          descriptionHtml: `<p>${payload.description.trim().replace(/\n/g, "</p><p>")}</p>`,
+          productType: productTypeDisplay,
+          vendor: seller.shopifyVendor || seller.businessName,
+          status: saveAsDraft ? "DRAFT" : "ACTIVE",
+          tags: [
+            "HairGrab",
+            `HairGrab Seller ${seller.sellerCode}`,
+            productTypeDisplay,
+            ...selectedOptionTags,
+            ...classificationTags,
+          ],
+          productOptions: productOptionsInput,
+          variants: variantsInput,
+          ...(productFiles.length > 0 ? { files: productFiles } : {}),
+        },
+      },
+    }
+  );
+
+  const productSetJson = await productSetResponse.json();
+  const productSetResult = productSetJson?.data?.productSet;
+  const shopifyErrors = formatErrors(productSetResult?.userErrors);
+  if (shopifyErrors) throw new Error(`Shopify rejected the product: ${shopifyErrors}`);
+  const shopifyProduct = productSetResult?.product;
+  if (!shopifyProduct?.id) throw new Error("Shopify did not return a product after saving.");
+
+  const metafieldSaveResult = await setProductMetafieldsSafely({
+    admin,
+    productId: String(shopifyProduct.id),
+    metafields,
+  });
+
+  const variantIds = (shopifyProduct.variants?.nodes || [])
+    .map((node: { id?: string }) => String(node.id || ""))
+    .filter(Boolean);
+
+  try {
+    if (variantIds.length) {
+      await syncHairGrabShippingProfile({
+        admin,
+        locationId,
+        variantIds,
+        shippingMethod: payload.shippingMethod,
+        flatRateShipping: payload.flatRateShipping,
+      });
+    }
+  } catch (error) {
+    console.warn("[HairGrab Core] Shipping profile sync skipped after product save:", error);
+  }
+
+  const firstSku = payload.variants.find((variant) => variant.sku?.trim())?.sku?.trim() || null;
+  const coreProduct = await db.sellerProduct.create({
+    data: {
+      sellerId: seller.id,
+      shopifyProductId: String(shopifyProduct.id),
+      shopifyHandle: shopifyProduct.handle ? String(shopifyProduct.handle) : null,
+      title: payload.title.trim(),
+      status: saveAsDraft ? "DRAFT" : "ACTIVE",
+      sellerSku: firstSku,
+      publishedToShopify: !saveAsDraft,
+    },
+  });
+
+  return {
+    success: true,
+    message: saveAsDraft
+      ? "Draft saved. You can continue editing it from My Products."
+      : "Product saved successfully. HairGrab received it for review.",
+    draftSaved: saveAsDraft,
+    shopifyProductId: String(shopifyProduct.id),
+    productHandle: shopifyProduct.handle ? String(shopifyProduct.handle) : null,
+    sellerProductId: coreProduct.id,
+    variantCount: shopifyProduct?.variants?.nodes?.length || payload.variants.length,
+    mediaCount: shopifyProduct?.media?.nodes?.length || productFiles.length,
+    metafieldsSaved: metafieldSaveResult.saved.length,
+    metafieldsSkipped: metafieldSaveResult.skipped.length,
+  };
+}
+
 export const action = async ({ request }: ActionFunctionArgs): Promise<any> => {
   const seller = await getSellerFromRequest(request);
 
@@ -752,6 +1138,37 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<any> => {
 
   try {
     const formData = await request.formData();
+    const csvRaw = String(formData.get("csvBatchPayload") || "");
+    if (csvRaw) {
+      const payloads = JSON.parse(csvRaw) as ProductPayload[];
+      const results = [];
+      for (const payload of payloads) {
+        try {
+          const saved = await createSellerProductFromPayload({
+            seller,
+            payload,
+            imageFiles: [],
+            videoFiles: [],
+            saveAsDraft: true,
+          });
+          results.push({
+            key: payload.csvSourceKey || "",
+            success: true,
+            title: payload.title,
+            message: saved.message,
+            sellerProductId: saved.sellerProductId,
+          });
+        } catch (error) {
+          results.push({
+            key: payload.csvSourceKey || "",
+            success: false,
+            title: payload.title,
+            message: error instanceof Error ? error.message : "Add failed",
+          });
+        }
+      }
+      return { csvBatch: true, results };
+    }
 
     const payloadRaw = String(formData.get("productPayload") || "");
     if (!payloadRaw) {
@@ -760,155 +1177,27 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<any> => {
 
     const payload = JSON.parse(payloadRaw) as ProductPayload;
     const saveAsDraft = String(formData.get("saveAsDraft") || "") === "true";
-
     const imageFiles = formData
       .getAll("images")
-      .filter((v): v is File => v instanceof File && v.size > 0)
+      .filter((value): value is File => value instanceof File && value.size > 0)
       .slice(0, 10);
-
     const videoFiles = formData
       .getAll("videos")
-      .filter((v): v is File => v instanceof File && v.size > 0)
+      .filter((value): value is File => value instanceof File && value.size > 0)
       .slice(0, 3);
 
-    const { admin } = await getShopifyAdmin();
-    const locationId = await getPrimaryLocationId(admin);
-
-    const uploadedImages = await stageFiles(admin, imageFiles, "PRODUCT_IMAGE");
-    const uploadedVideos = await stageFiles(admin, videoFiles, "VIDEO");
-    const productFiles = [...uploadedImages, ...uploadedVideos];
-
-    const definitions = await getProductMetafieldDefinitions(admin);
-    const metafields: Array<{
-      namespace: string;
-      key: string;
-      type: string;
-      value: string;
-    }> = [];
-
-    // Core attribute metafield mappings
-    addExistingMetafield({
-      definitions,
-      output: metafields,
-      names: ["Material", "Hair Material", "Hair Type"],
-      value: payload.material,
-      fallback: { namespace: "custom", key: "material", type: "single_line_text_field" },
+    return await createSellerProductFromPayload({
+      seller,
+      payload,
+      imageFiles,
+      videoFiles,
+      saveAsDraft,
     });
-
-    addExistingMetafield({
-      definitions,
-      output: metafields,
-      names: ["Texture", "Hair Texture"],
-      value: payload.texture,
-      fallback: { namespace: "custom", key: "texture", type: "single_line_text_field" },
-    });
-
-    addExistingMetafield({
-      definitions,
-      output: metafields,
-      names: ["Density", "Wig Density"],
-      value: payload.density,
-      fallback: { namespace: "custom", key: "density", type: "single_line_text_field" },
-    });
-
-    addExistingMetafield({
-      definitions,
-      output: metafields,
-      names: ["Lace Size", "Frontal Size"],
-      value: payload.laceSize,
-      fallback: { namespace: "custom", key: "lace_size", type: "single_line_text_field" },
-    });
-
-    addExistingMetafield({
-      definitions,
-      output: metafields,
-      names: ["Lace Type", "Lace Material"],
-      value: payload.laceType,
-      fallback: { namespace: "shopify", key: "lace-type", type: "single_line_text_field" },
-    });
-
-    addExistingMetafield({
-      definitions,
-      output: metafields,
-      names: ["Cap Size"],
-      value: payload.capSize,
-      fallback: { namespace: "shopify", key: "cap-size", type: "single_line_text_field" },
-    });
-
-    // Explicitly add Same-Day Delivery Boolean Metafield
-    metafields.push({
-      namespace: "custom",
-      key: "same_day_delivery",
-      type: "boolean",
-      value: payload.sameDayDelivery ? "true" : "false",
-    });
-
-    // Construct Product GraphQL Payload
-    const productCreateResponse = await admin.graphql(
-      `#graphql
-      mutation HairGrabCreateProduct($input: ProductInput!, $media: [CreateMediaInput!]) {
-        productCreate(input: $input, media: $media) {
-          product {
-            id
-            handle
-            status
-          }
-          userErrors {
-            field
-            message
-          }
-        }
-      }
-      `,
-      {
-        variables: {
-          input: {
-            title: payload.title,
-            descriptionHtml: payload.description,
-            vendor: seller.shopifyVendor || seller.businessName,
-            productType: productTypeToCategoryLabel(payload.productType),
-            status: saveAsDraft ? "DRAFT" : "ACTIVE",
-          },
-          media: productFiles,
-        },
-      }
-    );
-
-    const productJson = await productCreateResponse.json();
-    const createdProduct = productJson?.data?.productCreate?.product;
-
-    if (!createdProduct?.id) {
-      return {
-        success: false,
-        message: "Failed to create Shopify product.",
-      };
-    }
-
-    // Apply Metafields to created product
-    await setProductMetafieldsSafely({
-      admin,
-      productId: createdProduct.id,
-      metafields,
-    });
-
-    // Sync shipping profile
-    await syncHairGrabShippingProfile({
-      admin,
-      productId: createdProduct.id,
-      flatRate: payload.flatRateShipping,
-    });
-
-    return {
-      success: true,
-      message: saveAsDraft
-        ? "Product saved as draft successfully!"
-        : "Product published successfully to Shopify!",
-      productId: createdProduct.id,
-    };
   } catch (error: any) {
+    console.error("[HairGrab Core] Product save error:", error);
     return {
       success: false,
-      message: error?.message || "An error occurred while saving the product.",
+      message: error?.message || "HairGrab could not save this product.",
     };
   }
 };
@@ -919,48 +1208,5 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<any> => {
 
 export default function AddProductRoute() {
   const { seller } = useLoaderData<typeof loader>();
-  const [formData, setFormData] = useState<Partial<ProductPayload>>({
-    shippingMethod: "Free Shipping",
-    sameDayDelivery: false,
-    localPickupAvailable: seller.offersLocalPickup,
-    localDeliveryAvailable: seller.offersLocalDelivery,
-  });
-
-  return (
-    <div className="max-w-5xl mx-auto p-6 space-y-8 bg-slate-50 min-h-screen">
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h1 className="text-2xl font-bold text-slate-900">Add New Product</h1>
-        <p className="text-slate-500 text-sm">
-          Create product listings that automatically map attributes to Shopify and your HairGrab store.
-        </p>
-      </div>
-
-      <ProductBuilder
-        seller={seller}
-        formData={formData}
-        setFormData={setFormData}
-      />
-
-      {/* Shipping Card with Same-Day Delivery Switch */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">Shipping & Express Delivery</h2>
-
-        <div className="flex items-center justify-between p-4 border rounded-lg bg-red-50/50 border-red-100">
-          <div>
-            <p className="font-semibold text-slate-900">⚡ Same-Day Delivery Available</p>
-            <p className="text-sm text-slate-500">
-              Enable if this product is in stock locally for immediate dispatch or local pickup.
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            name="sameDayDelivery"
-            checked={formData.sameDayDelivery || false}
-            onChange={(e) => setFormData((prev) => ({ ...prev, sameDayDelivery: e.target.checked }))}
-            className="w-5 h-5 accent-red-600 rounded cursor-pointer"
-          />
-        </div>
-      </div>
-    </div>
-  );
+  return <ProductBuilder seller={seller} />;
 }

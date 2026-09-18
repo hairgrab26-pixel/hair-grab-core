@@ -1,5 +1,5 @@
 import { useActionData, useFetcher } from "react-router";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type Ref } from "react";
 import { displayProductCategory, normalizeProductCategory, PRODUCT_CATEGORY_LABELS } from "../product-categories";
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, variantFieldsFromShopify, variantFieldsToShopify, type ExistingProductSnapshot } from "../product-builder-model";
 import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights } from "../product-vocabulary";
@@ -457,6 +457,13 @@ export const locTypeChoices: Choice[] = [
   { value: "OTHER_LOCS", label: "Other" },
 ];
 
+export const shipsWithinChoices: Choice[] = [
+  { value: "Same Day", label: "Same Day Delivery / Pickup" },
+  { value: "24 Hours", label: "24 Hours" },
+  { value: "48 Hours", label: "48 Hours" },
+  { value: "72 Hours", label: "72 Hours" },
+];
+
 
 // materials, colors, textures, standardLengths, densities, laceSizes,
 // and laceTypes moved to ../product-vocabulary in Phase 2A so the CSV
@@ -648,7 +655,7 @@ function ChoiceButton({
 
 export type EditBuilderData = {
   coreProductId: string;
-  product: { title: string; descriptionHtml: string; productType: string; tags: string[] };
+  product: { title: string; descriptionHtml: string; productType: string; tags: string[]; handle?: string };
   settings: Record<string, any>;
   shopifySnapshot: ExistingProductSnapshot;
 };
@@ -2952,85 +2959,6 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
           </div>
         )}
 
-        {saveResult?.message && (
-          <div
-            ref={
-              successBannerRef
-            }
-            style={{
-              padding:
-                "14px",
-
-              borderRadius:
-                "10px",
-
-              margin:
-                "16px 0",
-
-              background:
-                saveResult.success
-                  ? "#eef8f0"
-                  : "#fff1f1",
-
-              color:
-                saveResult.success
-                  ? "#2f6b3c"
-                  : "#922f2f",
-
-              fontWeight:
-                "800",
-
-              fontSize:
-                "12px",
-            }}
-          >
-            {
-              saveResult.message
-            }
-
-            {saveResult.success && (
-              <div
-                style={{
-                  marginTop:
-                    "6px",
-
-                  fontWeight:
-                    "600",
-                }}
-              >
-                {
-                  saveResult.variantCount
-                }{" "}
-                variant(s) saved
-                ·{" "}
-                {
-                  saveResult.mediaCount
-                }{" "}
-                media file(s)
-
-                {" · "}
-
-                {
-                  saveResult.metafieldsSaved ||
-                  0
-                }{" "}
-                metafield(s) filled
-
-                {Boolean(
-                  saveResult.metafieldsSkipped,
-                ) && (
-                  <>
-                    {" · "}
-                    {
-                      saveResult.metafieldsSkipped
-                    }{" "}
-                    incompatible field(s) skipped
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         <div
           style={
@@ -3406,35 +3334,40 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
           >
             {saving ? (edit ? "Saving…" : "Saving Product...") : edit && saveResult?.success && !editDirty ? "✓ Saved" : "Save Product"}
           </button>
-
-          {saveResult?.success && (
-            <>
-              <a
-                href="/seller/add-product"
-                style={{
-                  ...primaryButton,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                }}
-              >
-                + Add Another Product
-              </a>
-
-              <a
-                href="/seller/products"
-                style={{
-                  ...secondaryButton,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                }}
-              >
-                View My Products
-              </a>
-            </>
-          )}
         </div>
+
+        {saveResult?.message && (
+          <PostSaveSellerActions
+            bannerRef={successBannerRef}
+            message={saveResult.message}
+            success={Boolean(saveResult.success)}
+            storeViewHref={productStoreViewHref({
+              handle:
+                saveResult.productHandle ||
+                edit?.product.handle,
+              storeSlug: seller.storeSlug,
+              storefrontPublished: seller.storefrontPublished,
+            })}
+            extra={
+              saveResult.success &&
+              (saveResult.variantCount != null ||
+                saveResult.mediaCount != null ||
+                saveResult.metafieldsSaved != null) ? (
+                <div style={{ marginTop: "6px", fontWeight: "600" }}>
+                  {saveResult.variantCount ?? 0} variant(s) saved · {saveResult.mediaCount ?? 0} media file(s)
+                  {" · "}
+                  {saveResult.metafieldsSaved || 0} metafield(s) filled
+                  {Boolean(saveResult.metafieldsSkipped) && (
+                    <>
+                      {" · "}
+                      {saveResult.metafieldsSkipped} incompatible field(s) skipped
+                    </>
+                  )}
+                </div>
+              ) : null
+            }
+          />
+        )}
 
         <div
           style={{
@@ -3585,8 +3518,6 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       </div>
 
 
-      {edit && saveResult?.message && <div role="status" style={{ marginTop: 16, padding: 12, borderRadius: 9,
-        background: saveResult.success ? "#eef8f0" : "#fff4e5", color: saveResult.success ? "#276236" : "#7a4d00" }}>{saveResult.message}</div>}
 
       {!edit && <div
         style={{
@@ -5916,17 +5847,22 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                   fieldStyle
                 }
               >
-                <option value="24 Hours">
-                  24 Hours
-                </option>
-
-                <option value="48 Hours">
-                  48 Hours
-                </option>
-
-                <option value="72 Hours">
-                  72 Hours
-                </option>
+                {shipsWithinChoices.map((choice) => (
+                  <option
+                    key={choice.value}
+                    value={choice.value}
+                  >
+                    {choice.label}
+                  </option>
+                ))}
+                {shipsWithin &&
+                  !shipsWithinChoices.some(
+                    (choice) => choice.value === shipsWithin,
+                  ) && (
+                    <option value={shipsWithin}>
+                      {shipsWithin}
+                    </option>
+                  )}
               </select>
 
               <div
@@ -6594,6 +6530,20 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
         </button>
         </div>
 
+        {saveResult?.message && (
+          <PostSaveSellerActions
+            message={saveResult.message}
+            success={Boolean(saveResult.success)}
+            storeViewHref={productStoreViewHref({
+              handle:
+                saveResult.productHandle ||
+                edit?.product.handle,
+              storeSlug: seller.storeSlug,
+              storefrontPublished: seller.storefrontPublished,
+            })}
+          />
+        )}
+
         {!edit && !ready &&
           missingRequirements.length >
             0 && (
@@ -6688,6 +6638,100 @@ const secondaryButton = {
   cursor:
     "pointer",
 };
+
+function productStoreViewHref({
+  handle,
+  storeSlug,
+  storefrontPublished,
+}: {
+  handle?: string | null;
+  storeSlug?: string | null;
+  storefrontPublished?: boolean;
+}) {
+  if (handle) {
+    return `https://hairgrab.com/products/${handle}`;
+  }
+
+  if (storeSlug && storefrontPublished) {
+    return `https://shops.hairgrab.com/seller-store/${storeSlug}`;
+  }
+
+  return "/seller/store-preview";
+}
+
+const postSaveNavButton = {
+  ...secondaryButton,
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+} as const;
+
+function PostSaveSellerActions({
+  message,
+  success,
+  extra,
+  storeViewHref,
+  bannerRef,
+}: {
+  message: string;
+  success: boolean;
+  extra?: ReactNode;
+  storeViewHref: string;
+  bannerRef?: Ref<HTMLDivElement>;
+}) {
+  return (
+    <div ref={bannerRef} style={{ marginTop: "12px", width: "100%" }}>
+      <div
+        role="status"
+        style={{
+          padding: "14px",
+          borderRadius: "10px",
+          background: success ? "#eef8f0" : "#fff1f1",
+          color: success ? "#2f6b3c" : "#922f2f",
+          fontWeight: 800,
+          fontSize: "12px",
+        }}
+      >
+        {message}
+        {extra}
+      </div>
+
+      {success && (
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+            marginTop: "10px",
+          }}
+        >
+          <a
+            href="/seller/add-product"
+            style={{
+              ...primaryButton,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+            }}
+          >
+            Add Another Product
+          </a>
+          <a
+            href={storeViewHref}
+            target="_blank"
+            rel="noreferrer"
+            style={postSaveNavButton}
+          >
+            Store View
+          </a>
+          <a href="/seller/dashboard" style={postSaveNavButton}>
+            Back to Dashboard
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PageShell({
   children,

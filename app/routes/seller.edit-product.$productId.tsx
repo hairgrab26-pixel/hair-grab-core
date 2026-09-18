@@ -17,6 +17,9 @@ type ShopifyMetafieldDefinition = {
   key: string;
   type: { name: string };
   validations: Array<{ name: string; value: string | null }>;
+  constraints: {
+    key: string | null;
+  } | null;
 };
 
 type ProductMetafield = {
@@ -124,17 +127,43 @@ function normalizeMetafieldName(value: string) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function definitionIsConstrained(definition: ShopifyMetafieldDefinition) {
+  // Category/taxonomy constraints cause metafieldsSet to fail with
+  // "Owner subtype does not match the metafield definition's constraints".
+  return Boolean(definition.constraints?.key);
+}
+
 function findMetafieldDefinition(
   definitions: ShopifyMetafieldDefinition[],
   names: string[],
 ) {
   const wanted = names.map(normalizeMetafieldName);
 
-  return definitions.find((definition) =>
+  const matches = definitions.filter((definition) =>
     wanted.includes(
       normalizeMetafieldName(definition.name),
     ),
   );
+
+  const unconstrained = matches.filter(
+    (definition) => !definitionIsConstrained(definition),
+  );
+
+  if (unconstrained.length === 0) {
+    return undefined;
+  }
+
+  const ranked = [...unconstrained].sort((a, b) => {
+    let score = (definition: ShopifyMetafieldDefinition) => {
+      let points = 0;
+      if (definition.namespace === "custom") points += 20;
+      if (!definition.constraints) points += 10;
+      return points;
+    };
+    return score(b) - score(a);
+  });
+
+  return ranked[0];
 }
 
 function getDefinitionChoices(
@@ -313,7 +342,12 @@ function addExistingMetafield({
     );
 
   if (!definition) {
-    if (fallback && typeof value === "string" && value.trim()) {
+    if (
+      fallback &&
+      fallback.namespace !== "shopify" &&
+      typeof value === "string" &&
+      value.trim()
+    ) {
       output.push({ ...fallback, value: value.trim() });
     }
     return;
@@ -365,6 +399,9 @@ async function getProductMetafieldDefinitions(
               name
               value
             }
+            constraints {
+              key
+            }
           }
         }
       }
@@ -385,67 +422,66 @@ async function setProductMetafieldsSafely({
   admin,
   productId,
   metafields,
-  strict = false,
 }: {
   admin: any;
   productId: string;
   metafields:
     ProductMetafield[];
-  strict?: boolean;
 }) {
   for (
     const metafield of
     metafields
   ) {
-    const response =
-      await admin.graphql(
-        `#graphql
-        mutation HairGrabEditSetMetafield(
-          $metafields: [MetafieldsSetInput!]!
-        ) {
-          metafieldsSet(
-            metafields: $metafields
+    try {
+      const response =
+        await admin.graphql(
+          `#graphql
+          mutation HairGrabEditSetMetafield(
+            $metafields: [MetafieldsSetInput!]!
           ) {
-            userErrors {
-              field
-              message
-              code
+            metafieldsSet(
+              metafields: $metafields
+            ) {
+              userErrors {
+                field
+                message
+                code
+              }
             }
           }
-        }
-        `,
-        {
-          variables: {
-            metafields: [
-              {
-                ownerId:
-                  productId,
-                ...metafield,
-              },
-            ],
+          `,
+          {
+            variables: {
+              metafields: [
+                {
+                  ownerId:
+                    productId,
+                  ...metafield,
+                },
+              ],
+            },
           },
-        },
-      );
+        );
 
-    const json =
-      await response.json();
+      const json =
+        await response.json();
 
-    const errors =
-      json?.data
-        ?.metafieldsSet
-        ?.userErrors ||
-      [];
+      const errors =
+        json?.data
+          ?.metafieldsSet
+          ?.userErrors ||
+        [];
 
-    if (strict && (json?.errors?.length || errors.length)) {
-      throw new Error([...((json as any).errors || []), ...errors].map((error: { message?: string }) => error.message || "Unable to save metafield").join(" | "));
-    }
-
-    if (
-      errors.length > 0
-    ) {
+      if (json?.errors?.length || errors.length) {
+        console.warn(
+          `[HairGrab Core] Skipping incompatible Shopify metafield ${metafield.namespace}.${metafield.key}:`,
+          [...(json.errors || []), ...errors].map((error: { message?: string }) => error.message).join(" | "),
+        );
+      }
+    } catch (error) {
       console.warn(
         `[HairGrab Core] Could not update metafield ${metafield.namespace}.${metafield.key}:`,
-        errors,
+        error,
       );
     }
   }
@@ -1029,7 +1065,7 @@ export const action = async ({
       const mediaFiles = [...formData.entries()].filter(([key]) => key.startsWith("media:")).map(([key, value]) => ({ key: key.slice(6), file: value as File }));
       if (!dirty.size && !variantDiff.creates.length && !variantDiff.updates.length && !variantDiff.deletes.length &&
           !mediaDiff.creates.length && !mediaDiff.detaches.length && !mediaDiff.reorder && !mediaFiles.length) {
-        return { success: true, message: "Product already up to date." };
+        return { success: true, message: "Product already up to date.", productHandle: String(current.product.handle || "") };
       }
       const { admin } = await getShopifyAdmin();
       const productId = String(coreProduct.shopifyProductId);
@@ -1229,18 +1265,27 @@ export const action = async ({
         if (value) metafields.push({ namespace: "hairgrab", key: metafieldKey, type, value });
         else removeIfPresent("hairgrab", metafieldKey);
       }
-      if (metafields.length) await setProductMetafieldsSafely({ admin, productId, metafields, strict: true });
+      if (metafields.length) await setProductMetafieldsSafely({ admin, productId, metafields });
       if (deleteMetafields.length) {
-        const response = await admin.graphql(`#graphql
-          mutation HairGrabBuilderDeleteMetafields($metafields: [MetafieldIdentifierInput!]!) {
-            metafieldsDelete(metafields: $metafields) { userErrors { field message } }
-          }`, { variables: { metafields: deleteMetafields } });
-        const json: any = await response.json();
-        const errors = [...(json.errors || []), ...(json.data?.metafieldsDelete?.userErrors || [])];
-        if (errors.length) throw new Error(errors.map((error: any) => error.message).join(" | "));
+        try {
+          const response = await admin.graphql(`#graphql
+            mutation HairGrabBuilderDeleteMetafields($metafields: [MetafieldIdentifierInput!]!) {
+              metafieldsDelete(metafields: $metafields) { userErrors { field message } }
+            }`, { variables: { metafields: deleteMetafields } });
+          const json: any = await response.json();
+          const errors = [...(json.errors || []), ...(json.data?.metafieldsDelete?.userErrors || [])];
+          if (errors.length) {
+            console.warn(
+              "[HairGrab Core] Skipping metafield delete errors:",
+              errors.map((error: any) => error.message).join(" | "),
+            );
+          }
+        } catch (error) {
+          console.warn("[HairGrab Core] Could not delete unused metafields:", error);
+        }
       }
       if (dirty.has("title")) await db.sellerProduct.update({ where: { id: coreProduct.id }, data: { title: String(fields.title).trim() } });
-      return { success: true, message: "Product updated successfully in HairGrab and Shopify." };
+      return { success: true, message: "Product updated successfully in HairGrab and Shopify.", productHandle: String(current.product.handle || "") };
     }
 
     throw new Error("Unsupported Edit Product action");
