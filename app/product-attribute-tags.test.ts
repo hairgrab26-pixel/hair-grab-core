@@ -237,3 +237,30 @@ test("writes and hydrates the 16 Admin metafield tags", () => {
   assert.equal(hydrated.shipsFromCity, "Bridgeport");
   assert.equal(hydrated.weftType, "Double Weft");
 });
+
+test("hydrates Lace Size and Lace Type from custom metafields even if Lace Type stores a size", () => {
+  const hydrated = hydrateSellerAttributes({
+    tags: ["Lace Size: 13x4", "Lace Type: HD Lace"],
+    metafields: [
+      { namespace: "custom", key: "lace_size", value: '["13x4"]' },
+      { namespace: "custom", key: "lace_type", value: "HD Lace" },
+    ],
+    named: {
+      laceType: "13x4",
+      laceSize: "",
+    },
+  });
+  assert.equal(hydrated.laceSize, "13x4");
+  assert.equal(hydrated.laceType, "HD Lace");
+});
+
+test("writes Origin and lace tags from seller form values", () => {
+  const tags = productAttributeTags({
+    origin: "Eurasian",
+    laceSize: "13x4",
+    laceType: "HD Lace",
+  });
+  assert.ok(tags.includes("Origin: Eurasian"));
+  assert.ok(tags.includes("Lace Size: 13x4"));
+  assert.ok(tags.includes("Lace Type: HD Lace"));
+});

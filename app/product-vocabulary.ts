@@ -121,14 +121,42 @@ export const bundleWeights = [
 export const hairOrigins = [
   "Brazilian",
   "Peruvian",
-  "Indian",
   "Malaysian",
-  "Vietnamese",
+  "Indian",
   "Cambodian",
-  "Chinese",
+  "Eurasian",
   "Mongolian",
-  "Other",
+  "Vietnamese",
+  "Burmese",
+  "European",
+  "Russian",
+  "Raw Virgin",
+  "Synthetic",
 ];
+
+function compactAttribute(value: string) {
+  return String(value || "").replace(/\s+/g, "").toLowerCase();
+}
+
+export function normalizeLaceSize(value: string | null | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const compact = compactAttribute(trimmed);
+  return laceSizes.find((item) => compactAttribute(item) === compact) || trimmed;
+}
+
+export function normalizeLaceType(value: string | null | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  return laceTypes.find((item) => item.toLowerCase() === trimmed.toLowerCase()) || trimmed;
+}
+
+export function isLaceSizeChoice(value: string | null | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return false;
+  if (laceSizes.some((item) => compactAttribute(item) === compactAttribute(trimmed))) return true;
+  return /^\d/.test(trimmed) || /x/i.test(trimmed) || trimmed.toLowerCase() === "full lace" || trimmed === "360";
+}
 
 export const weftTypes = [
   "Double Weft",

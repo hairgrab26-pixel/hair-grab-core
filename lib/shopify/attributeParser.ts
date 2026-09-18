@@ -1,5 +1,10 @@
 import { ADMIN_PRODUCT_METAFIELDS } from "./admin-product-metafields.ts";
 
+const EXTRA_ATTRIBUTE_SPECS = [
+  { formKey: "laceSize", names: ["Lace Size"], key: "lace_size", tagLabels: ["Lace Size"], list: false },
+  { formKey: "laceType", names: ["Lace Type"], key: "lace_type", tagLabels: ["Lace Type"], list: false },
+] as const;
+
 export type AttributeSource = {
   namespace?: string;
   key: string;
@@ -43,6 +48,8 @@ function attributesFromTags(tags: Iterable<string>) {
     if (!value) continue;
     const spec = ADMIN_PRODUCT_METAFIELDS.find((item) =>
       item.tagLabels.some((tagLabel) => tagLabel.toLowerCase() === label),
+    ) || EXTRA_ATTRIBUTE_SPECS.find((item) =>
+      item.tagLabels.some((tagLabel) => tagLabel.toLowerCase() === label),
     );
     if (!spec) continue;
     if (spec.list) {
@@ -68,7 +75,7 @@ export function parseAdminProductAttributes({
   const fromTags = attributesFromTags(tags);
   const parsed: Record<string, string | string[]> = {};
 
-  for (const spec of ADMIN_PRODUCT_METAFIELDS) {
+  for (const spec of [...ADMIN_PRODUCT_METAFIELDS, ...EXTRA_ATTRIBUTE_SPECS]) {
     const raw = metafieldValue(metafields, [spec.key, ...spec.names.map((name) => name.toLowerCase())]);
     if (spec.list) {
       const values = unwrap(raw);

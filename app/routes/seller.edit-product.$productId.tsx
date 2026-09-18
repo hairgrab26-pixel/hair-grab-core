@@ -368,6 +368,17 @@ function addExistingMetafield({
   }
 }
 
+function ensureCustomMetafield(
+  output: ProductMetafield[],
+  key: string,
+  value: string | null | undefined,
+) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return;
+  if (output.some((item) => item.namespace === "custom" && item.key === key && String(item.value || "").trim())) return;
+  output.push({ namespace: "custom", key, type: "single_line_text_field", value: trimmed });
+}
+
 async function getProductMetafieldDefinitions(
   admin: any,
 ) {
@@ -838,8 +849,12 @@ export const loader = async ({
             colors: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Color"]),
             texture: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Texture"]),
             density: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Density"]),
-            laceType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]),
-            laceSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Size"]),
+            laceType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]) ||
+              getMetafieldValue(productMetafields, "custom", "lace_type") ||
+              getMetafieldValue(productMetafields, "hairgrab", "lace_type"),
+            laceSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Size"]) ||
+              getMetafieldValue(productMetafields, "custom", "lace_size") ||
+              getMetafieldValue(productMetafields, "hairgrab", "lace_size"),
             capSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Cap Size"]),
             capType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Cap Type"]),
             shipsWithin: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Ships Within"]),
@@ -1257,6 +1272,9 @@ export const action = async ({
           if (fallback) removeIfPresent(fallback.namespace, fallback.key);
         }
       }
+      ensureCustomMetafield(metafields, "origin", String(fields.origin || ""));
+      ensureCustomMetafield(metafields, "lace_size", String(fields.laceSize || ""));
+      ensureCustomMetafield(metafields, "lace_type", String(fields.laceType || ""));
       addExistingMetafield({
         definitions,
         output: metafields,
