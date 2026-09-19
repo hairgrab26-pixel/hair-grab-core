@@ -1,6 +1,7 @@
 {% comment %}
-  HairGrab ships-within badge for collection/product cards.
-  Supports list metafields, JSON arrays, and plain strings.
+  HairGrab ships-within badges for collection/product cards.
+  Supports list.single_line_text_field, JSON arrays, and plain strings.
+  When both Same Day and 24 Hours are present, both badges render side-by-side.
 {% endcomment %}
 
 {%- liquid
@@ -12,35 +13,68 @@
     assign hg_ships_field = card_product.metafields.custom['field-1788095152116']
   endif
 
-  assign hg_same_day = false
-  assign hg_ships_label = ''
-
+  assign hg_joined = ''
   if hg_ships_field.value != blank
-    if hg_ships_field.type == 'list.single_line_text_field'
+    assign hg_type = hg_ships_field.type | append: '' | downcase
+    if hg_type contains 'list'
       for item in hg_ships_field.value
-        assign piece = item | append: '' | strip
-        if piece contains 'Same Day' or piece contains 'same day' or piece contains 'Same-Day'
-          assign hg_same_day = true
-        endif
-        if hg_ships_label == blank
-          assign hg_ships_label = piece
-        endif
+        assign hg_joined = hg_joined | append: item | append: '|||'
       endfor
     else
-      assign hg_ships_text = hg_ships_field.value | append: '' | strip
-      if hg_ships_text contains '['
-        assign hg_ships_text = hg_ships_text | remove: '[' | remove: ']' | remove: '"' | remove: "'"
+      assign hg_text = hg_ships_field.value | append: '' | strip
+      assign hg_parsed = nil
+      if hg_text contains '['
+        assign hg_parsed = hg_text | parse_json
       endif
-      if hg_ships_text contains 'Same Day' or hg_ships_text contains 'same day' or hg_ships_text contains 'Same-Day'
-        assign hg_same_day = true
+      assign hg_json_first = hg_parsed[0] | append: ''
+      if hg_json_first.size > 1
+        for item in hg_parsed
+          assign hg_joined = hg_joined | append: item | append: '|||'
+        endfor
       endif
-      assign hg_ships_label = hg_ships_text
+      if hg_joined == blank
+        assign hg_text = hg_text | remove: '[' | remove: ']' | remove: '"' | remove: "'"
+        assign hg_csv = hg_text | split: ','
+        for item in hg_csv
+          assign hg_joined = hg_joined | append: item | append: '|||'
+        endfor
+      endif
     endif
   endif
+
+  assign hg_same_day = false
+  assign hg_24_hours = false
+  assign hg_other_joined = ''
+  assign hg_items = hg_joined | split: '|||'
+  for item in hg_items
+    assign piece = item | append: '' | strip
+    if piece != blank
+      assign piece_down = piece | downcase
+      if piece_down contains 'same day' or piece_down contains 'same-day'
+        assign hg_same_day = true
+      elsif piece_down contains '24 hour'
+        assign hg_24_hours = true
+      else
+        assign hg_other_joined = hg_other_joined | append: piece | append: '|||'
+      endif
+    endif
+  endfor
+  assign hg_other_items = hg_other_joined | split: '|||'
 -%}
 
-{%- if hg_same_day -%}
-  <div class="hairgrab-card-speed hairgrab-card-same-day">Same Day Delivery</div>
-{%- elsif hg_ships_label != blank -%}
-  <div class="hairgrab-card-speed">{{ hg_ships_label }}</div>
+{%- if hg_same_day or hg_24_hours or hg_other_joined != blank -%}
+  <div class="hairgrab-card-speed-row" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
+    {%- if hg_same_day -%}
+      <div class="hairgrab-card-speed hairgrab-card-same-day">Same Day Delivery</div>
+    {%- endif -%}
+    {%- if hg_24_hours -%}
+      <div class="hairgrab-card-speed hairgrab-card-24-hours">24 Hours</div>
+    {%- endif -%}
+    {%- for item in hg_other_items -%}
+      {%- assign piece = item | strip -%}
+      {%- if piece != blank -%}
+        <div class="hairgrab-card-speed">{{ piece }}</div>
+      {%- endif -%}
+    {%- endfor -%}
+  </div>
 {%- endif -%}
