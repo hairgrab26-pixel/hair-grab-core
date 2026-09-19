@@ -1,7 +1,7 @@
 import { ADMIN_PRODUCT_METAFIELDS } from "./admin-product-metafields.ts";
 
 const EXTRA_ATTRIBUTE_SPECS = [
-  { formKey: "laceSize", names: ["Lace Size"], key: "lace_size", tagLabels: ["Lace Size"], list: false },
+  { formKey: "laceSize", names: ["Lace Size"], key: "lace_size", tagLabels: ["Lace Size"], list: true },
   { formKey: "laceType", names: ["Lace Type"], key: "lace_type", tagLabels: ["Lace Type"], list: true },
 ] as const;
 
@@ -88,8 +88,9 @@ export function parseAdminProductAttributes({
   if (!parsed.material) {
     parsed.material = first(metafieldValue(metafields, ["hair_type", "material", "hair type"])) || String(fromTags.material || "");
   }
-  if (!parsed.shipsWithin) {
-    parsed.shipsWithin = first(metafieldValue(metafields, ["ships_within", "ships within"])) || String(fromTags.shipsWithin || "");
+  if (!parsed.shipsWithin || (Array.isArray(parsed.shipsWithin) && parsed.shipsWithin.length === 0)) {
+    const fallback = unwrap(metafieldValue(metafields, ["ships_within", "ships within"]));
+    parsed.shipsWithin = fallback.length ? fallback : (fromTags.shipsWithin as string[]) || [];
   }
 
   return parsed;

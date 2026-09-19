@@ -10,7 +10,7 @@ import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.ser
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
 import ProductBuilder from "../components/ProductBuilder";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
-import { hydrateSellerAttributes, normalizeDensity, normalizeShipsWithin, parseLaceTypeValues, replaceAttributeTags } from "../product-attribute-tags";
+import { hydrateSellerAttributes, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues, replaceAttributeTags } from "../product-attribute-tags";
 import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
 
@@ -377,10 +377,12 @@ function ensureCustomListMetafield(
   values: string | string[] | null | undefined,
   type = "list.single_line_text_field",
 ) {
-  const items = parseLaceTypeValues(values);
+  const items = Array.isArray(values)
+    ? values.map((item) => String(item).trim()).filter(Boolean)
+    : parseLaceTypeValues(values);
   if (!items.length) return;
   const existing = output.find((item) => item.namespace === "custom" && item.key === key);
-  const value = type.startsWith("list.") ? JSON.stringify(items) : items.join(", ");
+  const value = type.startsWith("list.") ? JSON.stringify([...new Set(items)]) : [...new Set(items)].join(", ");
   if (existing) {
     existing.type = type;
     existing.value = value;
@@ -1257,14 +1259,10 @@ export const action = async ({
       }> = [
         { key: "material", names: ["Hair Type", "Material"], fallback: { namespace: "custom", key: "hair_type", type: "single_line_text_field" }, always: true },
         { key: "texture", names: ["Texture"], fallback: { namespace: "custom", key: "texture", type: "single_line_text_field" }, always: true },
-        { key: "density", names: ["Density"], fallback: { namespace: "custom", key: "density", type: "single_line_text_field" }, always: true },
         { key: "origin", names: ["Origin"], fallback: { namespace: "custom", key: "origin", type: "single_line_text_field" }, always: true },
         { key: "weftType", names: ["Weft Type"], fallback: { namespace: "custom", key: "weft_type", type: "single_line_text_field" }, always: true },
-        { key: "laceSize", names: ["Lace Size"], fallback: { namespace: "custom", key: "lace_size", type: "single_line_text_field" }, always: true },
         { key: "capSize", names: ["Cap Size"], fallback: { namespace: "custom", key: "cap_size", type: "single_line_text_field" }, always: true },
-        { key: "capType", names: ["Cap Type"], fallback: { namespace: "custom", key: "cap_type", type: "single_line_text_field" }, always: true },
         { key: "shippingMethod", names: ["Shipping Method / Shipping Options", "Shipping Method / Shipping", "Shipping Method", "Shipping Methods"], fallback: { namespace: "custom", key: "shipping_method", type: "single_line_text_field" }, always: true },
-        { key: "shipsWithin", names: ["Ships Within"], fallback: { namespace: "custom", key: "ships_within", type: "single_line_text_field" }, always: true },
         { key: "returnPolicy", names: ["Return Policy"], fallback: { namespace: "custom", key: "return_policy", type: "single_line_text_field" }, always: true },
         { key: "showOnMap", names: ["Show on HairGrab Map"], fallback: { namespace: "custom", key: "show_on_hairgrab_map", type: "single_line_text_field" }, always: true },
         { key: "shippingTerritory", names: ["Shipping Territory"], fallback: { namespace: "custom", key: "shipping_territory", type: "single_line_text_field" }, always: true },
@@ -1272,11 +1270,7 @@ export const action = async ({
         { key: "shipsFromState", names: ["Ships From State"], fallback: { namespace: "custom", key: "ships_from_state", type: "single_line_text_field" }, always: true },
       ];
       for (const { key, names, fallback, always } of namedFields) if (always || dirty.has(key)) {
-        const value = key === "shipsWithin"
-          ? normalizeShipsWithin(String(fields.shipsWithin || (fields.sameDayDelivery ? "Same Day" : "")))
-          : key === "density"
-            ? normalizeDensity(String(fields.density || ""))
-            : key === "weftType"
+        const value = key === "weftType"
               ? String(
                   fields.weftType ||
                     ((fields.selectedOptions || []).includes("NO_WEFT")
@@ -1294,28 +1288,40 @@ export const action = async ({
         }
       }
       ensureCustomMetafield(metafields, "origin", String(fields.origin || ""));
-      ensureCustomMetafield(metafields, "lace_size", String(fields.laceSize || ""));
-      const laceTypeValues = parseLaceTypeValues(fields.laceType);
-      const laceTypeType = customMetafieldType(definitions, "lace_type", "list.single_line_text_field");
-      if (laceTypeValues.length) {
-        addExistingMetafield({
-          definitions,
-          output: metafields,
-          names: ["Lace Type"],
-          value: laceTypeValues,
-          fallback: { namespace: "custom", key: "lace_type", type: laceTypeType },
-        });
-        ensureCustomListMetafield(metafields, "lace_type", laceTypeValues, laceTypeType);
-      } else if (dirty.has("laceType")) {
-        const laceTypeDefinition = findMetafieldDefinition(definitions, ["Lace Type"]);
-        if (laceTypeDefinition) removeIfPresent(laceTypeDefinition.namespace, laceTypeDefinition.key);
-        removeIfPresent("custom", "lace_type");
+      const listFields: Array<{
+        key: string;
+        names: string[];
+        metafieldKey: string;
+        values: string[];
+      }> = [
+        { key: "density", names: ["Density"], metafieldKey: "density", values: parseDensityValues(fields.density) },
+        { key: "laceSize", names: ["Lace Size"], metafieldKey: "lace_size", values: parseLaceSizeValues(fields.laceSize) },
+        { key: "capType", names: ["Cap Type"], metafieldKey: "cap_type", values: parseCapTypeValues(fields.capType) },
+        { key: "shipsWithin", names: ["Ships Within"], metafieldKey: "ships_within", values: parseShipsWithinValues(fields.shipsWithin || (fields.sameDayDelivery ? "Same Day" : "")) },
+        { key: "laceType", names: ["Lace Type"], metafieldKey: "lace_type", values: parseLaceTypeValues(fields.laceType) },
+      ];
+      for (const item of listFields) {
+        const type = customMetafieldType(definitions, item.metafieldKey, "list.single_line_text_field");
+        if (item.values.length) {
+          addExistingMetafield({
+            definitions,
+            output: metafields,
+            names: item.names,
+            value: item.values,
+            fallback: { namespace: "custom", key: item.metafieldKey, type },
+          });
+          ensureCustomListMetafield(metafields, item.metafieldKey, item.values, type);
+        } else if (dirty.has(item.key)) {
+          const definition = findMetafieldDefinition(definitions, item.names);
+          if (definition) removeIfPresent(definition.namespace, definition.key);
+          removeIfPresent("custom", item.metafieldKey);
+        }
       }
       addExistingMetafield({
         definitions,
         output: metafields,
         names: ["Same Day Delivery", "Same-Day Delivery"],
-        value: Boolean(fields.sameDayDelivery) || String(fields.shipsWithin || "").toLowerCase() === "same day",
+        value: Boolean(fields.sameDayDelivery) || parseShipsWithinValues(fields.shipsWithin).some((item) => item.toLowerCase() === "same day"),
         fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
       });
       if (fields.material) {

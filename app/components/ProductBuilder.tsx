@@ -4,7 +4,7 @@ import { displayProductCategory, normalizeProductCategory, PRODUCT_CATEGORY_LABE
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, variantFieldsFromShopify, variantFieldsToShopify, type ExistingProductSnapshot } from "../product-builder-model";
 import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights, hairOrigins, weftTypes, normalizeLaceSize, normalizeLaceType } from "../product-vocabulary";
 import { parseCsvText, normalizeCsvHeader, resolveCsvProductFields, resolveStructuredProductOption, inferProductDetailsFromTitle, STRUCTURED_COLUMN_ALIASES, type CsvFieldName } from "../csv-product-import";
-import { weftOptionValues, normalizeDensity, parseLaceTypeValues } from "../product-attribute-tags";
+import { weftOptionValues, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues } from "../product-attribute-tags";
 import { CAP_SIZE_VALUES, CAP_TYPE_VALUES, categoryMaterialLabel, categoryShowsAttribute } from "../product-attribute-schema";
 import type { action as addAction } from "../routes/seller.add-product";
 
@@ -53,11 +53,11 @@ type ProductPayload = {
   installationMethods: string[];
   locType: string;
 
-  density: string;
-  laceSize: string;
+  density: string | string[];
+  laceSize: string | string[];
   laceType: string | string[];
   capSize: string;
-  capType: string;
+  capType: string | string[];
   origin: string;
   weftType: string;
   shipsFromCity: string;
@@ -71,7 +71,7 @@ type ProductPayload = {
   localPickupAvailable: boolean;
   localDeliveryAvailable: boolean;
   sameDayDelivery: boolean;
-  shipsWithin: string;
+  shipsWithin: string | string[];
   returnPolicy: string;
   showOnMap: string;
 
@@ -168,49 +168,7 @@ export const productOptions:
     ProductType,
     Choice[]
   > = {
-  WIG: [
-    {
-      value:
-        "GLUELESS",
-      label:
-        "Glueless",
-    },
-
-    {
-      value:
-        "LACE",
-      label:
-        "Lace",
-    },
-
-    {
-      value:
-        "CLOSURE_WIG",
-      label:
-        "Closure Wig",
-    },
-
-    {
-      value:
-        "FRONTAL_WIG",
-      label:
-        "Frontal Wig",
-    },
-
-    {
-      value:
-        "FULL_LACE",
-      label:
-        "Full Lace",
-    },
-
-    {
-      value:
-        "HEADBAND",
-      label:
-        "Headband Wig",
-    },
-  ],
+  WIG: [],
 
   BUNDLE: [
     {
@@ -469,9 +427,19 @@ export const locTypeChoices: Choice[] = [
 export const shipsWithinChoices: Choice[] = [
   { value: "Same Day", label: "Same Day Delivery / Pickup" },
   { value: "24 Hours", label: "24 Hours" },
+  { value: "2-3 Days", label: "2-3 Days" },
   { value: "48 Hours", label: "48 Hours" },
   { value: "72 Hours", label: "72 Hours" },
   { value: "3-5 Days", label: "3-5 Days" },
+];
+
+const LEGACY_WIG_CAP_OPTIONS: Choice[] = [
+  { value: "GLUELESS", label: "Glueless" },
+  { value: "LACE", label: "Lace" },
+  { value: "CLOSURE_WIG", label: "Closure Wig" },
+  { value: "FRONTAL_WIG", label: "Frontal Wig" },
+  { value: "FULL_LACE", label: "Full Lace" },
+  { value: "HEADBAND", label: "Headband Wig" },
 ];
 
 
@@ -600,6 +568,34 @@ function toggleValue(
         ...current,
         value,
       ];
+}
+
+function AttributeChipGroup({
+  label,
+  values,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  values: string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label style={labelStyle}>{label}</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+        {values.map((item) => (
+          <ChoiceButton
+            key={item}
+            label={item}
+            selected={selected.includes(item)}
+            onClick={() => onToggle(item)}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ChoiceButton({
@@ -1030,16 +1026,20 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     );
 
   const [
-    density,
-    setDensity,
+    selectedDensities,
+    setSelectedDensities,
   ] =
-    useState("");
+    useState<string[]>(
+      [],
+    );
 
   const [
-    laceSize,
-    setLaceSize,
+    selectedLaceSizes,
+    setSelectedLaceSizes,
   ] =
-    useState("");
+    useState<string[]>(
+      [],
+    );
 
   const [
     selectedLaceTypes,
@@ -1056,10 +1056,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     useState("");
 
   const [
-    capType,
-    setCapType,
+    selectedCapTypes,
+    setSelectedCapTypes,
   ] =
-    useState("");
+    useState<string[]>(
+      [],
+    );
 
   const [
     origin,
@@ -1138,11 +1140,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     useState(false);
 
   const [
-    shipsWithin,
-    setShipsWithin,
+    selectedShipsWithin,
+    setSelectedShipsWithin,
   ] =
-    useState(
-      "48 Hours",
+    useState<string[]>(
+      ["48 Hours"],
     );
 
   const [
@@ -1243,22 +1245,28 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     const initialDescription = edit.product.descriptionHtml.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]*>/g, "").trim();
     const knownMaterial = materials.find((item) => item.toLowerCase() === String(settings.material || "").toLowerCase());
     const knownTexture = textures.find((item) => item.toLowerCase() === String(settings.texture || "").toLowerCase());
-    const knownDensity = densities.find((item) => item.toLowerCase() === String(normalizeDensity(settings.density) || "").toLowerCase());
+    const knownDensities = parseDensityValues(settings.densities?.length ? settings.densities : settings.density);
     const knownLaceTypes = parseLaceTypeValues(settings.laceTypes || settings.laceType);
-    const knownLaceSize = laceSizes.find((item) => item.toLowerCase() === String(normalizeLaceSize(settings.laceSize) || "").toLowerCase());
+    const knownLaceSizes = parseLaceSizeValues(settings.laceSizes?.length ? settings.laceSizes : settings.laceSize);
     const capSizeChoices = [...CAP_SIZE_VALUES];
     const knownCapSize = capSizeChoices.find((item) => item.toLowerCase() === String(settings.capSize || "").toLowerCase());
-    const knownCapType = CAP_TYPE_VALUES.find((item) => item.toLowerCase() === String(settings.capType || "").toLowerCase());
+    const knownCapTypes = parseCapTypeValues(settings.capTypes?.length ? settings.capTypes : settings.capType);
+    const migratedCapTypes = LEGACY_WIG_CAP_OPTIONS
+      .filter((item) => initialOptions.includes(item.value) || edit.product.tags.includes(item.label))
+      .map((item) => item.label);
+    const selectedCapTypeValues = [...new Set([...knownCapTypes, ...migratedCapTypes])];
+    const selectedOptionValues = initialOptions.filter((value) => !LEGACY_WIG_CAP_OPTIONS.some((item) => item.value === value));
     const knownOrigin = hairOrigins.find((item) => item.toLowerCase() === String(settings.origin || "").toLowerCase());
     const knownWeftType = weftTypes.find((item) => item.toLowerCase() === String(settings.weftType || settings.weft || "").toLowerCase());
+    const knownShipsWithin = parseShipsWithinValues(settings.shipsWithins?.length ? settings.shipsWithins : settings.shipsWithin);
     initialEditFields.current = { title: edit.product.title.trim(), description: initialDescription, productType: type,
-      selectedOptions: initialOptions, searchClassifications: initialClassifications,
+      selectedOptions: selectedOptionValues, searchClassifications: initialClassifications,
       installationMethods: initialInstallation, locType: initialLocType,
       material: settings.material || "", colors: settings.colors?.length ? settings.colors : ["Natural / 1B"],
-      texture: knownTexture || settings.texture || "", density: knownDensity || normalizeDensity(settings.density) || "",
-      laceSize: knownLaceSize || normalizeLaceSize(settings.laceSize) || "",
+      texture: knownTexture || settings.texture || "", density: knownDensities,
+      laceSize: knownLaceSizes,
       laceType: knownLaceTypes, capSize: knownCapSize || settings.capSize || "",
-      capType: knownCapType || settings.capType || "",
+      capType: selectedCapTypeValues,
       origin: knownOrigin || settings.origin || "",
       weftType: knownWeftType || settings.weftType || settings.weft || "",
       shipsFromCity: settings.shipsFromCity || seller.city || "",
@@ -1268,17 +1276,15 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       bundleWeight: settings.bundleWeight || "100g", pieceCount: settings.pieceCount || "",
       shippingMethod: settings.builderShippingMethod || settings.shippingMethod || "Free Shipping", flatRateShipping: settings.flatRateShipping || "",
       localPickupAvailable: settings.localPickupAvailable ?? false, localDeliveryAvailable: settings.localDeliveryAvailable ?? false,
-      sameDayDelivery: Boolean(settings.sameDayDelivery) || String(settings.shipsWithin || "").toLowerCase() === "same day",
-      shipsWithin: shipsWithinChoices.some((choice) => choice.value === settings.shipsWithin)
-        ? settings.shipsWithin
-        : settings.shipsWithin || "",
+      sameDayDelivery: Boolean(settings.sameDayDelivery) || knownShipsWithin.some((item) => item.toLowerCase() === "same day"),
+      shipsWithin: knownShipsWithin.length ? knownShipsWithin : (settings.shipsWithin ? [String(settings.shipsWithin)] : []),
       returnPolicy: settings.returnPolicy || "", showOnMap: settings.showOnMap || "" };
     setTitle(edit.product.title);
     setDescription(initialDescription);
     setProductType(type);
     setSelectedLengths(lengths);
     setCustomLengths(lengths.filter((length) => !standardLengths.includes(length)));
-    setSelectedOptions(initialOptions);
+    setSelectedOptions(selectedOptionValues);
     setSearchClassifications(initialClassifications);
     setInstallationMethods(initialInstallation);
     setLocType(initialLocType);
@@ -1291,11 +1297,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     if (hydratedColors[0]) setColor(colors.includes(hydratedColors[0]) ? hydratedColors[0] : "Other / Custom");
     if (hydratedColors[0] && !colors.includes(hydratedColors[0])) setCustomColor(hydratedColors[0]);
     setTexture(knownTexture || settings.texture || "");
-    setDensity(knownDensity || normalizeDensity(settings.density) || "");
-    setLaceSize(knownLaceSize || normalizeLaceSize(settings.laceSize) || "");
+    setSelectedDensities(knownDensities);
+    setSelectedLaceSizes(knownLaceSizes);
     setSelectedLaceTypes(knownLaceTypes);
     setCapSize(knownCapSize || settings.capSize || "");
-    setCapType(knownCapType || settings.capType || "");
+    setSelectedCapTypes(selectedCapTypeValues);
     setOrigin(knownOrigin || settings.origin || "");
     setWeftType(knownWeftType || settings.weftType || settings.weft || "");
     setShipsFromCity(settings.shipsFromCity || seller.city || "");
@@ -1307,12 +1313,8 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setFlatRateShipping(settings.flatRateShipping || "");
     setLocalPickupAvailable(settings.localPickupAvailable ?? false);
     setLocalDeliveryAvailable(settings.localDeliveryAvailable ?? false);
-    setSameDayDelivery(Boolean(settings.sameDayDelivery) || String(settings.shipsWithin || "").toLowerCase() === "same day");
-    setShipsWithin(
-      shipsWithinChoices.some((choice) => choice.value === settings.shipsWithin)
-        ? settings.shipsWithin
-        : settings.shipsWithin || "",
-    );
+    setSameDayDelivery(Boolean(settings.sameDayDelivery) || knownShipsWithin.some((item) => item.toLowerCase() === "same day"));
+    setSelectedShipsWithin(knownShipsWithin.length ? knownShipsWithin : ["48 Hours"]);
     setReturnPolicy(settings.returnPolicy || "");
     setShowOnMap(settings.showOnMap || "");
     setOnSale(existing.some((variant) => variant.compareAtPrice !== null));
@@ -2045,10 +2047,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
             colors: selectedColors,
             texture,
             lengths: [...selectedLengths, ...customLengths],
-            density,
-            laceSize,
+            density: selectedDensities,
+            laceSize: selectedLaceSizes,
             laceType: selectedLaceTypes,
             capSize,
+            capType: selectedCapTypes,
             bundleWeight,
             classifications: searchClassifications,
             options: selectedOptions,
@@ -2198,7 +2201,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
   }
 
   if (
-    !shipsWithin
+    !selectedShipsWithin.length
   ) {
     missingRequirements.push(
       "Ships Within timeframe",
@@ -2655,7 +2658,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       material: item.productType === "HAIR_ESSENTIAL" ? "Not Applicable" : String(item.material || ""),
       colors: colors.length > 0 ? colors : ["Natural / 1B"],
       texture: item.productType === "HAIR_ESSENTIAL" ? "Not Applicable" : String(item.texture || ""),
-      selectedOptions: item.productOption ? [item.productOption] : [],
+      selectedOptions: item.productOption && !LEGACY_WIG_CAP_OPTIONS.some((option) => option.value === item.productOption) ? [item.productOption] : [],
       optionsAreVariants: false,
       searchClassifications: item.classification ? [item.classification] : [],
       installationMethods: item.installationMethod ? [item.installationMethod] : [],
@@ -2664,7 +2667,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       laceSize: item.laceSize || "",
       laceType: item.laceType || "",
       capSize: item.capSize || "",
-      capType: item.capType || "",
+      capType: item.capType || LEGACY_WIG_CAP_OPTIONS.find((option) => option.value === item.productOption)?.label || "",
       origin: "",
       weftType: item.productOption === "NO_WEFT" ? "No Weft" : item.productOption === "WEFT" ? "Weft" : "",
       shipsFromCity: seller.city || "",
@@ -2788,11 +2791,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       } catch (error) { window.alert(error instanceof Error ? error.message : "Invalid product edit"); return; }
       const fields = { title: title.trim(), description: description.trim(), productType,
         selectedOptions, searchClassifications, installationMethods, locType,
-        material: resolvedMaterial, colors: selectedColors, texture, density, laceSize, laceType: selectedLaceTypes, capSize, capType,
+        material: resolvedMaterial, colors: selectedColors, texture, density: selectedDensities, laceSize: selectedLaceSizes, laceType: selectedLaceTypes, capSize, capType: selectedCapTypes,
         origin, weftType, shipsFromCity, shipsFromState, shippingTerritory,
         bundleWeight, pieceCount, lengths: [...selectedLengths, ...customLengths],
         shippingMethod, flatRateShipping, localPickupAvailable, localDeliveryAvailable,
-        sameDayDelivery, shipsWithin, returnPolicy, showOnMap };
+        sameDayDelivery, shipsWithin: selectedShipsWithin, returnPolicy, showOnMap };
       const changedFields = Object.keys(fields).filter((key) =>
         JSON.stringify((fields as Record<string, unknown>)[key]) !== JSON.stringify(initialEditFields.current?.[key]));
       setEditDirty(false);
@@ -2841,15 +2844,15 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
 
         locType,
 
-        density,
+        density: selectedDensities,
 
-        laceSize,
+        laceSize: selectedLaceSizes,
 
         laceType: selectedLaceTypes,
 
         capSize,
 
-        capType,
+        capType: selectedCapTypes,
 
         origin,
 
@@ -2892,7 +2895,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
 
         sameDayDelivery,
 
-        shipsWithin,
+        shipsWithin: selectedShipsWithin,
 
         returnPolicy,
 
@@ -3171,6 +3174,27 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
               />
             ) : null}
 
+            {selectedLaceSizes.length ? (
+              <ReviewValue
+                label="Lace Size"
+                value={selectedLaceSizes.join(", ")}
+              />
+            ) : null}
+
+            {selectedDensities.length ? (
+              <ReviewValue
+                label="Density"
+                value={selectedDensities.join(", ")}
+              />
+            ) : null}
+
+            {selectedCapTypes.length ? (
+              <ReviewValue
+                label="Cap Type"
+                value={selectedCapTypes.join(", ")}
+              />
+            ) : null}
+
             {weftType ? (
               <ReviewValue
                 label="Weft Type"
@@ -3221,7 +3245,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
             <ReviewValue
               label="Ships Within"
               value={
-                shipsWithin
+                selectedShipsWithin.join(", ")
               }
             />
 
@@ -4583,9 +4607,10 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                   "12px",
               }}
             >
-              Select every option that applies. These details help HairGrab categorize the product and improve matching in shopper search and filters.
+              Select every option that applies. Wig construction such as Glueless, Closure Wig, and Full Lace is chosen under Cap Type below, not here.
             </div>
 
+            {currentOptions.length > 0 && (
             <div
               style={{
                 display:
@@ -4655,6 +4680,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                 ),
               )}
             </div>
+            )}
 
             {currentClassifications.length >
               0 && (
@@ -5172,41 +5198,28 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
               }}
             >
               {categoryShowsAttribute(productType, "density") && (
-                <SimpleSelect
+                <AttributeChipGroup
                   label="Density"
-                  value={density}
                   values={densities}
-                  onChange={setDensity}
+                  selected={selectedDensities}
+                  onToggle={(item) => setSelectedDensities((current) => toggleValue(current, item))}
                 />
               )}
               {(productType === "WIG" || productType === "CLOSURE_FRONTAL" || categoryShowsAttribute(productType, "laceSize")) && (
-                <SimpleSelect
+                <AttributeChipGroup
                   label="Lace Size"
-                  value={laceSize}
                   values={laceSizes}
-                  onChange={setLaceSize}
+                  selected={selectedLaceSizes}
+                  onToggle={(item) => setSelectedLaceSizes((current) => toggleValue(current, item))}
                 />
               )}
               {(productType === "WIG" || productType === "CLOSURE_FRONTAL" || categoryShowsAttribute(productType, "laceType")) && (
-                <div>
-                  <label style={labelStyle}>Lace Type</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
-                    {laceTypes.map((item) => (
-                      <ChoiceButton
-                        key={item}
-                        label={item}
-                        selected={selectedLaceTypes.includes(item)}
-                        onClick={() =>
-                          setSelectedLaceTypes((current) =>
-                            current.includes(item)
-                              ? current.filter((value) => value !== item)
-                              : [...current, item],
-                          )
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
+                <AttributeChipGroup
+                  label="Lace Type"
+                  values={laceTypes}
+                  selected={selectedLaceTypes}
+                  onToggle={(item) => setSelectedLaceTypes((current) => toggleValue(current, item))}
+                />
               )}
               {categoryShowsAttribute(productType, "capSize") && (
                 <SimpleSelect
@@ -5217,11 +5230,11 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                 />
               )}
               {categoryShowsAttribute(productType, "capType") && (
-                <SimpleSelect
+                <AttributeChipGroup
                   label="Cap Type"
-                  value={capType}
                   values={[...CAP_TYPE_VALUES]}
-                  onChange={setCapType}
+                  selected={selectedCapTypes}
+                  onToggle={(item) => setSelectedCapTypes((current) => toggleValue(current, item))}
                 />
               )}
               {categoryShowsAttribute(productType, "weight") && (
@@ -5962,40 +5975,22 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
               >
                 Ships Within *
               </label>
-
-              <select
-                value={
-                  shipsWithin
-                }
-                onChange={(
-                  event,
-                ) => {
-                  const next = event.target.value;
-                  setShipsWithin(next);
-                  if (next === "Same Day") setSameDayDelivery(true);
-                }}
-                style={
-                  fieldStyle
-                }
-              >
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
                 {shipsWithinChoices.map((choice) => (
-                  <option
+                  <ChoiceButton
                     key={choice.value}
-                    value={choice.value}
-                  >
-                    {choice.label}
-                  </option>
+                    label={choice.label}
+                    selected={selectedShipsWithin.includes(choice.value)}
+                    onClick={() => {
+                      setSelectedShipsWithin((current) => {
+                        const next = toggleValue(current, choice.value);
+                        if (next.some((item) => item.toLowerCase() === "same day")) setSameDayDelivery(true);
+                        return next;
+                      });
+                    }}
+                  />
                 ))}
-                {shipsWithin &&
-                  shipsWithin.toLowerCase() !== "same day" &&
-                  !shipsWithinChoices.some(
-                    (choice) => choice.value === shipsWithin,
-                  ) && (
-                    <option value={shipsWithin}>
-                      {shipsWithin}
-                    </option>
-                  )}
-              </select>
+              </div>
 
               <div
                 style={{

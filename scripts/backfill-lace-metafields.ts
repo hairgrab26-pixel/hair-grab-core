@@ -5,7 +5,7 @@ import { unauthenticated } from "../app/shopify.server.ts";
 // @ts-ignore
 import { ensureRequiredCustomProductMetafieldDefinitions, customMetafieldType } from "../app/product-metafield-definitions.server.ts";
 // @ts-ignore
-import { attributesFromTags, parseLaceTypeValues } from "../app/product-attribute-tags.ts";
+import { attributesFromTags, parseLaceSizeValues, parseLaceTypeValues } from "../app/product-attribute-tags.ts";
 
 type Mode = "dry-run" | "execute";
 
@@ -105,8 +105,16 @@ if (!mode || process.argv.some((value) => value === "--help" || value === "-h"))
         if (origin && !metafieldValue(custom, "origin")) {
           next.push({ ownerId: node.id, namespace: "custom", key: "origin", type: "single_line_text_field", value: origin });
         }
-        if (fromTags.laceSize && !metafieldValue(custom, "lace_size")) {
-          next.push({ ownerId: node.id, namespace: "custom", key: "lace_size", type: "single_line_text_field", value: fromTags.laceSize });
+        const laceSizeType = customMetafieldType(definitions, "lace_size", "list.single_line_text_field");
+        const laceSizes = parseLaceSizeValues(fromTags.laceSizes.length ? fromTags.laceSizes : fromTags.laceSize);
+        if (laceSizes.length && !metafieldValue(custom, "lace_size")) {
+          next.push({
+            ownerId: node.id,
+            namespace: "custom",
+            key: "lace_size",
+            type: laceSizeType,
+            value: laceSizeType.startsWith("list.") ? JSON.stringify(laceSizes) : laceSizes.join(", "),
+          });
         }
         const laceTypes = parseLaceTypeValues(fromTags.laceTypes.length ? fromTags.laceTypes : fromTags.laceType);
         if (laceTypes.length && !metafieldValue(custom, "lace_type")) {

@@ -9,14 +9,32 @@ export const REQUIRED_CUSTOM_PRODUCT_METAFIELDS = [
   {
     name: "Lace Size",
     key: "lace_size",
-    type: "single_line_text_field",
-    description: "Lace size such as 13x4, used by HairGrab seller forms and storefront filters.",
+    type: "list.single_line_text_field",
+    description: "Lace sizes such as 13x4. Supports multiple values.",
   },
   {
     name: "Lace Type",
     key: "lace_type",
     type: "list.single_line_text_field",
     description: "Lace construction such as HD Lace. Supports multiple values.",
+  },
+  {
+    name: "Density",
+    key: "density",
+    type: "list.single_line_text_field",
+    description: "Hair density such as 180%. Supports multiple values.",
+  },
+  {
+    name: "Cap Type",
+    key: "cap_type",
+    type: "list.single_line_text_field",
+    description: "Cap construction such as Glueless or Full Lace. Supports multiple values.",
+  },
+  {
+    name: "Ships Within",
+    key: "ships_within",
+    type: "list.single_line_text_field",
+    description: "Seller fulfillment windows such as Same Day or 24 Hours. Supports multiple values.",
   },
 ] as const;
 

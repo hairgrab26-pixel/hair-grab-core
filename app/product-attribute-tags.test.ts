@@ -266,3 +266,34 @@ test("writes Origin and lace tags from seller form values", () => {
   assert.ok(tags.includes("Lace Type: HD Lace"));
   assert.ok(tags.includes("Lace Type: Swiss Lace"));
 });
+
+test("writes and hydrates multi-select density, lace size, cap type, and ships within", () => {
+  const tags = productAttributeTags({
+    density: ["150%", "180%"],
+    laceSize: ["4x4", "13x4"],
+    capType: ["Glueless", "Full Lace"],
+    shipsWithin: ["Same Day", "24 Hours"],
+  });
+  assert.ok(tags.includes("Density: 150%"));
+  assert.ok(tags.includes("Density: 180%"));
+  assert.ok(tags.includes("Lace Size: 4x4"));
+  assert.ok(tags.includes("Lace Size: 13x4"));
+  assert.ok(tags.includes("Cap Type: Glueless"));
+  assert.ok(tags.includes("Cap Type: Full Lace"));
+  assert.ok(tags.includes("Ships Within: Same Day"));
+  assert.ok(tags.includes("Ships Within: 24 Hours"));
+
+  const hydrated = hydrateSellerAttributes({
+    metafields: [
+      { namespace: "custom", key: "density", value: '["150%","200%"]' },
+      { namespace: "custom", key: "lace_size", value: '["5x5","13x6"]' },
+      { namespace: "custom", key: "cap_type", value: '["Closure Wig","Frontal Wig"]' },
+      { namespace: "custom", key: "ships_within", value: '["2-3 Days","48 Hours"]' },
+    ],
+  });
+  assert.deepEqual(hydrated.densities, ["150%", "200%"]);
+  assert.deepEqual(hydrated.laceSizes, ["5x5", "13x6"]);
+  assert.deepEqual(hydrated.capTypes, ["Closure Wig", "Frontal Wig"]);
+  assert.deepEqual(hydrated.shipsWithins, ["2-3 Days", "48 Hours"]);
+  assert.equal(hydrated.sameDayDelivery, false);
+});

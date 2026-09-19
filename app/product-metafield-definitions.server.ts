@@ -50,7 +50,7 @@ async function graphqlJson(admin: AdminClient, query: string, variables?: Record
   return response.json();
 }
 
-/** Create unconstrained custom.origin / custom.lace_size / custom.lace_type PRODUCT definitions if missing, and enable storefront read. */
+/** Create unconstrained custom origin/lace/density/cap_type/ships_within PRODUCT definitions if missing, and enable storefront read. */
 export async function ensureRequiredCustomProductMetafieldDefinitions(admin: AdminClient) {
   const listed = await graphqlJson(admin, LIST_DEFINITIONS);
   if (listed?.errors?.length) {

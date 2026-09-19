@@ -17,7 +17,7 @@ import { extensionTypeFromOptions, EXTENSION_TYPE_METAFIELD, productTypeToCatego
 import ProductBuilder from "../components/ProductBuilder";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices } from "../components/ProductBuilder";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
-import { normalizeDensity, normalizeShipsWithin, parseLaceTypeValues } from "../product-attribute-tags";
+import { parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues } from "../product-attribute-tags";
 import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 
 // ==========================================================
@@ -48,11 +48,11 @@ type ProductPayload = {
   installationMethods: string[];
   locType: string;
 
-  density: string;
-  laceSize: string;
+  density: string | string[];
+  laceSize: string | string[];
   laceType: string | string[];
   capSize: string;
-  capType: string;
+  capType: string | string[];
   origin: string;
   weftType: string;
   shipsFromCity: string;
@@ -66,7 +66,7 @@ type ProductPayload = {
   localPickupAvailable: boolean;
   localDeliveryAvailable: boolean;
   sameDayDelivery: boolean;
-  shipsWithin: string;
+  shipsWithin: string | string[];
   returnPolicy: string;
   showOnMap: string;
 
@@ -566,10 +566,12 @@ function ensureCustomListMetafield(
   values: string | string[] | null | undefined,
   type = "list.single_line_text_field",
 ) {
-  const items = parseLaceTypeValues(values);
+  const items = Array.isArray(values)
+    ? values.map((item) => String(item).trim()).filter(Boolean)
+    : parseLaceTypeValues(values);
   if (!items.length) return;
   const existing = output.find((item) => item.namespace === "custom" && item.key === key);
-  const value = type.startsWith("list.") ? JSON.stringify(items) : items.join(", ");
+  const value = type.startsWith("list.") ? JSON.stringify([...new Set(items)]) : [...new Set(items)].join(", ");
   if (existing) {
     existing.type = type;
     existing.value = value;
@@ -883,24 +885,41 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Cap Type"],
-    value: payload.capType,
-    fallback: { namespace: "custom", key: "cap_type", type: "single_line_text_field" },
+    value: parseCapTypeValues(payload.capType),
+    fallback: { namespace: "custom", key: "cap_type", type: customMetafieldType(definitions, "cap_type", "list.single_line_text_field") },
   });
+  ensureCustomListMetafield(
+    metafields,
+    "cap_type",
+    parseCapTypeValues(payload.capType),
+    customMetafieldType(definitions, "cap_type", "list.single_line_text_field"),
+  );
   addExistingMetafield({
     definitions,
     output: metafields,
     names: ["Density"],
-    value: normalizeDensity(payload.density),
-    fallback: { namespace: "custom", key: "density", type: "single_line_text_field" },
+    value: parseDensityValues(payload.density),
+    fallback: { namespace: "custom", key: "density", type: customMetafieldType(definitions, "density", "list.single_line_text_field") },
   });
+  ensureCustomListMetafield(
+    metafields,
+    "density",
+    parseDensityValues(payload.density),
+    customMetafieldType(definitions, "density", "list.single_line_text_field"),
+  );
   addExistingMetafield({
     definitions,
     output: metafields,
     names: ["Lace Size"],
-    value: payload.laceSize,
-    fallback: { namespace: "custom", key: "lace_size", type: "single_line_text_field" },
+    value: parseLaceSizeValues(payload.laceSize),
+    fallback: { namespace: "custom", key: "lace_size", type: customMetafieldType(definitions, "lace_size", "list.single_line_text_field") },
   });
-  ensureCustomMetafield(metafields, "lace_size", payload.laceSize);
+  ensureCustomListMetafield(
+    metafields,
+    "lace_size",
+    parseLaceSizeValues(payload.laceSize),
+    customMetafieldType(definitions, "lace_size", "list.single_line_text_field"),
+  );
   const laceTypeValues = parseLaceTypeValues(payload.laceType);
   addExistingMetafield({
     definitions,
@@ -919,7 +938,7 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Same Day Delivery", "Same-Day Delivery"],
-    value: Boolean(payload.sameDayDelivery) || payload.shipsWithin === "Same Day",
+    value: Boolean(payload.sameDayDelivery) || parseShipsWithinValues(payload.shipsWithin).some((item) => item.toLowerCase() === "same day"),
     fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
   });
   addExistingMetafield({
@@ -961,9 +980,15 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Ships Within"],
-    value: normalizeShipsWithin(payload.shipsWithin || (payload.sameDayDelivery ? "Same Day" : "")),
-    fallback: { namespace: "custom", key: "ships_within", type: "single_line_text_field" },
+    value: parseShipsWithinValues(payload.shipsWithin || (payload.sameDayDelivery ? "Same Day" : "")),
+    fallback: { namespace: "custom", key: "ships_within", type: customMetafieldType(definitions, "ships_within", "list.single_line_text_field") },
   });
+  ensureCustomListMetafield(
+    metafields,
+    "ships_within",
+    parseShipsWithinValues(payload.shipsWithin || (payload.sameDayDelivery ? "Same Day" : "")),
+    customMetafieldType(definitions, "ships_within", "list.single_line_text_field"),
+  );
   addExistingMetafield({
     definitions,
     output: metafields,

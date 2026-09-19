@@ -30,11 +30,14 @@ export const CAP_SIZE_VALUES = ["Small", "Medium", "Large", "Adjustable"] as con
 
 export const CAP_TYPE_VALUES = [
   "Glueless",
-  "Lace",
+  "Closure Wig",
+  "Frontal Wig",
   "Full Lace",
+  "Lace",
   "360",
   "U-Part",
   "Silk Top",
+  "Headband Wig",
 ] as const;
 
 export function categoryShowsAttribute(

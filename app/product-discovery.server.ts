@@ -50,7 +50,7 @@ export function discoverProducts(products: DiscoveryProduct[], params: Discovery
     if (!matchesList(p.lengths, params.lengths) || !matchesList(p.colors, params.colors)) return false;
     if (params.minPriceCents !== null && p.priceCents < params.minPriceCents) return false;
     if (params.maxPriceCents !== null && p.priceCents > params.maxPriceCents) return false;
-    if (params.shipsWithin && normalizeDiscoveryText(p.shipsWithin) !== normalizeDiscoveryText(params.shipsWithin)) return false;
+    if (params.shipsWithin && !normalizeDiscoveryText(p.shipsWithin).includes(normalizeDiscoveryText(params.shipsWithin))) return false;
     if (fulfillment && !p.fulfillment.some((v) => normalizeDiscoveryText(v) === fulfillment)) return false;
     if (seller && !normalizeDiscoveryText(p.seller).includes(seller)) return false;
     if (params.availability === "available" && !p.available) return false;
@@ -62,6 +62,11 @@ export function discoverProducts(products: DiscoveryProduct[], params: Discovery
   return { products: sorted.slice(start, start + params.pageSize), total: sorted.length, page: params.page, pageSize: params.pageSize, totalPages: Math.max(1, Math.ceil(sorted.length / params.pageSize)) };
 }
 
+function asJoined(value: string | string[] | null | undefined) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean).join(", ");
+  return String(value || "");
+}
+
 export function normalizeShopifyDiscoveryProduct(node: any, seller: { businessName: string; sellerCode: string; city: string | null; state: string | null }): DiscoveryProduct {
   const metafields = node.metafields?.nodes || [];
   const parsed = parseAdminProductAttributes({ metafields, tags: node.tags || [] });
@@ -69,5 +74,5 @@ export function normalizeShopifyDiscoveryProduct(node: any, seller: { businessNa
   const variants = node.variants?.nodes || []; const prices = variants.map((v: any) => Number(v.price)).filter(Number.isFinite); const compare = variants.map((v: any) => Number(v.compareAtPrice)).filter(Number.isFinite);
   const h = node.hairgrabMetafields?.nodes || [];
   const fulfillment = [parsed.shippingTerritory === "Nationwide" || h.find((m: any) => m.key === "shipping_territory")?.value === "Nationwide" ? "Nationwide Shipping" : "", h.find((m: any) => m.key === "local_pickup_available")?.value === "true" ? "Local Pickup" : "", h.find((m: any) => m.key === "local_delivery_available")?.value === "true" ? "Local Delivery" : ""].filter(Boolean);
-  return { id: node.id, title: node.title, handle: node.handle, category: displayProductCategory(node.productType), subtype: values("subtype")[0] || String(parsed.hairCategory || ""), texture: values("texture")[0] || String(parsed.texture || ""), origin: String(parsed.origin || values("origin")[0] || ""), laceSize: String(parsed.laceSize || values("lace_size")[0] || ""), laceTypes: Array.isArray(parsed.laceType) ? parsed.laceType : String(parsed.laceType || "").split(",").map((item) => item.trim()).filter(Boolean), lengths: values("length").length ? values("length") : Array.isArray(parsed.lengths) ? parsed.lengths : [], colors: values("color").length ? values("color") : Array.isArray(parsed.colors) ? parsed.colors : [], priceCents: Math.round((Math.min(...(prices.length ? prices : [0]))) * 100), compareAtPriceCents: compare.length ? Math.round(Math.max(...compare) * 100) : null, shipsWithin: String(parsed.shipsWithin || values("ships_within")[0] || values("ships within")[0] || h.find((m: any) => m.key === "ships_within")?.value || ""), fulfillment, seller: seller.businessName, sellerCode: seller.sellerCode, city: String(parsed.shipsFromCity || seller.city || ""), state: String(parsed.shipsFromState || seller.state || ""), available: variants.some((v: any) => Number(v.inventoryQuantity) > 0), createdAt: node.createdAt || "", imageUrl: node.featuredImage?.url || null };
+  return { id: node.id, title: node.title, handle: node.handle, category: displayProductCategory(node.productType), subtype: values("subtype")[0] || String(parsed.hairCategory || ""), texture: values("texture")[0] || String(parsed.texture || ""), origin: String(parsed.origin || values("origin")[0] || ""), laceSize: asJoined(parsed.laceSize) || values("lace_size")[0] || "", laceTypes: Array.isArray(parsed.laceType) ? parsed.laceType : String(parsed.laceType || "").split(",").map((item) => item.trim()).filter(Boolean), lengths: values("length").length ? values("length") : Array.isArray(parsed.lengths) ? parsed.lengths : [], colors: values("color").length ? values("color") : Array.isArray(parsed.colors) ? parsed.colors : [], priceCents: Math.round((Math.min(...(prices.length ? prices : [0]))) * 100), compareAtPriceCents: compare.length ? Math.round(Math.max(...compare) * 100) : null, shipsWithin: asJoined(parsed.shipsWithin) || values("ships_within")[0] || values("ships within")[0] || h.find((m: any) => m.key === "ships_within")?.value || "", fulfillment, seller: seller.businessName, sellerCode: seller.sellerCode, city: String(parsed.shipsFromCity || seller.city || ""), state: String(parsed.shipsFromState || seller.state || ""), available: variants.some((v: any) => Number(v.inventoryQuantity) > 0), createdAt: node.createdAt || "", imageUrl: node.featuredImage?.url || null };
 }

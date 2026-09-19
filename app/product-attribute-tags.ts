@@ -1,4 +1,5 @@
-﻿import { isLaceSizeChoice, normalizeLaceSize, normalizeLaceType } from "./product-vocabulary.ts";
+﻿import { CAP_TYPE_VALUES } from "./product-attribute-schema.ts";
+import { isLaceSizeChoice, normalizeLaceSize, normalizeLaceType } from "./product-vocabulary.ts";
 
 const CAP_SIZE_VALUES = ["Small", "Medium", "Large", "Adjustable"] as const;
 
@@ -10,6 +11,7 @@ function isCapSizeValue(value: string | null | undefined) {
 export const SHIPS_WITHIN_VALUES = [
   "Same Day",
   "24 Hours",
+  "2-3 Days",
   "48 Hours",
   "72 Hours",
   "3-5 Days",
@@ -150,18 +152,50 @@ export function parseLaceTypeValues(value: string | string[] | null | undefined)
   return [...new Set(items.map((item) => normalizeLaceType(item)).filter(Boolean))];
 }
 
+export function parseNormalizedList(
+  value: string | string[] | null | undefined,
+  normalize: (item: string) => string,
+) {
+  const items = Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : parseListMetafield(value);
+  return [...new Set(items.map((item) => normalize(item)).filter(Boolean))];
+}
+
+export function parseDensityValues(value: string | string[] | null | undefined) {
+  return parseNormalizedList(value, normalizeDensity);
+}
+
+export function parseLaceSizeValues(value: string | string[] | null | undefined) {
+  return parseNormalizedList(value, normalizeLaceSize);
+}
+
+export function parseCapTypeValues(value: string | string[] | null | undefined) {
+  return parseNormalizedList(value, (item) => {
+    if (isCapSizeValue(item)) return "";
+    const match = CAP_TYPE_VALUES.find((choice) => choice.toLowerCase() === item.trim().toLowerCase());
+    return match || completedValue(item);
+  });
+}
+
+export function parseShipsWithinValues(value: string | string[] | null | undefined) {
+  return parseNormalizedList(value, normalizeShipsWithin);
+}
+
 export type ProductAttributeTagFields = {
   laceType?: string | string[] | null;
   laceTypes?: string[] | null;
-  laceSize?: string | null;
+  laceSize?: string | string[] | null;
+  laceSizes?: string[] | null;
   capSize?: string | null;
-  capType?: string | null;
-  density?: string | null;
+  capType?: string | string[] | null;
+  capTypes?: string[] | null;
+  density?: string | string[] | null;
+  densities?: string[] | null;
   selectedOptions?: string[] | null;
   material?: string | null;
   texture?: string | null;
   colors?: string[] | null;
-  shipsWithin?: string | null;
+  shipsWithin?: string | string[] | null;
+  shipsWithins?: string[] | null;
   sameDayDelivery?: boolean | null;
   hairCategory?: string | null;
   productType?: string | null;
@@ -184,13 +218,17 @@ export type HydratedSellerAttributes = {
   colors: string[];
   texture: string;
   density: string;
+  densities: string[];
   laceType: string;
   laceTypes: string[];
   laceSize: string;
+  laceSizes: string[];
   capSize: string;
   capType: string;
+  capTypes: string[];
   weft: string;
   shipsWithin: string;
+  shipsWithins: string[];
   sameDayDelivery: boolean;
   lengths: string[];
   bundleWeight: string;
@@ -238,8 +276,9 @@ function weftLabel(options: string[] | null | undefined) {
   return "";
 }
 
-export function isSameDayShipsWithin(value: string | null | undefined) {
-  return String(value || "").trim().toLowerCase() === "same day";
+export function isSameDayShipsWithin(value: string | string[] | null | undefined) {
+  return parseShipsWithinValues(value).some((item) => item.toLowerCase() === "same day")
+    || String(value || "").trim().toLowerCase() === "same day";
 }
 
 export function normalizeShipsWithin(value: string | null | undefined) {
@@ -250,6 +289,7 @@ export function normalizeShipsWithin(value: string | null | undefined) {
   );
   if (match) return match;
   if (/3\s*-\s*5/.test(trimmed)) return "3-5 Days";
+  if (/2\s*-\s*3/.test(trimmed)) return "2-3 Days";
   return trimmed;
 }
 
@@ -287,13 +327,17 @@ function emptyHydratedAttributes(): HydratedSellerAttributes {
     colors: [],
     texture: "",
     density: "",
+    densities: [],
     laceType: "",
     laceTypes: [],
     laceSize: "",
+    laceSizes: [],
     capSize: "",
     capType: "",
+    capTypes: [],
     weft: "",
     shipsWithin: "",
+    shipsWithins: [],
     sameDayDelivery: false,
     lengths: [],
     bundleWeight: "",
@@ -313,7 +357,11 @@ function emptyHydratedAttributes(): HydratedSellerAttributes {
 
 function assignCapValue(result: HydratedSellerAttributes, value: string) {
   if (isCapSizeValue(value)) result.capSize = value;
-  else result.capType = value;
+  else {
+    const capType = parseCapTypeValues(value)[0] || value;
+    result.capType = result.capType || capType;
+    if (capType && !result.capTypes.includes(capType)) result.capTypes.push(capType);
+  }
 }
 
 export function attributesFromTags(tags: Iterable<string>) {
@@ -322,7 +370,14 @@ export function attributesFromTags(tags: Iterable<string>) {
   for (const raw of tags) {
     const tag = String(raw || "").trim();
     const separator = tag.indexOf(":");
-    if (separator <= 0) continue;
+    if (separator <= 0) {
+      const capType = parseCapTypeValues(tag)[0];
+      if (capType && CAP_TYPE_VALUES.some((item) => item === capType) && !result.capTypes.includes(capType)) {
+        result.capTypes.push(capType);
+        result.capType = result.capType || capType;
+      }
+      continue;
+    }
     const label = tag.slice(0, separator).trim().toLowerCase();
     const value = tag.slice(separator + 1).trim();
     if (!value) continue;
@@ -330,16 +385,26 @@ export function attributesFromTags(tags: Iterable<string>) {
     if (label === "material" || label === "hair material" || label === "hair type" || label === "material / fiber" || label === "fiber") {
       result.material = value;
     } else if (label === "texture") result.texture = value;
-    else if (label === "density") result.density = normalizeDensity(value);
+    else if (label === "density") {
+      const density = normalizeDensity(value);
+      if (density && !result.densities.includes(density)) result.densities.push(density);
+      result.density = result.density || density;
+    }
     else if (label === "lace type" || label === "lace") {
       const laceType = normalizeLaceType(value);
       if (isLaceSizeChoice(value) && !["HD Lace", "Transparent Lace", "Swiss Lace", "Regular Lace"].includes(laceType)) {
-        result.laceSize = result.laceSize || normalizeLaceSize(value);
+        const laceSize = normalizeLaceSize(value);
+        if (laceSize && !result.laceSizes.includes(laceSize)) result.laceSizes.push(laceSize);
+        result.laceSize = result.laceSize || laceSize;
       } else if (laceType) {
         if (!result.laceTypes.includes(laceType)) result.laceTypes.push(laceType);
         result.laceType = result.laceType || laceType;
       }
-    } else if (label === "lace size") result.laceSize = normalizeLaceSize(value);
+    } else if (label === "lace size") {
+      const laceSize = normalizeLaceSize(value);
+      if (laceSize && !result.laceSizes.includes(laceSize)) result.laceSizes.push(laceSize);
+      result.laceSize = result.laceSize || laceSize;
+    }
     else if (label === "cap size") result.capSize = value;
     else if (label === "cap type" || label === "cap") assignCapValue(result, value);
     else if (label === "weft" || label === "weft type") {
@@ -364,13 +429,27 @@ export function attributesFromTags(tags: Iterable<string>) {
     } else if (label === "ships within") {
       const shipsWithin = normalizeShipsWithin(value);
       if (isSameDayShipsWithin(shipsWithin)) result.sameDayDelivery = true;
+      if (shipsWithin && !result.shipsWithins.includes(shipsWithin)) result.shipsWithins.push(shipsWithin);
       if (!isSameDayShipsWithin(shipsWithin) || !result.shipsWithin) {
-        result.shipsWithin = shipsWithin;
+        result.shipsWithin = result.shipsWithin || shipsWithin;
       }
     }
   }
 
   return result;
+}
+
+function metafieldFallbackList(
+  metafields: ProductMetafieldValue[],
+  field: keyof typeof METAFIELD_FALLBACKS,
+) {
+  for (const [namespace, key] of METAFIELD_FALLBACKS[field] || []) {
+    const match = metafields.find(
+      (item) => item.namespace === namespace && item.key === key && String(item.value || "").trim(),
+    );
+    if (match) return parseListMetafield(match.value);
+  }
+  return [] as string[];
 }
 
 function metafieldFallback(
@@ -407,15 +486,15 @@ function extensionTypeAliases(label: string) {
 export function productAttributeTags(fields: ProductAttributeTagFields) {
   const tags: string[] = [];
   const laceTypeValues = parseLaceTypeValues(fields.laceTypes || fields.laceType);
-  const laceSize = completedValue(fields.laceSize);
+  const laceSizeValues = parseLaceSizeValues(fields.laceSizes?.length ? fields.laceSizes : fields.laceSize);
   const capSize = completedValue(fields.capSize);
-  const capType = completedValue(fields.capType);
-  const density = normalizeDensity(fields.density);
+  const capTypeValues = parseCapTypeValues(fields.capTypes?.length ? fields.capTypes : fields.capType);
+  const densityValues = parseDensityValues(fields.densities?.length ? fields.densities : fields.density);
   const material = completedValue(fields.material);
   const texture = completedValue(fields.texture);
   const weftType = completedValue(fields.weftType) || weftLabel(fields.selectedOptions);
   const origin = completedValue(fields.origin);
-  const shipsWithin = normalizeShipsWithin(fields.shipsWithin);
+  const shipsWithinValues = parseShipsWithinValues(fields.shipsWithins?.length ? fields.shipsWithins : fields.shipsWithin);
   const hairCategory = completedValue(fields.hairCategory);
   const bundleWeight = completedValue(fields.bundleWeight);
   const extensionType = completedValue(fields.extensionType);
@@ -432,14 +511,14 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
     }
   }
   if (texture) tags.push(formatAttributeTag("Texture", texture));
-  if (density) tags.push(formatAttributeTag("Density", density));
+  for (const density of densityValues) tags.push(formatAttributeTag("Density", density));
   for (const laceType of laceTypeValues) tags.push(formatAttributeTag("Lace Type", laceType));
-  if (laceSize) tags.push(formatAttributeTag("Lace Size", laceSize));
+  for (const laceSize of laceSizeValues) tags.push(formatAttributeTag("Lace Size", laceSize));
   if (capSize) {
     tags.push(formatAttributeTag("Cap Size", capSize));
-    if (!capType) tags.push(formatAttributeTag("Cap Type", capSize));
+    if (!capTypeValues.length) tags.push(formatAttributeTag("Cap Type", capSize));
   }
-  if (capType) tags.push(formatAttributeTag("Cap Type", capType));
+  for (const capType of capTypeValues) tags.push(formatAttributeTag("Cap Type", capType));
   if (weftType) {
     tags.push(formatAttributeTag("Weft Type", weftType));
     tags.push(formatAttributeTag("Weft", weftType));
@@ -466,8 +545,8 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
     tags.push(formatAttributeTag("Style", completed));
     tags.push(formatAttributeTag("Type", completed));
   }
-  if (shipsWithin) tags.push(formatAttributeTag("Ships Within", shipsWithin));
-  if (fields.sameDayDelivery && !isSameDayShipsWithin(shipsWithin)) {
+  for (const shipsWithin of shipsWithinValues) tags.push(formatAttributeTag("Ships Within", shipsWithin));
+  if (fields.sameDayDelivery && !shipsWithinValues.some((item) => isSameDayShipsWithin(item))) {
     tags.push(formatAttributeTag("Ships Within", "Same Day"));
   }
   if (hairCategory) tags.push(formatAttributeTag("Hair Category", hairCategory));
@@ -512,12 +591,12 @@ export function hydrateSellerAttributes({
     material?: string;
     colors?: string | string[];
     texture?: string;
-    density?: string;
+    density?: string | string[];
     laceType?: string | string[];
-    laceSize?: string;
+    laceSize?: string | string[];
     capSize?: string;
-    capType?: string;
-    shipsWithin?: string;
+    capType?: string | string[];
+    shipsWithin?: string | string[];
     sameDayDelivery?: boolean | string;
     bundleWeight?: string;
     extensionType?: string;
@@ -545,11 +624,16 @@ export function hydrateSellerAttributes({
         )?.value,
       );
 
-  const shipsWithin = normalizeShipsWithin(
-    named.shipsWithin ||
-      metafieldFallback(metafields, "shipsWithin") ||
-      fromTags.shipsWithin,
+  const shipsWithins = parseShipsWithinValues(
+    named.shipsWithin && (Array.isArray(named.shipsWithin) ? named.shipsWithin.length : String(named.shipsWithin).trim())
+      ? named.shipsWithin
+      : metafieldFallbackList(metafields, "shipsWithin").length
+        ? metafieldFallbackList(metafields, "shipsWithin")
+        : fromTags.shipsWithins.length
+          ? fromTags.shipsWithins
+          : fromTags.shipsWithin,
   );
+  const shipsWithin = shipsWithins[0] || "";
   const sameDayRaw = named.sameDayDelivery;
   const sameDayFromNamed =
     sameDayRaw === true ||
@@ -563,7 +647,7 @@ export function hydrateSellerAttributes({
 
   const namedLengths = Array.isArray(named.lengths) ? named.lengths : parseListMetafield(named.lengths);
   const laceValues = {
-    laceSize: "",
+    laceSizes: [] as string[],
     laceTypes: [] as string[],
   };
   const placeLace = (value: string) => {
@@ -575,29 +659,43 @@ export function hydrateSellerAttributes({
       return;
     }
     if (isLaceSizeChoice(completed)) {
-      laceValues.laceSize = laceValues.laceSize || normalizeLaceSize(completed);
+      const laceSize = normalizeLaceSize(completed);
+      if (laceSize && !laceValues.laceSizes.includes(laceSize)) laceValues.laceSizes.push(laceSize);
       return;
     }
     if (laceType && !laceValues.laceTypes.includes(laceType)) laceValues.laceTypes.push(laceType);
   };
   for (const item of parseLaceTypeValues(named.laceType)) placeLace(item);
-  placeLace(unwrapMetafieldScalar(named.laceSize));
-  for (const item of parseLaceTypeValues(metafieldFallback(metafields, "laceSize"))) placeLace(item);
-  for (const item of parseLaceTypeValues(metafieldFallback(metafields, "laceType"))) placeLace(item);
+  for (const item of parseLaceSizeValues(named.laceSize)) placeLace(item);
+  for (const item of parseLaceSizeValues(metafieldFallbackList(metafields, "laceSize"))) placeLace(item);
+  for (const item of parseLaceTypeValues(metafieldFallbackList(metafields, "laceType"))) placeLace(item);
   for (const item of fromTags.laceTypes) placeLace(item);
+  for (const item of fromTags.laceSizes) placeLace(item);
   if (fromTags.laceSize) placeLace(fromTags.laceSize);
   if (!laceValues.laceTypes.length && fromTags.laceType) placeLace(fromTags.laceType);
+  const densities = parseDensityValues(
+    named.density && (Array.isArray(named.density) ? named.density.length : String(named.density).trim())
+      ? named.density
+      : metafieldFallbackList(metafields, "density").length
+        ? metafieldFallbackList(metafields, "density")
+        : fromTags.densities.length
+          ? fromTags.densities
+          : fromTags.density,
+  );
   const namedCapSize = unwrapMetafieldScalar(named.capSize);
-  const namedCapType = unwrapMetafieldScalar(named.capType);
+  const capTypes = parseCapTypeValues(
+    named.capType && (Array.isArray(named.capType) ? named.capType.length : String(named.capType).trim())
+      ? named.capType
+      : metafieldFallbackList(metafields, "capType").length
+        ? metafieldFallbackList(metafields, "capType")
+        : fromTags.capTypes.length
+          ? fromTags.capTypes
+          : fromTags.capType,
+  ).filter((item) => !isCapSizeValue(item));
   const capSize =
     (isCapSizeValue(namedCapSize) ? namedCapSize : "") ||
-    (isCapSizeValue(namedCapType) ? namedCapType : "") ||
     metafieldFallback(metafields, "capSize") ||
     fromTags.capSize;
-  const capType =
-    (!isCapSizeValue(namedCapType) ? namedCapType : "") ||
-    metafieldFallback(metafields, "capType") ||
-    fromTags.capType;
 
   return {
     material:
@@ -609,15 +707,15 @@ export function hydrateSellerAttributes({
       unwrapMetafieldScalar(named.texture) ||
       metafieldFallback(metafields, "texture") ||
       fromTags.texture,
-    density:
-      normalizeDensity(named.density) ||
-      normalizeDensity(metafieldFallback(metafields, "density")) ||
-      fromTags.density,
+    density: densities[0] || "",
+    densities,
     laceType: laceValues.laceTypes.join(", "),
     laceTypes: laceValues.laceTypes,
-    laceSize: laceValues.laceSize,
+    laceSize: laceValues.laceSizes[0] || "",
+    laceSizes: laceValues.laceSizes,
     capSize,
-    capType: isCapSizeValue(capType) ? "" : capType,
+    capType: capTypes[0] || "",
+    capTypes,
     weft:
       unwrapMetafieldScalar(named.weftType) ||
       metafieldFallback(metafields, "weftType") ||
@@ -661,11 +759,12 @@ export function hydrateSellerAttributes({
       metafieldFallback(metafields, "shipsFromState") ||
       fromTags.shipsFromState,
     shipsWithin,
+    shipsWithins,
     sameDayDelivery:
       sameDayFromNamed ||
       sameDayFromMetafield ||
       fromTags.sameDayDelivery ||
-      isSameDayShipsWithin(shipsWithin),
+      isSameDayShipsWithin(shipsWithins),
     lengths: [...new Set((namedLengths.length ? namedLengths : fromTags.lengths).map((item) => String(item).trim()).filter(Boolean))],
     bundleWeight:
       unwrapMetafieldScalar(named.bundleWeight) ||
