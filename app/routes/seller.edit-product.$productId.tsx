@@ -10,7 +10,7 @@ import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.ser
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
 import ProductBuilder from "../components/ProductBuilder";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
-import { hydrateSellerAttributes, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues, replaceAttributeTags } from "../product-attribute-tags";
+import { hydrateSellerAttributes, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseListMetafield, parseShipsWithinValues, replaceAttributeTags } from "../product-attribute-tags";
 import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
 
@@ -164,6 +164,7 @@ function findMetafieldDefinition(
       let points = 0;
       if (definition.namespace === "custom") points += 20;
       if (!definition.constraints) points += 10;
+      if (String(definition.type?.name || "").startsWith("list.")) points += 30;
       return points;
     };
     return score(b) - score(a);
@@ -345,6 +346,9 @@ function addExistingMetafield({
     const identity = `${definition.namespace}:${definition.key}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
+    if (Array.isArray(value) && !String(definition.type.name || "").startsWith("list.")) {
+      continue;
+    }
     const prepared = prepareMetafieldValue(definition, value);
     if (prepared === null) continue;
     output.push({
@@ -366,7 +370,11 @@ function addExistingMetafield({
         value: JSON.stringify(value.map((item) => String(item).trim()).filter(Boolean)),
       });
     } else if (typeof value === "string" && value.trim()) {
-      output.push({ ...fallback, value: value.trim() });
+      if (fallback.type.startsWith("list.")) {
+        output.push({ ...fallback, value: JSON.stringify([value.trim()]) });
+      } else {
+        output.push({ ...fallback, value: value.trim() });
+      }
     }
   }
 }
@@ -377,18 +385,21 @@ function ensureCustomListMetafield(
   values: string | string[] | null | undefined,
   type = "list.single_line_text_field",
 ) {
-  const items = Array.isArray(values)
-    ? values.map((item) => String(item).trim()).filter(Boolean)
-    : parseLaceTypeValues(values);
+  const items = [...new Set(
+    (Array.isArray(values) ? values : parseListMetafield(values))
+      .map((item) => String(item).trim())
+      .filter(Boolean),
+  )];
   if (!items.length) return;
+  const listType = type.startsWith("list.") ? type : "list.single_line_text_field";
+  const value = JSON.stringify(items);
   const existing = output.find((item) => item.namespace === "custom" && item.key === key);
-  const value = type.startsWith("list.") ? JSON.stringify([...new Set(items)]) : [...new Set(items)].join(", ");
   if (existing) {
-    existing.type = type;
+    existing.type = listType;
     existing.value = value;
     return;
   }
-  output.push({ namespace: "custom", key, type, value });
+  output.push({ namespace: "custom", key, type: listType, value });
 }
 
 function ensureCustomMetafield(
@@ -872,16 +883,19 @@ export const loader = async ({
             material: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Hair Type", "Material"]),
             colors: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Color"]),
             texture: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Texture"]),
-            density: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Density"]),
-            laceType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]) ||
-              getMetafieldValue(productMetafields, "custom", "lace_type") ||
+            density: getMetafieldValue(productMetafields, "custom", "density") ||
+              getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Density"]),
+            laceType: getMetafieldValue(productMetafields, "custom", "lace_type") ||
+              getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]) ||
               getMetafieldValue(productMetafields, "hairgrab", "lace_type"),
-            laceSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Size"]) ||
-              getMetafieldValue(productMetafields, "custom", "lace_size") ||
+            laceSize: getMetafieldValue(productMetafields, "custom", "lace_size") ||
+              getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Size"]) ||
               getMetafieldValue(productMetafields, "hairgrab", "lace_size"),
             capSize: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Cap Size"]),
-            capType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Cap Type"]),
-            shipsWithin: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Ships Within"]),
+            capType: getMetafieldValue(productMetafields, "custom", "cap_type") ||
+              getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Cap Type"]),
+            shipsWithin: getMetafieldValue(productMetafields, "custom", "ships_within") ||
+              getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Ships Within"]),
             sameDayDelivery:
               getMetafieldValue(productMetafields, "custom", "same_day_delivery") === "true" ||
               getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Same Day Delivery", "Same-Day Delivery"]) === "true",

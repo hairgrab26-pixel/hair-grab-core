@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 // @ts-ignore
-import { REQUIRED_CUSTOM_PRODUCT_METAFIELDS, definitionMatchesRequired } from "./required-product-metafields.ts";
+import { REQUIRED_CUSTOM_PRODUCT_METAFIELDS, definitionMatchesRequired, requiredCustomMetafieldType } from "./required-product-metafields.ts";
 
 test("requires unconstrained custom Origin, lace, density, cap type, and ships-within definitions", () => {
   assert.deepEqual(
@@ -10,6 +10,9 @@ test("requires unconstrained custom Origin, lace, density, cap type, and ships-w
   );
   assert.equal(REQUIRED_CUSTOM_PRODUCT_METAFIELDS.find((item) => item.key === "lace_type")?.type, "list.single_line_text_field");
   assert.equal(REQUIRED_CUSTOM_PRODUCT_METAFIELDS.find((item) => item.key === "density")?.type, "list.single_line_text_field");
+  assert.equal(requiredCustomMetafieldType("cap_type"), "list.single_line_text_field");
+  assert.equal(requiredCustomMetafieldType("ships_within"), "list.single_line_text_field");
+  assert.equal(requiredCustomMetafieldType("lace_size"), "list.single_line_text_field");
   assert.ok(
     definitionMatchesRequired(
       { namespace: "custom", key: "lace_size", constraints: { key: null } },

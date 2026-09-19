@@ -17,7 +17,7 @@ import { extensionTypeFromOptions, EXTENSION_TYPE_METAFIELD, productTypeToCatego
 import ProductBuilder from "../components/ProductBuilder";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices } from "../components/ProductBuilder";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
-import { parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues } from "../product-attribute-tags";
+import { parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseListMetafield, parseShipsWithinValues } from "../product-attribute-tags";
 import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 
 // ==========================================================
@@ -376,6 +376,7 @@ function findMetafieldDefinition(
       let points = 0;
       if (definition.namespace === "custom") points += 20;
       if (!definition.constraints) points += 10;
+      if (String(definition.type?.name || "").startsWith("list.")) points += 30;
       return points;
     };
     return score(b) - score(a);
@@ -516,6 +517,9 @@ function addExistingMetafield({
     const identity = `${definition.namespace}:${definition.key}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
+    if (Array.isArray(value) && !String(definition.type.name || "").startsWith("list.")) {
+      continue;
+    }
     const preparedValue = prepareMetafieldValue(definition, value);
     if (preparedValue === null) {
       console.warn(
@@ -544,7 +548,14 @@ function addExistingMetafield({
         value: JSON.stringify(value.map((item) => String(item).trim()).filter(Boolean)),
       });
     } else if (typeof value === "string" && value.trim()) {
-      output.push({ ...fallback, value: value.trim() });
+      if (fallback.type.startsWith("list.")) {
+        output.push({
+          ...fallback,
+          value: JSON.stringify([value.trim()]),
+        });
+      } else {
+        output.push({ ...fallback, value: value.trim() });
+      }
     }
   }
 }
@@ -566,18 +577,21 @@ function ensureCustomListMetafield(
   values: string | string[] | null | undefined,
   type = "list.single_line_text_field",
 ) {
-  const items = Array.isArray(values)
-    ? values.map((item) => String(item).trim()).filter(Boolean)
-    : parseLaceTypeValues(values);
+  const items = [...new Set(
+    (Array.isArray(values) ? values : parseListMetafield(values))
+      .map((item) => String(item).trim())
+      .filter(Boolean),
+  )];
   if (!items.length) return;
+  const listType = type.startsWith("list.") ? type : "list.single_line_text_field";
+  const value = JSON.stringify(items);
   const existing = output.find((item) => item.namespace === "custom" && item.key === key);
-  const value = type.startsWith("list.") ? JSON.stringify([...new Set(items)]) : [...new Set(items)].join(", ");
   if (existing) {
-    existing.type = type;
+    existing.type = listType;
     existing.value = value;
     return;
   }
-  output.push({ namespace: "custom", key, type, value });
+  output.push({ namespace: "custom", key, type: listType, value });
 }
 
 function formatErrors(

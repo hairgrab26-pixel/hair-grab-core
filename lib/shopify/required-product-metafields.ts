@@ -50,3 +50,7 @@ export function definitionMatchesRequired(
     !definition.constraints?.key
   );
 }
+
+export function requiredCustomMetafieldType(key: string, fallback = "single_line_text_field") {
+  return REQUIRED_CUSTOM_PRODUCT_METAFIELDS.find((item) => item.key === key)?.type || fallback;
+}
