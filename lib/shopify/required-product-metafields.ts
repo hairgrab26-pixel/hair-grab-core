@@ -40,6 +40,13 @@ export const REQUIRED_CUSTOM_PRODUCT_METAFIELDS = [
 
 export type RequiredCustomProductMetafield = (typeof REQUIRED_CUSTOM_PRODUCT_METAFIELDS)[number];
 
+export const LIST_SINGLE_LINE_TEXT_FIELD = "list.single_line_text_field";
+
+export function requiredCustomMetafieldType(key: string, fallback: string) {
+  const spec = REQUIRED_CUSTOM_PRODUCT_METAFIELDS.find((item) => item.key === key);
+  return spec?.type || fallback;
+}
+
 export function definitionMatchesRequired(
   definition: { namespace?: string | null; key?: string | null; constraints?: { key?: string | null } | null },
   spec: { key: string },

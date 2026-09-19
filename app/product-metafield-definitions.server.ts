@@ -2,6 +2,7 @@
 import {
   REQUIRED_CUSTOM_PRODUCT_METAFIELDS,
   definitionMatchesRequired,
+  requiredCustomMetafieldType,
 } from "../lib/shopify/required-product-metafields.ts";
 
 const LIST_DEFINITIONS = `#graphql
@@ -25,6 +26,15 @@ const CREATE_DEFINITION = `#graphql
 mutation HairGrabCreateProductMetafieldDefinition($definition: MetafieldDefinitionInput!) {
   metafieldDefinitionCreate(definition: $definition) {
     createdDefinition { id namespace key type { name } }
+    userErrors { field message code }
+  }
+}
+`;
+
+const DELETE_DEFINITION = `#graphql
+mutation HairGrabDeleteProductMetafieldDefinition($id: ID!, $deleteAllAssociatedMetafields: Boolean!) {
+  metafieldDefinitionDelete(id: $id, deleteAllAssociatedMetafields: $deleteAllAssociatedMetafields) {
+    deletedDefinitionId
     userErrors { field message code }
   }
 }
@@ -60,6 +70,24 @@ export async function ensureRequiredCustomProductMetafieldDefinitions(admin: Adm
 
   for (const spec of REQUIRED_CUSTOM_PRODUCT_METAFIELDS) {
     let existing = nodes.find((node) => definitionMatchesRequired(node, spec));
+    const existingType = String(existing?.type?.name || existing?.type || "");
+    if (existing?.id && existingType && existingType !== spec.type) {
+      const deleted = await graphqlJson(admin, DELETE_DEFINITION, {
+        id: existing.id,
+        deleteAllAssociatedMetafields: true,
+      });
+      const userErrors = deleted?.data?.metafieldDefinitionDelete?.userErrors || [];
+      if (deleted?.errors?.length || userErrors.length) {
+        console.warn(
+          `[HairGrab Core] Could not replace custom.${spec.key} metafield definition (${existingType} -> ${spec.type}):`,
+          formatErrors([...(deleted?.errors || []), ...userErrors]) || "unknown error",
+        );
+      } else {
+        const index = nodes.indexOf(existing);
+        if (index >= 0) nodes.splice(index, 1);
+        existing = undefined;
+      }
+    }
     if (!existing) {
       const created = await graphqlJson(admin, CREATE_DEFINITION, {
         definition: {
@@ -118,6 +146,5 @@ export function customMetafieldType(
   key: string,
   fallback: string,
 ) {
-  const match = definitions.find((definition) => definitionMatchesRequired(definition, { key }));
-  return match?.type?.name || fallback;
+  return requiredCustomMetafieldType(key, fallback);
 }

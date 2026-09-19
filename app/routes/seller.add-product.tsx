@@ -376,6 +376,7 @@ function findMetafieldDefinition(
       let points = 0;
       if (definition.namespace === "custom") points += 20;
       if (!definition.constraints) points += 10;
+      if (String(definition.type?.name || "").startsWith("list.")) points += 30;
       return points;
     };
     return score(b) - score(a);
@@ -516,6 +517,7 @@ function addExistingMetafield({
     const identity = `${definition.namespace}:${definition.key}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
+    if (Array.isArray(value) && !definition.type.name.startsWith("list.")) continue;
     const preparedValue = prepareMetafieldValue(definition, value);
     if (preparedValue === null) {
       console.warn(
@@ -571,13 +573,14 @@ function ensureCustomListMetafield(
     : parseLaceTypeValues(values);
   if (!items.length) return;
   const existing = output.find((item) => item.namespace === "custom" && item.key === key);
-  const value = type.startsWith("list.") ? JSON.stringify([...new Set(items)]) : [...new Set(items)].join(", ");
+  const listType = type.startsWith("list.") ? type : "list.single_line_text_field";
+  const value = JSON.stringify([...new Set(items)]);
   if (existing) {
-    existing.type = type;
+    existing.type = listType;
     existing.value = value;
     return;
   }
-  output.push({ namespace: "custom", key, type, value });
+  output.push({ namespace: "custom", key, type: listType, value });
 }
 
 function formatErrors(
