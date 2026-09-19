@@ -2,7 +2,7 @@
 import {
   REQUIRED_CUSTOM_PRODUCT_METAFIELDS,
   definitionMatchesRequired,
-} from "../../lib/shopify/required-product-metafields.ts";
+} from "../lib/shopify/required-product-metafields.ts";
 
 const LIST_DEFINITIONS = `#graphql
 query HairGrabRequiredProductMetafieldDefinitions {
