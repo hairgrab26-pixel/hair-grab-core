@@ -35,6 +35,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const sellerByProduct = new Map(sellerProducts.map((p) => [p.shopifyProductId, p.seller]));
   const products = nodes.map((node) => { const seller = sellerByProduct.get(node.id); return seller ? normalizeShopifyDiscoveryProduct(node, seller) : null; }).filter((product): product is NonNullable<typeof product> => Boolean(product));
   const result = discoverProducts(products, parseDiscoveryParams(url));
-  return new Response(JSON.stringify({ ...result, mapProducts: result.products.map((p) => ({ id: p.id, title: p.title, handle: p.handle, city: p.city, state: p.state, seller: p.seller, priceCents: p.priceCents, imageUrl: p.imageUrl })) }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=30, stale-while-revalidate=120", "Access-Control-Allow-Origin": allowedOrigin, "Vary": "Origin" } });
+  return new Response(JSON.stringify({
+    ...result,
+    mapProducts: result.products.map((p) => ({
+      id: p.id,
+      title: p.title,
+      handle: p.handle,
+      city: p.city,
+      state: p.state,
+      seller: p.seller,
+      priceCents: p.priceCents,
+      imageUrl: p.imageUrl,
+      shipsWithin: p.shipsWithin,
+      isSameDayProduct: /same\s*-?\s*day/i.test(p.shipsWithin),
+    })),
+  }), { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=30, stale-while-revalidate=120", "Access-Control-Allow-Origin": allowedOrigin, "Vary": "Origin" } });
 }
 

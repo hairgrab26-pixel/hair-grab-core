@@ -1,6 +1,8 @@
 // @ts-ignore Node's TypeScript stripping requires the explicit extension.
 import {
   REQUIRED_CUSTOM_PRODUCT_METAFIELDS,
+  REQUIRED_METAFIELD_CAPABILITIES,
+  REQUIRED_METAFIELD_STOREFRONT_ACCESS,
   definitionMatchesRequired,
 } from "../lib/shopify/required-product-metafields.ts";
 
@@ -16,6 +18,10 @@ query HairGrabRequiredProductMetafieldDefinitions {
       validations { name type value }
       constraints { key }
       access { storefront }
+      capabilities {
+        adminFilterable { enabled }
+        smartCollectionCondition { enabled }
+      }
     }
   }
 }
@@ -24,7 +30,17 @@ query HairGrabRequiredProductMetafieldDefinitions {
 const CREATE_DEFINITION = `#graphql
 mutation HairGrabCreateProductMetafieldDefinition($definition: MetafieldDefinitionInput!) {
   metafieldDefinitionCreate(definition: $definition) {
-    createdDefinition { id namespace key type { name } }
+    createdDefinition {
+      id
+      namespace
+      key
+      type { name }
+      access { storefront }
+      capabilities {
+        adminFilterable { enabled }
+        smartCollectionCondition { enabled }
+      }
+    }
     userErrors { field message code }
   }
 }
@@ -33,7 +49,14 @@ mutation HairGrabCreateProductMetafieldDefinition($definition: MetafieldDefiniti
 const UPDATE_ACCESS = `#graphql
 mutation HairGrabUpdateProductMetafieldDefinitionAccess($definition: MetafieldDefinitionUpdateInput!) {
   metafieldDefinitionUpdate(definition: $definition) {
-    updatedDefinition { id access { storefront } }
+    updatedDefinition {
+      id
+      access { storefront }
+      capabilities {
+        adminFilterable { enabled }
+        smartCollectionCondition { enabled }
+      }
+    }
     userErrors { field message code }
   }
 }
@@ -50,7 +73,23 @@ async function graphqlJson(admin: AdminClient, query: string, variables?: Record
   return response.json();
 }
 
-/** Create unconstrained custom origin/lace/density/cap_type/ships_within PRODUCT definitions if missing, and enable storefront read. */
+function needsStorefrontFilterSync(definition: {
+  id?: string;
+  access?: { storefront?: string | null };
+  capabilities?: {
+    adminFilterable?: { enabled?: boolean | null };
+    smartCollectionCondition?: { enabled?: boolean | null };
+  };
+} | null | undefined) {
+  if (!definition?.id) return false;
+  return (
+    String(definition.access?.storefront || "").toUpperCase() !== REQUIRED_METAFIELD_STOREFRONT_ACCESS ||
+    definition.capabilities?.adminFilterable?.enabled !== true ||
+    definition.capabilities?.smartCollectionCondition?.enabled !== true
+  );
+}
+
+/** Create unconstrained custom origin/lace/density/cap_type/ships_within PRODUCT definitions if missing, and enable storefront read + Search & Discovery filtering. */
 export async function ensureRequiredCustomProductMetafieldDefinitions(admin: AdminClient) {
   const listed = await graphqlJson(admin, LIST_DEFINITIONS);
   if (listed?.errors?.length) {
@@ -70,7 +109,8 @@ export async function ensureRequiredCustomProductMetafieldDefinitions(admin: Adm
           type: spec.type,
           ownerType: "PRODUCT",
           pin: true,
-          access: { storefront: "PUBLIC_READ" },
+          access: { storefront: REQUIRED_METAFIELD_STOREFRONT_ACCESS },
+          capabilities: REQUIRED_METAFIELD_CAPABILITIES,
         },
       });
       const userErrors = created?.data?.metafieldDefinitionCreate?.userErrors || [];
@@ -86,17 +126,18 @@ export async function ensureRequiredCustomProductMetafieldDefinitions(admin: Adm
       }
     }
 
-    if (existing?.id && String(existing.access?.storefront || "").toUpperCase() !== "PUBLIC_READ") {
+    if (needsStorefrontFilterSync(existing)) {
       const updated = await graphqlJson(admin, UPDATE_ACCESS, {
         definition: {
           id: existing.id,
-          access: { storefront: "PUBLIC_READ" },
+          access: { storefront: REQUIRED_METAFIELD_STOREFRONT_ACCESS },
+          capabilities: REQUIRED_METAFIELD_CAPABILITIES,
         },
       });
       const userErrors = updated?.data?.metafieldDefinitionUpdate?.userErrors || [];
       if (updated?.errors?.length || userErrors.length) {
         console.warn(
-          `[HairGrab Core] Could not enable storefront access for custom.${spec.key}:`,
+          `[HairGrab Core] Could not enable storefront/filter access for custom.${spec.key}:`,
           formatErrors([...(updated?.errors || []), ...userErrors]) || "unknown error",
         );
       }

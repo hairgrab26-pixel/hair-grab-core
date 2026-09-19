@@ -1,5 +1,10 @@
 import db from "./db.server";
 import { unauthenticated } from "./shopify.server";
+export {
+  customSearchDiscoveryMetafields,
+  serializeCustomListMetafieldValue,
+  upsertCustomSearchDiscoveryMetafields,
+} from "./custom-product-metafields.ts";
 
 type SellerForProductSync = {
   id: string;

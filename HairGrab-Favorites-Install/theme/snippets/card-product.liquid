@@ -358,12 +358,7 @@
                   </div>
                 {% endif %}
 
-                {% assign hg_ships_within = card_product.metafields.custom['field-1788095152116'].value %}
-                {% if hg_ships_within != blank %}
-                  <div class="hairgrab-card-speed">
-                    Ships within {{ hg_ships_within }}
-                  </div>
-                {% endif %}
+                {% render 'hg-ships-within-badge', card_product: card_product %}
 
                 {% assign hg_shipping_charge_type = card_product.metafields.hairgrab.shipping_charge_type.value %}
                 {% assign hg_flat_rate_shipping = card_product.metafields.hairgrab.flat_rate_shipping.value %}

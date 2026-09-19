@@ -7,6 +7,8 @@ import {
   normalizeShipsWithin,
   productAttributeTags,
   replaceAttributeTags,
+  shipsWithinCardBadge,
+  storefrontShipsWithinValues,
   weftOptionValues,
 // @ts-ignore Node's TypeScript stripping requires the explicit extension.
 } from "./product-attribute-tags.ts";
@@ -41,6 +43,7 @@ test("builds Shopify filter tags as Label: Value", () => {
       "Color: Natural / 1B",
       "Color: 613 - Blonde",
       "Ships Within: Same Day",
+      "Ships Within: Same Day Delivery",
       "Hair Category: Wigs",
     ],
   );
@@ -52,7 +55,7 @@ test("adds a Same Day filter tag without replacing a timeline", () => {
       shipsWithin: "24 Hours",
       sameDayDelivery: true,
     }),
-    ["Ships Within: 24 Hours", "Ships Within: Same Day"],
+    ["Ships Within: 24 Hours", "Ships Within: Same Day", "Ships Within: Same Day Delivery"],
   );
 });
 
@@ -83,8 +86,13 @@ test("replaces legacy and labeled attribute tags without dropping other tags", (
 test("preserves Same Day as a Ships Within filter value", () => {
   assert.equal(normalizeShipsWithin("48 Hours"), "48 Hours");
   assert.equal(normalizeShipsWithin("Same Day"), "Same Day");
+  assert.equal(normalizeShipsWithin('["Same Day Delivery"]'), "Same Day");
   assert.equal(normalizeShipsWithin("3-5 Days"), "3-5 Days");
   assert.equal(isSameDayShipsWithin("Same Day"), true);
+  assert.equal(isSameDayShipsWithin('["Same Day Delivery"]'), true);
+  assert.deepEqual(storefrontShipsWithinValues("Same Day"), ["Same Day Delivery"]);
+  assert.equal(shipsWithinCardBadge('["Same Day"]'), "Same Day Delivery");
+  assert.equal(shipsWithinCardBadge("24 Hours"), "24 Hours");
 });
 
 test("hydrates edit-form attributes from metafield fallbacks and tags", () => {
@@ -281,6 +289,7 @@ test("writes and hydrates multi-select density, lace size, cap type, and ships w
   assert.ok(tags.includes("Cap Type: Glueless"));
   assert.ok(tags.includes("Cap Type: Full Lace"));
   assert.ok(tags.includes("Ships Within: Same Day"));
+  assert.ok(tags.includes("Ships Within: Same Day Delivery"));
   assert.ok(tags.includes("Ships Within: 24 Hours"));
 
   const hydrated = hydrateSellerAttributes({

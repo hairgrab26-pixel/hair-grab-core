@@ -10,7 +10,8 @@ import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.ser
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
 import ProductBuilder from "../components/ProductBuilder";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
-import { hydrateSellerAttributes, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues, replaceAttributeTags } from "../product-attribute-tags";
+import { hydrateSellerAttributes, isSameDayShipsWithin, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues, replaceAttributeTags } from "../product-attribute-tags";
+import { upsertCustomSearchDiscoveryMetafields, serializeCustomListMetafieldValue } from "../custom-product-metafields";
 import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
 
@@ -382,7 +383,7 @@ function ensureCustomListMetafield(
     : parseLaceTypeValues(values);
   if (!items.length) return;
   const existing = output.find((item) => item.namespace === "custom" && item.key === key);
-  const value = type.startsWith("list.") ? JSON.stringify([...new Set(items)]) : [...new Set(items)].join(", ");
+  const value = type.startsWith("list.") ? serializeCustomListMetafieldValue(items) : [...new Set(items)].join(", ");
   if (existing) {
     existing.type = type;
     existing.value = value;
@@ -1317,11 +1318,28 @@ export const action = async ({
           removeIfPresent("custom", item.metafieldKey);
         }
       }
+      if (
+        dirty.has("shipsWithin") ||
+        dirty.has("sameDayDelivery") ||
+        dirty.has("laceType") ||
+        dirty.has("capType") ||
+        dirty.has("density") ||
+        dirty.has("laceSize")
+      ) {
+        upsertCustomSearchDiscoveryMetafields(metafields, {
+          shipsWithin: fields.shipsWithin || (fields.sameDayDelivery ? "Same Day" : ""),
+          sameDayDelivery: fields.sameDayDelivery,
+          laceType: fields.laceType,
+          capType: fields.capType,
+          density: fields.density,
+          laceSize: fields.laceSize,
+        });
+      }
       addExistingMetafield({
         definitions,
         output: metafields,
         names: ["Same Day Delivery", "Same-Day Delivery"],
-        value: Boolean(fields.sameDayDelivery) || parseShipsWithinValues(fields.shipsWithin).some((item) => item.toLowerCase() === "same day"),
+        value: Boolean(fields.sameDayDelivery) || isSameDayShipsWithin(fields.shipsWithin),
         fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
       });
       if (fields.material) {

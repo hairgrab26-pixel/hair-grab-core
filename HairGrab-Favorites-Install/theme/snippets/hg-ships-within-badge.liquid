@@ -1,0 +1,46 @@
+{% comment %}
+  HairGrab ships-within badge for collection/product cards.
+  Supports list metafields, JSON arrays, and plain strings.
+{% endcomment %}
+
+{%- liquid
+  assign hg_ships_field = card_product.metafields.custom.ships_within
+  if hg_ships_field.value == blank
+    assign hg_ships_field = card_product.metafields.hairgrab.ships_within
+  endif
+  if hg_ships_field.value == blank
+    assign hg_ships_field = card_product.metafields.custom['field-1788095152116']
+  endif
+
+  assign hg_same_day = false
+  assign hg_ships_label = ''
+
+  if hg_ships_field.value != blank
+    if hg_ships_field.type == 'list.single_line_text_field'
+      for item in hg_ships_field.value
+        assign piece = item | append: '' | strip
+        if piece contains 'Same Day' or piece contains 'same day' or piece contains 'Same-Day'
+          assign hg_same_day = true
+        endif
+        if hg_ships_label == blank
+          assign hg_ships_label = piece
+        endif
+      endfor
+    else
+      assign hg_ships_text = hg_ships_field.value | append: '' | strip
+      if hg_ships_text contains '['
+        assign hg_ships_text = hg_ships_text | remove: '[' | remove: ']' | remove: '"' | remove: "'"
+      endif
+      if hg_ships_text contains 'Same Day' or hg_ships_text contains 'same day' or hg_ships_text contains 'Same-Day'
+        assign hg_same_day = true
+      endif
+      assign hg_ships_label = hg_ships_text
+    endif
+  endif
+-%}
+
+{%- if hg_same_day -%}
+  <div class="hairgrab-card-speed hairgrab-card-same-day">Same Day Delivery</div>
+{%- elsif hg_ships_label != blank -%}
+  <div class="hairgrab-card-speed">{{ hg_ships_label }}</div>
+{%- endif -%}

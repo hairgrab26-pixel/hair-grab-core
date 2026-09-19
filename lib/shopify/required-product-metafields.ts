@@ -34,11 +34,18 @@ export const REQUIRED_CUSTOM_PRODUCT_METAFIELDS = [
     name: "Ships Within",
     key: "ships_within",
     type: "list.single_line_text_field",
-    description: "Seller fulfillment windows such as Same Day or 24 Hours. Supports multiple values.",
+    description: "Seller fulfillment windows such as Same Day Delivery or 24 Hours. Supports multiple values. Written as a JSON array for Search & Discovery filters.",
   },
 ] as const;
 
 export type RequiredCustomProductMetafield = (typeof REQUIRED_CUSTOM_PRODUCT_METAFIELDS)[number];
+
+/** GraphQL equivalents of REST `visible_to_storefront_api` and `is_filterable`. */
+export const REQUIRED_METAFIELD_STOREFRONT_ACCESS = "PUBLIC_READ";
+export const REQUIRED_METAFIELD_CAPABILITIES = {
+  adminFilterable: { enabled: true },
+  smartCollectionCondition: { enabled: true },
+} as const;
 
 export function definitionMatchesRequired(
   definition: { namespace?: string | null; key?: string | null; constraints?: { key?: string | null } | null },

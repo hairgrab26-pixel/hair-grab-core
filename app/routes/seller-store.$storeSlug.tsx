@@ -12,6 +12,7 @@ import { unauthenticated } from "../shopify.server";
 // default-exported component, so it never reaches the client bundle.
 // @ts-ignore Node's TypeScript stripping requires explicit extensions.
 import { sellerIsOpenAt } from "../store-hours.server.ts";
+import { shipsWithinCardBadge } from "../product-attribute-tags";
 
 
 function slugify(
@@ -459,10 +460,12 @@ export const loader = async ({
         );
 
       const shipsWithin =
-        customValue(
-          "ships_within",
-          "ships_within_24_hours",
-          "field-1788095152116",
+        shipsWithinCardBadge(
+          customValue(
+            "ships_within",
+            "ships_within_24_hours",
+            "field-1788095152116",
+          ),
         );
 
       const shippingMethod =
@@ -960,8 +963,9 @@ export default function PublicSellerStorefrontPage() {
                             🚚
                           </span>
 
-                          Ships within{" "}
-                          {product.shipsWithin}
+                          {product.shipsWithin === "Same Day Delivery"
+                            ? product.shipsWithin
+                            : <>Ships within{" "}{product.shipsWithin}</>}
                         </div>
                       )}
 

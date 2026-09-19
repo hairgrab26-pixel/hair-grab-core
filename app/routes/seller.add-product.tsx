@@ -17,7 +17,8 @@ import { extensionTypeFromOptions, EXTENSION_TYPE_METAFIELD, productTypeToCatego
 import ProductBuilder from "../components/ProductBuilder";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices } from "../components/ProductBuilder";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
-import { parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues } from "../product-attribute-tags";
+import { isSameDayShipsWithin, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues } from "../product-attribute-tags";
+import { upsertCustomSearchDiscoveryMetafields, serializeCustomListMetafieldValue } from "../custom-product-metafields";
 import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 
 // ==========================================================
@@ -571,7 +572,7 @@ function ensureCustomListMetafield(
     : parseLaceTypeValues(values);
   if (!items.length) return;
   const existing = output.find((item) => item.namespace === "custom" && item.key === key);
-  const value = type.startsWith("list.") ? JSON.stringify([...new Set(items)]) : [...new Set(items)].join(", ");
+  const value = type.startsWith("list.") ? serializeCustomListMetafieldValue(items) : [...new Set(items)].join(", ");
   if (existing) {
     existing.type = type;
     existing.value = value;
@@ -938,7 +939,7 @@ function collectProductMetafields(
     definitions,
     output: metafields,
     names: ["Same Day Delivery", "Same-Day Delivery"],
-    value: Boolean(payload.sameDayDelivery) || parseShipsWithinValues(payload.shipsWithin).some((item) => item.toLowerCase() === "same day"),
+    value: Boolean(payload.sameDayDelivery) || isSameDayShipsWithin(payload.shipsWithin),
     fallback: { namespace: "custom", key: "same_day_delivery", type: "boolean" },
   });
   addExistingMetafield({
@@ -1054,6 +1055,15 @@ function collectProductMetafields(
       value: locTypeChoices.find((item) => item.value === payload.locType)?.label || payload.locType,
     });
   }
+
+  upsertCustomSearchDiscoveryMetafields(metafields, {
+    shipsWithin: payload.shipsWithin || (payload.sameDayDelivery ? "Same Day" : ""),
+    sameDayDelivery: payload.sameDayDelivery,
+    laceType: payload.laceType,
+    capType: payload.capType,
+    density: payload.density,
+    laceSize: payload.laceSize,
+  });
 
   return metafields;
 }

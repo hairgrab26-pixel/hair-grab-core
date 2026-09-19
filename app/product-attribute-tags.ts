@@ -277,13 +277,15 @@ function weftLabel(options: string[] | null | undefined) {
 }
 
 export function isSameDayShipsWithin(value: string | string[] | null | undefined) {
-  return parseShipsWithinValues(value).some((item) => item.toLowerCase() === "same day")
-    || String(value || "").trim().toLowerCase() === "same day";
+  const items = parseShipsWithinValues(value);
+  if (items.some((item) => /same\s*-?\s*day/i.test(item))) return true;
+  return /same\s*-?\s*day/i.test(String(value || ""));
 }
 
 export function normalizeShipsWithin(value: string | null | undefined) {
   const trimmed = unwrapMetafieldScalar(value);
   if (!trimmed) return "";
+  if (/same\s*-?\s*day/i.test(trimmed)) return "Same Day";
   const match = SHIPS_WITHIN_VALUES.find(
     (choice) => choice.toLowerCase() === trimmed.toLowerCase(),
   );
@@ -291,6 +293,19 @@ export function normalizeShipsWithin(value: string | null | undefined) {
   if (/3\s*-\s*5/.test(trimmed)) return "3-5 Days";
   if (/2\s*-\s*3/.test(trimmed)) return "2-3 Days";
   return trimmed;
+}
+
+export function storefrontShipsWithinValues(value: string | string[] | null | undefined) {
+  return parseShipsWithinValues(value).map((item) =>
+    item === "Same Day" ? "Same Day Delivery" : item,
+  );
+}
+
+export function shipsWithinCardBadge(value: string | string[] | null | undefined) {
+  const items = parseShipsWithinValues(value);
+  if (!items.length) return "";
+  if (items.some((item) => isSameDayShipsWithin(item))) return "Same Day Delivery";
+  return items[0];
 }
 
 export function formatAttributeTag(label: string, value: string) {
@@ -548,6 +563,9 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
   for (const shipsWithin of shipsWithinValues) tags.push(formatAttributeTag("Ships Within", shipsWithin));
   if (fields.sameDayDelivery && !shipsWithinValues.some((item) => isSameDayShipsWithin(item))) {
     tags.push(formatAttributeTag("Ships Within", "Same Day"));
+  }
+  if (fields.sameDayDelivery || shipsWithinValues.some((item) => isSameDayShipsWithin(item))) {
+    tags.push(formatAttributeTag("Ships Within", "Same Day Delivery"));
   }
   if (hairCategory) tags.push(formatAttributeTag("Hair Category", hairCategory));
   const shippingMethod = completedValue(fields.shippingMethod);
