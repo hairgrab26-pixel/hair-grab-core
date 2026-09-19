@@ -5,6 +5,8 @@ import {
   hydrateSellerAttributes,
   isSameDayShipsWithin,
   normalizeShipsWithin,
+  parseLaceTypeValues,
+  parseListMetafield,
   productAttributeTags,
   replaceAttributeTags,
   weftOptionValues,
@@ -296,4 +298,10 @@ test("writes and hydrates multi-select density, lace size, cap type, and ships w
   assert.deepEqual(hydrated.capTypes, ["Closure Wig", "Frontal Wig"]);
   assert.deepEqual(hydrated.shipsWithins, ["2-3 Days", "48 Hours"]);
   assert.equal(hydrated.sameDayDelivery, false);
+});
+
+test("deserializes JSON list metafield strings into pill arrays", () => {
+  assert.deepEqual(parseListMetafield('["HD Lace","Transparent Lace"]'), ["HD Lace", "Transparent Lace"]);
+  assert.deepEqual(parseListMetafield("HD Lace"), ["HD Lace"]);
+  assert.deepEqual(parseLaceTypeValues('["HD Lace"]'), ["HD Lace"]);
 });

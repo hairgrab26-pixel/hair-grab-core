@@ -148,16 +148,14 @@ const METAFIELD_FALLBACKS: Record<string, Array<[string, string]>> = {
 };
 
 export function parseLaceTypeValues(value: string | string[] | null | undefined) {
-  const items = Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : parseListMetafield(value);
-  return [...new Set(items.map((item) => normalizeLaceType(item)).filter(Boolean))];
+  return [...new Set(parseListMetafield(value).map((item) => normalizeLaceType(item)).filter(Boolean))];
 }
 
 export function parseNormalizedList(
   value: string | string[] | null | undefined,
   normalize: (item: string) => string,
 ) {
-  const items = Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : parseListMetafield(value);
-  return [...new Set(items.map((item) => normalize(item)).filter(Boolean))];
+  return [...new Set(parseListMetafield(value).map((item) => normalize(item)).filter(Boolean))];
 }
 
 export function parseDensityValues(value: string | string[] | null | undefined) {
@@ -308,7 +306,10 @@ function isManagedAttributeTag(tag: string) {
     || trimmed.toLowerCase().startsWith("material / fiber:");
 }
 
-export function parseListMetafield(raw: string | null | undefined) {
+export function parseListMetafield(raw: string | string[] | null | undefined) {
+  if (Array.isArray(raw)) {
+    return [...new Set(raw.flatMap((item) => parseListMetafield(item)))];
+  }
   const value = String(raw || "").trim();
   if (!value) return [] as string[];
   try {

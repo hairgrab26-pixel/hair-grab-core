@@ -2,6 +2,7 @@
 import {
   REQUIRED_CUSTOM_PRODUCT_METAFIELDS,
   definitionMatchesRequired,
+  requiredCustomMetafieldType,
 } from "../lib/shopify/required-product-metafields.ts";
 
 const LIST_DEFINITIONS = `#graphql
@@ -39,6 +40,15 @@ mutation HairGrabUpdateProductMetafieldDefinitionAccess($definition: MetafieldDe
 }
 `;
 
+const DELETE_DEFINITION = `#graphql
+mutation HairGrabDeleteProductMetafieldDefinition($id: ID!, $deleteAllAssociatedMetafields: Boolean!) {
+  metafieldDefinitionDelete(id: $id, deleteAllAssociatedMetafields: $deleteAllAssociatedMetafields) {
+    deletedDefinitionId
+    userErrors { field message code }
+  }
+}
+`;
+
 type AdminClient = { graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<{ json: () => Promise<any> }> };
 
 function formatErrors(errors: Array<{ message?: string }> | undefined) {
@@ -51,7 +61,10 @@ async function graphqlJson(admin: AdminClient, query: string, variables?: Record
 }
 
 /** Create unconstrained custom origin/lace/density/cap_type/ships_within PRODUCT definitions if missing, and enable storefront read. */
-export async function ensureRequiredCustomProductMetafieldDefinitions(admin: AdminClient) {
+export async function ensureRequiredCustomProductMetafieldDefinitions(
+  admin: AdminClient,
+  { recreateMismatchedTypes = false }: { recreateMismatchedTypes?: boolean } = {},
+) {
   const listed = await graphqlJson(admin, LIST_DEFINITIONS);
   if (listed?.errors?.length) {
     throw new Error(formatErrors(listed.errors) || "Unable to read Shopify metafield definitions.");
@@ -60,6 +73,28 @@ export async function ensureRequiredCustomProductMetafieldDefinitions(admin: Adm
 
   for (const spec of REQUIRED_CUSTOM_PRODUCT_METAFIELDS) {
     let existing = nodes.find((node) => definitionMatchesRequired(node, spec));
+    if (
+      recreateMismatchedTypes &&
+      existing?.id &&
+      String(existing.type?.name || "") &&
+      String(existing.type?.name || "") !== spec.type
+    ) {
+      const deleted = await graphqlJson(admin, DELETE_DEFINITION, {
+        id: existing.id,
+        deleteAllAssociatedMetafields: true,
+      });
+      const userErrors = deleted?.data?.metafieldDefinitionDelete?.userErrors || [];
+      if (deleted?.errors?.length || userErrors.length) {
+        console.warn(
+          `[HairGrab Core] Could not recreate custom.${spec.key} as ${spec.type}:`,
+          formatErrors([...(deleted?.errors || []), ...userErrors]) || "unknown error",
+        );
+      } else {
+        const index = nodes.indexOf(existing);
+        if (index >= 0) nodes.splice(index, 1);
+        existing = undefined;
+      }
+    }
     if (!existing) {
       const created = await graphqlJson(admin, CREATE_DEFINITION, {
         definition: {
@@ -118,6 +153,9 @@ export function customMetafieldType(
   key: string,
   fallback: string,
 ) {
+  const required = requiredCustomMetafieldType(key, fallback);
   const match = definitions.find((definition) => definitionMatchesRequired(definition, { key }));
-  return match?.type?.name || fallback;
+  const live = match?.type?.name;
+  if (live && live !== required) return live;
+  return required;
 }
