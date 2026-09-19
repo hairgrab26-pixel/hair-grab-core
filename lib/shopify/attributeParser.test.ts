@@ -39,7 +39,7 @@ test("parses the 16 Admin metafields with tag fallbacks", () => {
   assert.equal(parsed.shipsFromCity, "New Haven");
   assert.equal(parsed.material, "Human Hair");
   assert.equal(parsed.texture, "Body Wave");
-  assert.deepEqual(parsed.colors, ["Natural / 1B"]);
+  assert.deepEqual(parsed.colors, ["Natural Black / 1B"]);
 });
 
 test("reads Hair Type and City tags when metafields are missing", () => {

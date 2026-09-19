@@ -19,7 +19,8 @@
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
     "reconcile-processing-fees": "node --experimental-strip-types scripts/reconcile-processing-fees.ts",
-    "backfill-lace-metafields": "node --experimental-strip-types scripts/backfill-lace-metafields.ts"
+    "backfill-lace-metafields": "node --experimental-strip-types scripts/backfill-lace-metafields.ts",
+    "backfill-color-metafields": "node --experimental-strip-types scripts/backfill-color-metafields.ts"
   },
   "type": "module",
   "engines": {

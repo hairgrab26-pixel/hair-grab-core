@@ -1,5 +1,5 @@
 ﻿import { CAP_TYPE_VALUES } from "./product-attribute-schema.ts";
-import { isLaceSizeChoice, normalizeLaceSize, normalizeLaceType } from "./product-vocabulary.ts";
+import { isLaceSizeChoice, normalizeHairColor, normalizeHairColors, normalizeLaceSize, normalizeLaceType } from "./product-vocabulary.ts";
 
 const CAP_SIZE_VALUES = ["Small", "Medium", "Large", "Adjustable"] as const;
 
@@ -418,7 +418,10 @@ export function attributesFromTags(tags: Iterable<string>) {
     else if (label === "ships from city" || label === "city") result.shipsFromCity = value;
     else if (label === "ships from state" || label === "state") result.shipsFromState = value;
     else if (label === "hair category") result.hairCategory = result.hairCategory || value;
-    else if (label === "color") result.colors.push(value);
+    else if (label === "color") {
+      const color = normalizeHairColor(value);
+      if (color && !result.colors.includes(color)) result.colors.push(color);
+    }
     else if (label === "length") {
       const length = value.replace(/\s*inch(?:es)?$/i, "").trim();
       if (length) result.lengths.push(length);
@@ -524,9 +527,8 @@ export function productAttributeTags(fields: ProductAttributeTagFields) {
     tags.push(formatAttributeTag("Weft", weftType));
   }
   if (origin) tags.push(formatAttributeTag("Origin", origin));
-  for (const color of fields.colors || []) {
-    const completed = completedValue(color);
-    if (completed) tags.push(formatAttributeTag("Color", completed));
+  for (const color of normalizeHairColors(fields.colors)) {
+    tags.push(formatAttributeTag("Color", color));
   }
   for (const length of [...new Set(fields.lengths || [])]) {
     const completed = completedValue(length);
@@ -641,9 +643,7 @@ export function hydrateSellerAttributes({
   const sameDayFromMetafield =
     metafieldFallback(metafields, "sameDayDelivery").toLowerCase() === "true";
 
-  const colors = (namedColors.length ? namedColors : colorMetafield.length ? colorMetafield : fromTags.colors)
-    .map((item) => String(item).trim())
-    .filter(Boolean);
+  const colors = normalizeHairColors(namedColors.length ? namedColors : colorMetafield.length ? colorMetafield : fromTags.colors);
 
   const namedLengths = Array.isArray(named.lengths) ? named.lengths : parseListMetafield(named.lengths);
   const laceValues = {

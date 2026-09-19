@@ -317,7 +317,7 @@ export default function SellerAddProductPage() {
     useState("");
 
   const [texture, setTexture] = useState("");
-  const [color, setColor] = useState("Natural / 1B");
+  const [color, setColor] = useState("Natural Black / 1B");
 
   const [selectedLengths, setSelectedLengths] =
     useState<string[]>([]);
@@ -956,7 +956,7 @@ export default function SellerAddProductPage() {
                               .value,
                           )
                         }
-                        placeholder="Natural / 1B"
+                        placeholder="Natural Black / 1B"
                         style={
                           fieldStyle
                         }

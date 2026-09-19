@@ -38,7 +38,7 @@ test("builds Shopify filter tags as Label: Value", () => {
       "Cap Type: Medium",
       "Weft Type: Weft",
       "Weft: Weft",
-      "Color: Natural / 1B",
+      "Color: Natural Black / 1B",
       "Color: 613 - Blonde",
       "Ships Within: Same Day",
       "Hair Category: Wigs",

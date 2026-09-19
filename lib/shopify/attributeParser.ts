@@ -1,4 +1,5 @@
 import { ADMIN_PRODUCT_METAFIELDS } from "./admin-product-metafields.ts";
+import { normalizeHairColors } from "../../app/product-vocabulary.ts";
 
 const EXTRA_ATTRIBUTE_SPECS = [
   { formKey: "laceSize", names: ["Lace Size"], key: "lace_size", tagLabels: ["Lace Size"], list: true },
@@ -78,8 +79,8 @@ export function parseAdminProductAttributes({
   for (const spec of [...ADMIN_PRODUCT_METAFIELDS, ...EXTRA_ATTRIBUTE_SPECS]) {
     const raw = metafieldValue(metafields, [spec.key, ...spec.names.map((name) => name.toLowerCase())]);
     if (spec.list) {
-      const values = unwrap(raw);
-      parsed[spec.formKey] = values.length ? values : (fromTags[spec.formKey] as string[]) || [];
+      const source = unwrap(raw).length ? unwrap(raw) : ((fromTags[spec.formKey] as string[]) || []);
+      parsed[spec.formKey] = spec.formKey === "colors" ? normalizeHairColors(source) : source;
     } else {
       parsed[spec.formKey] = first(raw) || String(fromTags[spec.formKey] || "");
     }

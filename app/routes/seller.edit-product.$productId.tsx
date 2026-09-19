@@ -13,6 +13,7 @@ import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
 import { hydrateSellerAttributes, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues, replaceAttributeTags } from "../product-attribute-tags";
 import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
+import { DEFAULT_HAIR_COLOR, normalizeHairColor, normalizeHairColors } from "../product-vocabulary";
 
 type ShopifyMetafieldDefinition = {
   name: string;
@@ -870,7 +871,13 @@ export const loader = async ({
           metafields: productMetafields,
           named: {
             material: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Hair Type", "Material"]),
-            colors: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Color"]),
+            colors: getMetafieldValue(productMetafields, "custom", "color") ||
+              getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Color"]) ||
+              shopifySnapshot.variants.flatMap((variant) =>
+                variant.selectedOptions
+                  .filter((option) => /^colou?r$/i.test(option.name))
+                  .map((option) => option.value),
+              ),
             texture: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Texture"]),
             density: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Density"]),
             laceType: getMetafieldByDefinitionName(productMetafields, metafieldDefinitions, ["Lace Type"]) ||
@@ -1115,9 +1122,22 @@ export const action = async ({
       if (JSON.stringify(submitted.baseline) !== JSON.stringify(current.shopifySnapshot)) {
         throw new Error("This product changed in Shopify while you were editing. Reload before saving to preserve the latest data.");
       }
+      const fields = submitted.fields as Record<string, any>;
+      fields.colors = normalizeHairColors(fields.colors?.length ? fields.colors : [DEFAULT_HAIR_COLOR]);
+      const withNormalizedColorOptions = (options: Array<{ name: string; value: string }> | undefined) =>
+        (options || []).map((option) =>
+          /^colou?r$/i.test(String(option.name))
+            ? { ...option, value: normalizeHairColor(option.value) || option.value }
+            : option,
+        );
+      for (const item of submitted.variants.changes || []) {
+        item.selectedOptions = withNormalizedColorOptions(item.selectedOptions);
+      }
+      for (const item of submitted.variants.additions || []) {
+        item.selectedOptions = withNormalizedColorOptions(item.selectedOptions);
+      }
       const variantDiff = diffVariants(current.shopifySnapshot.variants, submitted.variants);
       const mediaDiff = diffMedia(current.shopifySnapshot.media, submitted.media);
-      const fields = submitted.fields as Record<string, any>;
       if (!fields.shipsFromCity) fields.shipsFromCity = seller.city || "";
       if (!fields.shipsFromState) fields.shipsFromState = seller.state || "";
       if (!fields.shippingTerritory) fields.shippingTerritory = seller.sellsNationwide ? "Nationwide" : "Local";
@@ -1381,13 +1401,15 @@ export const action = async ({
         fallback: { namespace: "custom", key: "hair_category", type: "single_line_text_field" },
       });
       if ((fields.colors || []).length) {
+        const colorType = customMetafieldType(definitions, "color", "list.single_line_text_field");
         addExistingMetafield({
           definitions,
           output: metafields,
           names: ["Color"],
           value: fields.colors,
-          fallback: { namespace: "custom", key: "color", type: "list.single_line_text_field" },
+          fallback: { namespace: "custom", key: "color", type: colorType },
         });
+        ensureCustomListMetafield(metafields, "color", fields.colors, colorType);
       }
       if (fields.productType === "EXTENSION") {
         addExistingMetafield({
@@ -1421,10 +1443,9 @@ export const action = async ({
       }
       if (dirty.has("colors")) {
         const definition = findMetafieldDefinition(definitions, ["Color"]);
-        if (definition) {
-          if ((fields.colors || []).length) metafields.push({ namespace: definition.namespace, key: definition.key, type: definition.type.name,
-            value: definition.type.name.startsWith("list.") ? JSON.stringify(fields.colors || []) : String(fields.colors?.[0] || "") });
-          else removeIfPresent(definition.namespace, definition.key);
+        if (definition && !(fields.colors || []).length) {
+          removeIfPresent(definition.namespace, definition.key);
+          removeIfPresent("custom", "color");
         }
       }
       if (dirty.has("installationMethods")) metafields.push({ namespace: "hairgrab", key: "installation_methods",

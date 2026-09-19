@@ -2,7 +2,7 @@ import { useActionData, useFetcher } from "react-router";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type Ref } from "react";
 import { displayProductCategory, normalizeProductCategory, PRODUCT_CATEGORY_LABELS } from "../product-categories";
 import { diffMedia, diffVariants, hydrateMediaEditState, hydrateVariantEditState, variantFieldsFromShopify, variantFieldsToShopify, type ExistingProductSnapshot } from "../product-builder-model";
-import { materials, colors, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights, hairOrigins, weftTypes, normalizeLaceSize, normalizeLaceType } from "../product-vocabulary";
+import { materials, colors, DEFAULT_HAIR_COLOR, textures, standardLengths, densities, laceSizes, laceTypes, bundleWeights, hairOrigins, weftTypes, normalizeHairColor, normalizeHairColors, normalizeLaceSize, normalizeLaceType } from "../product-vocabulary";
 import { parseCsvText, normalizeCsvHeader, resolveCsvProductFields, resolveStructuredProductOption, inferProductDetailsFromTitle, STRUCTURED_COLUMN_ALIASES, type CsvFieldName } from "../csv-product-import";
 import { weftOptionValues, parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues } from "../product-attribute-tags";
 import { CAP_SIZE_VALUES, CAP_TYPE_VALUES, categoryMaterialLabel, categoryShowsAttribute } from "../product-attribute-schema";
@@ -36,6 +36,14 @@ type VariantData = {
   inventory: string;
   sku: string;
 };
+
+function withNormalizedColorOptions(options: Array<{ name: string; value: string }> | undefined) {
+  return (options || []).map((option) =>
+    /^colou?r$/i.test(option.name)
+      ? { ...option, value: normalizeHairColor(option.value) || option.value }
+      : option,
+  );
+}
 
 type ProductPayload = {
   title: string;
@@ -978,7 +986,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setColor,
   ] =
     useState(
-      "Natural / 1B",
+      DEFAULT_HAIR_COLOR,
     );
 
   const [
@@ -993,7 +1001,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
   ] =
     useState<string[]>(
       [
-        "Natural / 1B",
+        DEFAULT_HAIR_COLOR,
       ],
     );
 
@@ -1262,7 +1270,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     initialEditFields.current = { title: edit.product.title.trim(), description: initialDescription, productType: type,
       selectedOptions: selectedOptionValues, searchClassifications: initialClassifications,
       installationMethods: initialInstallation, locType: initialLocType,
-      material: settings.material || "", colors: settings.colors?.length ? settings.colors : ["Natural / 1B"],
+      material: settings.material || "", colors: normalizeHairColors(settings.colors?.length ? settings.colors : [DEFAULT_HAIR_COLOR]),
       texture: knownTexture || settings.texture || "", density: knownDensities,
       laceSize: knownLaceSizes,
       laceType: knownLaceTypes, capSize: knownCapSize || settings.capSize || "",
@@ -1288,12 +1296,10 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
     setSearchClassifications(initialClassifications);
     setInstallationMethods(initialInstallation);
     setLocType(initialLocType);
-    const hydratedColors = (Array.isArray(settings.colors) ? settings.colors : [])
-      .map((value) => colors.find((item) => item.toLowerCase() === String(value).toLowerCase()) || String(value).trim())
-      .filter(Boolean);
+    const hydratedColors = normalizeHairColors(Array.isArray(settings.colors) ? settings.colors : []);
     setMaterial(knownMaterial || (settings.material ? "Other" : ""));
     setCustomMaterial(knownMaterial ? "" : settings.material || "");
-    setSelectedColors(hydratedColors);
+    setSelectedColors(hydratedColors.length ? hydratedColors : [DEFAULT_HAIR_COLOR]);
     if (hydratedColors[0]) setColor(colors.includes(hydratedColors[0]) ? hydratedColors[0] : "Other / Custom");
     if (hydratedColors[0] && !colors.includes(hydratedColors[0])) setCustomColor(hydratedColors[0]);
     setTexture(knownTexture || settings.texture || "");
@@ -1393,14 +1399,18 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
       () => {
         if (edit) {
           const existing = edit.shopifySnapshot.variants.filter((variant) => !removedVariantIds.includes(variant.id));
-          const rows: VariantRow[] = existing.map((variant) => ({
+          const rows: VariantRow[] = existing.map((variant) => {
+            const shopifyOptions = withNormalizedColorOptions(optionOverrides[variant.id] || variant.selectedOptions);
+            const colorValue = shopifyOptions.find((option) => option.name.toLowerCase() === "color")?.value || "";
+            return {
             key: variant.id,
-            label: (optionOverrides[variant.id] || variant.selectedOptions).map((option) => option.value).join(" / ") || "Standard",
+            label: shopifyOptions.map((option) => option.value).join(" / ") || "Standard",
             length: variant.selectedOptions.find((option) => option.name.toLowerCase() === "length")?.value.replace(/\D/g, "") || "",
             option: variant.selectedOptions.find((option) => option.name.toLowerCase() === "style")?.value || "",
-            color: variant.selectedOptions.find((option) => option.name.toLowerCase() === "color")?.value || "",
-            shopifyOptions: optionOverrides[variant.id] || variant.selectedOptions,
-          }));
+            color: colorValue,
+            shopifyOptions,
+          };
+          });
           if (isBundleDeal && selectedLengths.length && rows.length === 1 &&
               JSON.stringify(selectedLengths) !== JSON.stringify(initialBundleLengths.current)) {
             const row = rows[0];
@@ -1464,7 +1474,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
 
               color:
                 selectedColors[0] ||
-                "Natural / 1B",
+                DEFAULT_HAIR_COLOR,
             },
           ];
         }
@@ -1499,7 +1509,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                 "BUNDLE_DEAL",
               color:
                 selectedColors[0] ||
-                "Natural / 1B",
+                DEFAULT_HAIR_COLOR,
             },
           ];
         }
@@ -1522,7 +1532,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
           selectedColors.length >
             0
             ? selectedColors
-            : ["Natural / 1B"];
+            : [DEFAULT_HAIR_COLOR];
 
         const rows:
           VariantRow[] =
@@ -1650,11 +1660,12 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
   }
 
   function addSelectedColor() {
-    const resolved =
+    const resolved = normalizeHairColor(
       color ===
       "Other / Custom"
         ? customColor.trim()
-        : color;
+        : color,
+    );
 
     if (!resolved) {
       return;
@@ -2647,16 +2658,18 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
   function csvProductPayload(item: CsvImportedProduct): ProductPayload {
     const colorOptionIndex = item.sourceOptionNames.findIndex((name) => /color|colour/i.test(name));
     const lengthOptionIndex = item.sourceOptionNames.findIndex((name) => /length|size/i.test(name));
-    const colors = colorOptionIndex >= 0
-      ? Array.from(new Set(item.variants.map((variant) => variant.sourceOptionValues[colorOptionIndex]).filter(Boolean)))
-      : ["Natural / 1B"];
+    const colors = normalizeHairColors(
+      colorOptionIndex >= 0
+        ? item.variants.map((variant) => variant.sourceOptionValues[colorOptionIndex]).filter(Boolean)
+        : [DEFAULT_HAIR_COLOR],
+    );
 
     return {
       title: item.title.trim(),
       description: item.description.trim() || `${item.title.trim()} — imported from the seller's existing catalog. Review this description before publishing.`,
       productType: item.productType as ProductType,
       material: item.productType === "HAIR_ESSENTIAL" ? "Not Applicable" : String(item.material || ""),
-      colors: colors.length > 0 ? colors : ["Natural / 1B"],
+      colors: colors.length > 0 ? colors : [DEFAULT_HAIR_COLOR],
       texture: item.productType === "HAIR_ESSENTIAL" ? "Not Applicable" : String(item.texture || ""),
       selectedOptions: item.productOption && !LEGACY_WIG_CAP_OPTIONS.some((option) => option.value === item.productOption) ? [item.productOption] : [],
       optionsAreVariants: false,
@@ -2692,7 +2705,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
           label: variant.sourceOptionValues.filter(Boolean).join(" / ") || `Variant ${index + 1}`,
           length: numericLength,
           option: "",
-          color: colorOptionIndex >= 0 ? variant.sourceOptionValues[colorOptionIndex] || colors[0] || "Natural / 1B" : colors[0] || "Natural / 1B",
+          color: normalizeHairColor(colorOptionIndex >= 0 ? variant.sourceOptionValues[colorOptionIndex] || colors[0] || DEFAULT_HAIR_COLOR : colors[0] || DEFAULT_HAIR_COLOR),
           price: String(variant.price || "").trim() || "0",
           inventory: variant.inventory,
           sku: variant.sku,
@@ -2913,7 +2926,7 @@ export default function ProductBuilder({ seller, edit }: { seller: SellerForBuil
                     option: "",
                     color:
                       selectedColors[0] ||
-                      "Natural / 1B",
+                      DEFAULT_HAIR_COLOR,
                   },
                 ]
               : []

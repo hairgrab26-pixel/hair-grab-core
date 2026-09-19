@@ -27,8 +27,10 @@ export const materials = [
   "Not Applicable",
 ];
 
+export const DEFAULT_HAIR_COLOR = "Natural Black / 1B";
+
 export const colors = [
-  "Natural / 1B",
+  DEFAULT_HAIR_COLOR,
   "1 - Jet Black",
   "2 - Dark Brown",
   "4 - Medium Brown",
@@ -136,6 +138,36 @@ export const hairOrigins = [
 
 function compactAttribute(value: string) {
   return String(value || "").replace(/\s+/g, "").toLowerCase();
+}
+
+const NATURAL_BLACK_ALIASES = new Set([
+  "1b",
+  "natural/1b",
+  "natural1b",
+  "naturalblack",
+  "naturalblack/1b",
+  "naturalblack1b",
+  "1bnatural",
+  "1bnaturalblack",
+]);
+
+export function normalizeHairColor(value: string | null | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const exact = colors.find((item) => item.toLowerCase() === trimmed.toLowerCase());
+  if (exact) return exact;
+  const compact = compactAttribute(trimmed);
+  if (NATURAL_BLACK_ALIASES.has(compact)) return DEFAULT_HAIR_COLOR;
+  return colors.find((item) => compactAttribute(item) === compact) || trimmed;
+}
+
+export function normalizeHairColors(values: string | string[] | null | undefined) {
+  const items = Array.isArray(values)
+    ? values.map((item) => String(item).trim()).filter(Boolean)
+    : String(values || "").trim()
+      ? [String(values).trim()]
+      : [];
+  return [...new Set(items.map((item) => normalizeHairColor(item)).filter(Boolean))];
 }
 
 export function normalizeLaceSize(value: string | null | undefined) {

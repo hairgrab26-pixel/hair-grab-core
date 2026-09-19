@@ -19,6 +19,7 @@ import { productOptions, productClassifications, installationMethodChoices, locT
 import { sellerProductAttributeTags } from "../seller-product-attributes";
 import { parseCapTypeValues, parseDensityValues, parseLaceSizeValues, parseLaceTypeValues, parseShipsWithinValues } from "../product-attribute-tags";
 import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
+import { DEFAULT_HAIR_COLOR, normalizeHairColor, normalizeHairColors } from "../product-vocabulary";
 
 // ==========================================================
 // TYPES
@@ -815,11 +816,24 @@ function hairCategoryValue(payload: ProductPayload) {
   return productTypeToCategoryLabel(payload.productType);
 }
 
+function applyNormalizedHairColors(payload: ProductPayload) {
+  const colors = normalizeHairColors([
+    ...(payload.colors || []),
+    ...(payload.variants || []).map((variant) => variant.color),
+  ]);
+  payload.colors = colors.length ? colors : [DEFAULT_HAIR_COLOR];
+  payload.variants = (payload.variants || []).map((variant) => ({
+    ...variant,
+    color: normalizeHairColor(variant.color) || payload.colors[0],
+  }));
+}
+
 function collectProductMetafields(
   definitions: ShopifyMetafieldDefinition[],
   payload: ProductPayload,
   seller: { city?: string | null; state?: string | null; sellsNationwide: boolean; approvedApplication?: { city?: string | null; state?: string | null } | null }
 ) {
+  applyNormalizedHairColors(payload);
   const metafields: Array<{ namespace: string; key: string; type: string; value: string }> = [];
   const selectedLengthValues = [...new Set(payload.variants.map((variant) => variant.length).filter(Boolean))];
   const shipsFromCity = payload.shipsFromCity || seller.city || seller.approvedApplication?.city || "";
@@ -851,6 +865,12 @@ function collectProductMetafields(
     });
   }
   addExistingMetafield({ definitions, output: metafields, names: ["Color"], value: payload.colors, fallback: { namespace: "custom", key: "color", type: "list.single_line_text_field" } });
+  ensureCustomListMetafield(
+    metafields,
+    "color",
+    payload.colors,
+    customMetafieldType(definitions, "color", "list.single_line_text_field"),
+  );
   addExistingMetafield({
     definitions,
     output: metafields,
@@ -1075,13 +1095,14 @@ async function createSellerProductFromPayload({
   if (!saveAsDraft && !payload.description?.trim()) throw new Error("Product description is required.");
   if (!payload.productType) throw new Error("Product type is required.");
 
+  applyNormalizedHairColors(payload);
   if (!Array.isArray(payload.variants) || payload.variants.length === 0) {
     if (!saveAsDraft) throw new Error("At least one product variant is required.");
     payload.variants = [{
       label: "Draft",
       length: "",
       option: "",
-      color: payload.colors?.[0] || "Natural / 1B",
+      color: payload.colors?.[0] || DEFAULT_HAIR_COLOR,
       price: "0",
       salePrice: "",
       inventory: "",
@@ -1124,7 +1145,7 @@ async function createSellerProductFromPayload({
   if (payload.optionsAreVariants && uniqueStyleOptions.length > 0) {
     productOptionsInput.push({ name: "Style", values: uniqueStyleOptions.map((option) => ({ name: styleLabel(option) })) });
   }
-  if (Array.isArray(payload.colors) && payload.colors.length > 1) {
+  if (Array.isArray(payload.colors) && payload.colors.length > 0) {
     productOptionsInput.push({ name: "Color", values: payload.colors.map((colorValue) => ({ name: colorValue })) });
   }
   if (productOptionsInput.length === 0) {
@@ -1135,8 +1156,8 @@ async function createSellerProductFromPayload({
     const optionValues: Array<{ optionName: string; name: string }> = [];
     if (hairProduct && variant.length) optionValues.push({ optionName: "Length", name: `${variant.length}"` });
     if (payload.optionsAreVariants && variant.option) optionValues.push({ optionName: "Style", name: styleLabel(variant.option) });
-    if (Array.isArray(payload.colors) && payload.colors.length > 1 && variant.color) {
-      optionValues.push({ optionName: "Color", name: variant.color });
+    if (Array.isArray(payload.colors) && payload.colors.length > 0) {
+      optionValues.push({ optionName: "Color", name: variant.color || payload.colors[0] });
     }
     if (optionValues.length === 0) optionValues.push({ optionName: "Option", name: "Standard" });
     const inventory = String(variant.inventory || "").trim();
