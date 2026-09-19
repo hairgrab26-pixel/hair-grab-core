@@ -10,7 +10,8 @@ import { reconcileMedia, reconcileVariants } from "../product-edit-mutations.ser
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices, type EditBuilderData } from "../components/ProductBuilder";
 import ProductBuilder from "../components/ProductBuilder";
 import { syncHairGrabShippingProfile } from "../hairgrab-shipping.server";
-import { hydrateSellerAttributes, normalizeDensity, normalizeShipsWithin, replaceAttributeTags } from "../product-attribute-tags";
+import { hydrateSellerAttributes, normalizeDensity, normalizeShipsWithin, parseLaceTypeValues, replaceAttributeTags } from "../product-attribute-tags";
+import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
 
 type ShopifyMetafieldDefinition = {
@@ -271,35 +272,29 @@ function prepareMetafieldValue(
   definition:
     ShopifyMetafieldDefinition,
   value:
-    string | boolean,
+    string | boolean | string[],
 ) {
   const choices =
     getDefinitionChoices(
       definition,
     );
+  const type = definition.type.name;
+  const rawValues = Array.isArray(value)
+    ? value.map(String)
+    : [typeof value === "boolean" ? (value ? "true" : "false") : String(value)];
+  const resolvedValues = rawValues
+    .map((item) => resolveChoiceValue(item, choices))
+    .filter((item): item is string => Boolean(item));
 
-  const raw =
-    typeof value === "boolean"
-      ? value
-        ? "true"
-        : "false"
-      : String(value);
-
-  const resolved =
-    resolveChoiceValue(
-      raw,
-      choices,
-    );
-
-  if (
-    choices.length > 0 &&
-    !resolved
-  ) {
+  if (choices.length > 0 && resolvedValues.length === 0) {
     return null;
   }
 
-  if (definition.type.name === "boolean") return String(Boolean(value));
-  return serializeMetafieldValue(definition.type.name, resolved ?? raw);
+  if (type === "boolean") return String(Boolean(value));
+  if (type.startsWith("list.")) {
+    return JSON.stringify(resolvedValues.length ? resolvedValues : rawValues);
+  }
+  return serializeMetafieldValue(type, resolvedValues[0] ?? rawValues[0]);
 }
 
 function addExistingMetafield({
@@ -320,6 +315,7 @@ function addExistingMetafield({
 
   value:
     string |
+    string[] |
     boolean |
     null |
     undefined;
@@ -335,7 +331,8 @@ function addExistingMetafield({
     (
       typeof value === "string" &&
       !value.trim()
-    )
+    ) ||
+    (Array.isArray(value) && value.length === 0)
   ) {
     return;
   }
@@ -362,10 +359,34 @@ function addExistingMetafield({
   if (!wrote && fallback && fallback.namespace !== "shopify") {
     if (typeof value === "boolean") {
       output.push({ ...fallback, value: value ? "true" : "false" });
+    } else if (Array.isArray(value) && value.length) {
+      output.push({
+        ...fallback,
+        type: fallback.type.startsWith("list.") ? fallback.type : "list.single_line_text_field",
+        value: JSON.stringify(value.map((item) => String(item).trim()).filter(Boolean)),
+      });
     } else if (typeof value === "string" && value.trim()) {
       output.push({ ...fallback, value: value.trim() });
     }
   }
+}
+
+function ensureCustomListMetafield(
+  output: ProductMetafield[],
+  key: string,
+  values: string | string[] | null | undefined,
+  type = "list.single_line_text_field",
+) {
+  const items = parseLaceTypeValues(values);
+  if (!items.length) return;
+  const existing = output.find((item) => item.namespace === "custom" && item.key === key);
+  const value = type.startsWith("list.") ? JSON.stringify(items) : items.join(", ");
+  if (existing) {
+    existing.type = type;
+    existing.value = value;
+    return;
+  }
+  output.push({ namespace: "custom", key, type, value });
 }
 
 function ensureCustomMetafield(
@@ -551,6 +572,7 @@ export const loader = async ({
 
   const { admin } =
     await getShopifyAdmin();
+  await ensureRequiredCustomProductMetafieldDefinitions(admin);
 
   const [
     response,
@@ -1191,7 +1213,7 @@ export const action = async ({
           flatRateShipping: dirty.has("flatRateShipping") ? String(fields.flatRateShipping || "") : String(current.settings.flatRateShipping || "") });
       }
       await reconcileMedia(admin, productId, mediaDiff, submitted.media.order, mediaFiles);
-      const definitions = await getProductMetafieldDefinitions(admin);
+      const definitions = await ensureRequiredCustomProductMetafieldDefinitions(admin);
       const metafields: ProductMetafield[] = [];
       const deleteMetafields: Array<{ ownerId: string; namespace: string; key: string }> = [];
       const existingMetafields = (current.product.metafields?.nodes || []) as ProductMetafield[];
@@ -1239,7 +1261,6 @@ export const action = async ({
         { key: "origin", names: ["Origin"], fallback: { namespace: "custom", key: "origin", type: "single_line_text_field" }, always: true },
         { key: "weftType", names: ["Weft Type"], fallback: { namespace: "custom", key: "weft_type", type: "single_line_text_field" }, always: true },
         { key: "laceSize", names: ["Lace Size"], fallback: { namespace: "custom", key: "lace_size", type: "single_line_text_field" }, always: true },
-        { key: "laceType", names: ["Lace Type"], fallback: { namespace: "custom", key: "lace_type", type: "single_line_text_field" }, always: true },
         { key: "capSize", names: ["Cap Size"], fallback: { namespace: "custom", key: "cap_size", type: "single_line_text_field" }, always: true },
         { key: "capType", names: ["Cap Type"], fallback: { namespace: "custom", key: "cap_type", type: "single_line_text_field" }, always: true },
         { key: "shippingMethod", names: ["Shipping Method / Shipping Options", "Shipping Method / Shipping", "Shipping Method", "Shipping Methods"], fallback: { namespace: "custom", key: "shipping_method", type: "single_line_text_field" }, always: true },
@@ -1274,7 +1295,22 @@ export const action = async ({
       }
       ensureCustomMetafield(metafields, "origin", String(fields.origin || ""));
       ensureCustomMetafield(metafields, "lace_size", String(fields.laceSize || ""));
-      ensureCustomMetafield(metafields, "lace_type", String(fields.laceType || ""));
+      const laceTypeValues = parseLaceTypeValues(fields.laceType);
+      const laceTypeType = customMetafieldType(definitions, "lace_type", "list.single_line_text_field");
+      if (laceTypeValues.length) {
+        addExistingMetafield({
+          definitions,
+          output: metafields,
+          names: ["Lace Type"],
+          value: laceTypeValues,
+          fallback: { namespace: "custom", key: "lace_type", type: laceTypeType },
+        });
+        ensureCustomListMetafield(metafields, "lace_type", laceTypeValues, laceTypeType);
+      } else if (dirty.has("laceType")) {
+        const laceTypeDefinition = findMetafieldDefinition(definitions, ["Lace Type"]);
+        if (laceTypeDefinition) removeIfPresent(laceTypeDefinition.namespace, laceTypeDefinition.key);
+        removeIfPresent("custom", "lace_type");
+      }
       addExistingMetafield({
         definitions,
         output: metafields,

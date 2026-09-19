@@ -17,7 +17,8 @@ import { extensionTypeFromOptions, EXTENSION_TYPE_METAFIELD, productTypeToCatego
 import ProductBuilder from "../components/ProductBuilder";
 import { productOptions, productClassifications, installationMethodChoices, locTypeChoices } from "../components/ProductBuilder";
 import { sellerProductAttributeTags } from "../seller-product-attributes";
-import { normalizeDensity, normalizeShipsWithin } from "../product-attribute-tags";
+import { normalizeDensity, normalizeShipsWithin, parseLaceTypeValues } from "../product-attribute-tags";
+import { customMetafieldType, ensureRequiredCustomProductMetafieldDefinitions } from "../product-metafield-definitions.server";
 
 // ==========================================================
 // TYPES
@@ -49,7 +50,7 @@ type ProductPayload = {
 
   density: string;
   laceSize: string;
-  laceType: string;
+  laceType: string | string[];
   capSize: string;
   capType: string;
   origin: string;
@@ -536,6 +537,12 @@ function addExistingMetafield({
   if (!wrote && fallback && fallback.namespace !== "shopify") {
     if (typeof value === "boolean") {
       output.push({ ...fallback, value: value ? "true" : "false" });
+    } else if (Array.isArray(value) && value.length) {
+      output.push({
+        ...fallback,
+        type: fallback.type.startsWith("list.") ? fallback.type : "list.single_line_text_field",
+        value: JSON.stringify(value.map((item) => String(item).trim()).filter(Boolean)),
+      });
     } else if (typeof value === "string" && value.trim()) {
       output.push({ ...fallback, value: value.trim() });
     }
@@ -551,6 +558,24 @@ function ensureCustomMetafield(
   if (!trimmed) return;
   if (output.some((item) => item.namespace === "custom" && item.key === key && String(item.value || "").trim())) return;
   output.push({ namespace: "custom", key, type: "single_line_text_field", value: trimmed });
+}
+
+function ensureCustomListMetafield(
+  output: Array<{ namespace: string; key: string; type: string; value: string }>,
+  key: string,
+  values: string | string[] | null | undefined,
+  type = "list.single_line_text_field",
+) {
+  const items = parseLaceTypeValues(values);
+  if (!items.length) return;
+  const existing = output.find((item) => item.namespace === "custom" && item.key === key);
+  const value = type.startsWith("list.") ? JSON.stringify(items) : items.join(", ");
+  if (existing) {
+    existing.type = type;
+    existing.value = value;
+    return;
+  }
+  output.push({ namespace: "custom", key, type, value });
 }
 
 function formatErrors(
@@ -876,14 +901,20 @@ function collectProductMetafields(
     fallback: { namespace: "custom", key: "lace_size", type: "single_line_text_field" },
   });
   ensureCustomMetafield(metafields, "lace_size", payload.laceSize);
+  const laceTypeValues = parseLaceTypeValues(payload.laceType);
   addExistingMetafield({
     definitions,
     output: metafields,
     names: ["Lace Type"],
-    value: payload.laceType,
-    fallback: { namespace: "custom", key: "lace_type", type: "single_line_text_field" },
+    value: laceTypeValues,
+    fallback: { namespace: "custom", key: "lace_type", type: customMetafieldType(definitions, "lace_type", "list.single_line_text_field") },
   });
-  ensureCustomMetafield(metafields, "lace_type", payload.laceType);
+  ensureCustomListMetafield(
+    metafields,
+    "lace_type",
+    laceTypeValues,
+    customMetafieldType(definitions, "lace_type", "list.single_line_text_field"),
+  );
   addExistingMetafield({
     definitions,
     output: metafields,
@@ -1104,7 +1135,7 @@ async function createSellerProductFromPayload({
     };
   });
 
-  const definitions = await getProductMetafieldDefinitions(admin);
+  const definitions = await ensureRequiredCustomProductMetafieldDefinitions(admin);
   const metafields = collectProductMetafields(definitions, payload, seller);
   const productTypeDisplay = productTypeToCategoryLabel(payload.productType);
   const selectedOptionTags = payload.selectedOptions

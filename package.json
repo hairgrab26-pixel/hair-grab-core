@@ -18,7 +18,8 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "reconcile-processing-fees": "node --experimental-strip-types scripts/reconcile-processing-fees.ts"
+    "reconcile-processing-fees": "node --experimental-strip-types scripts/reconcile-processing-fees.ts",
+    "backfill-lace-metafields": "node --experimental-strip-types scripts/backfill-lace-metafields.ts"
   },
   "type": "module",
   "engines": {
